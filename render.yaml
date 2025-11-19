@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: sequencebiolab
+    env: python
+    buildCommand: pip install -r requirements-web.txt
+    startCommand: gunicorn -w 2 -b 0.0.0.0:$PORT --timeout 600 wsgi:application
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FLASK_ENV
+        value: production
+      - key: PORT
+        value: 5000
+
