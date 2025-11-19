@@ -2032,7 +2032,34 @@ def get_refresh_logs():
         log_entries = []
         last_refresh = None
         
-        # Parse from end (most recent first)
+        # First pass: Find the most recent refresh time by searching all lines
+        # Look for both start and completion messages
+        for line in reversed(lines):  # Search from most recent to oldest
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Match log format: "2025-11-13 10:52:00,858 - INFO - message"
+            match = re.match(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - (\w+) - (.+)', line)
+            if match:
+                timestamp_str, level, message = match.groups()
+                try:
+                    dt = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S,%f')
+                    # Look for refresh start or completion messages
+                    # Prefer "Starting CSV data update" as it's the most accurate start time
+                    if level == 'INFO' and 'Starting CSV data update' in message:
+                        last_refresh = dt.isoformat()
+                        break  # Found the most recent start, we're done
+                    elif (not last_refresh and level == 'INFO' and 
+                          ('Update Summary' in message or
+                           'data refresh completed' in message.lower() or
+                           'data refresh started' in message.lower())):
+                        # Fallback to completion/status messages if no start found
+                        last_refresh = dt.isoformat()
+                except:
+                    pass
+        
+        # Second pass: Parse log entries for display (from end, most recent first)
         for line in reversed(lines[-limit*2:]):  # Read more lines to account for multi-line entries
             line = line.strip()
             if not line:
@@ -2046,8 +2073,6 @@ def get_refresh_logs():
                 try:
                     dt = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S,%f')
                     timestamp = dt.strftime('%Y-%m-%d %H:%M:%S')
-                    if not last_refresh and level == 'INFO' and 'Starting CSV data update' in message:
-                        last_refresh = dt.isoformat()
                 except:
                     timestamp = timestamp_str
                 
