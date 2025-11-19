@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Account Deactivated - Sequence BioLab Analytics{% endblock %}
+
+{% block content %}
+<div class="page-container auth-page">
+    <div class="auth-card" style="max-width: 500px; text-align: center;">
+        <div class="auth-header">
+            <div style="font-size: 64px; color: var(--color-text-subtle, #999); margin-bottom: 24px;">
+                <i class="fas fa-ban"></i>
+            </div>
+            <h1>Account Deactivated</h1>
+            <p style="color: var(--color-text-secondary, #666); margin-top: 16px;">
+                Your account has been deactivated by an administrator.
+            </p>
+        </div>
+        
+        <div style="background: color-mix(in srgb, var(--color-accent, #ff7f00) 10%, transparent); border: 1px solid color-mix(in srgb, var(--color-accent, #ff7f00) 30%, transparent); border-radius: 12px; padding: 20px; margin: 24px 0;">
+            <p style="margin: 0; color: var(--color-text-primary, #000); line-height: 1.6;">
+                If you believe this is an error, please contact your administrator to have your account reactivated.
+            </p>
+        </div>
+        
+        <div style="margin-top: 32px;">
+            <a href="{{ url_for('auth.login') }}" class="auth-submit" style="display: inline-flex; align-items: center; gap: 8px; text-decoration: none;">
+                <span>Return to Login</span>
+                <i class="fas fa-arrow-right"></i>
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

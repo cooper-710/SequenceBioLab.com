@@ -1,0 +1,1025 @@
+{% extends "base.html" %}
+
+{% block title %}Box Score - {{ away_team }} vs {{ home_team }} - Sequence BioLab{% endblock %}
+
+{% block content %}
+<div class="page-container box-score-page">
+    <header class="section-hero">
+        <div class="section-hero-heading">
+            <a href="{{ url_for('pages.live_scores') }}" class="back-link">
+                <i class="fas fa-arrow-left"></i>
+                <span>Back to Live Scores</span>
+            </a>
+            <h1 class="hero-content">Box Score</h1>
+        </div>
+    </header>
+
+    <div class="box-score-content">
+        <!-- Game Header -->
+        <section class="gameday-card box-score-header-card">
+            <div class="box-score-header">
+                <div class="team-box away-team">
+                    <div class="team-logo-large">
+                        {% if away_id %}
+                        <span class="team-abbr-badge-large" style="background-color: {{ get_team_color_global(team_id=away_id) }}; color: white; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 18px; display: inline-block; min-width: 60px; text-align: center;">
+                            {{ away_abbr or (away_id|team_abbr_from_id) or 'AWY' }}
+                        </span>
+                        {% endif %}
+                    </div>
+                    <div class="team-info-large">
+                        <h2 class="team-name-large">{{ away_team }}</h2>
+                        {% if away_pitcher %}
+                        <div class="pitcher-info">
+                            <i class="fas fa-baseball"></i>
+                            <span>{{ away_pitcher }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="team-score-large">{{ away_score }}</div>
+                </div>
+
+                <div class="game-status-box">
+                    <div class="status-badge {{ status|lower|replace(' ', '-') }}">{{ status }}</div>
+                    {% if game_date %}
+                    <div class="game-date">
+                        <i class="fas fa-calendar"></i>
+                        <span>{{ game_date }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="venue-name">
+                        <i class="fas fa-map-marker-alt"></i>
+                        <span>{{ venue }}</span>
+                    </div>
+                </div>
+
+                <div class="team-box home-team">
+                    <div class="team-logo-large">
+                        {% if home_id %}
+                        <span class="team-abbr-badge-large" style="background-color: {{ get_team_color_global(team_id=home_id) }}; color: white; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 18px; display: inline-block; min-width: 60px; text-align: center;">
+                            {{ home_abbr or (home_id|team_abbr_from_id) or 'HME' }}
+                        </span>
+                        {% endif %}
+                    </div>
+                    <div class="team-info-large">
+                        <h2 class="team-name-large">{{ home_team }}</h2>
+                        {% if home_pitcher %}
+                        <div class="pitcher-info">
+                            <i class="fas fa-baseball"></i>
+                            <span>{{ home_pitcher }}</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="team-score-large">{{ home_score }}</div>
+                </div>
+            </div>
+
+            <!-- Inning Breakdown -->
+            {% if innings_list %}
+            <div class="inning-breakdown">
+                <div class="inning-header">
+                    <span class="inning-label-team">Team</span>
+                    {% for inning_num in innings_list %}
+                    <span class="inning-label">{{ inning_num }}</span>
+                    {% endfor %}
+                    <span class="inning-label-total">R</span>
+                </div>
+                <div class="inning-row away-inning-row">
+                    <span class="inning-team-name">{{ away_team }}</span>
+                    {% for runs in away_innings %}
+                    <span class="inning-score">{{ runs }}</span>
+                    {% endfor %}
+                    <span class="inning-total">{{ away_score }}</span>
+                </div>
+                <div class="inning-row home-inning-row">
+                    <span class="inning-team-name">{{ home_team }}</span>
+                    {% for runs in home_innings %}
+                    <span class="inning-score">{{ runs }}</span>
+                    {% endfor %}
+                    <span class="inning-total">{{ home_score }}</span>
+                </div>
+            </div>
+            {% endif %}
+        </section>
+
+        <!-- Batting Stats -->
+        {% if away_batters or home_batters %}
+        <section class="gameday-card">
+            <div class="card-header">
+                <h2><i class="fas fa-baseball-ball"></i> Batting Stats</h2>
+            </div>
+            
+            <div class="batting-stats-grid">
+                <!-- Away Team Batting -->
+                <div class="batting-team">
+                    <h3 class="batting-team-title">{{ away_team }}</h3>
+                    {% if away_batters %}
+                    <div class="table-wrapper">
+                    <table class="batting-table">
+                        <thead>
+                            <tr>
+                                <th>Player</th>
+                                <th>Pos</th>
+                                <th>AB</th>
+                                <th>R</th>
+                                <th>H</th>
+                                <th>RBI</th>
+                                <th>HR</th>
+                                <th>BB</th>
+                                <th>K</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for batter in away_batters %}
+                            <tr>
+                                <td class="player-name">{{ batter.name }}</td>
+                                <td class="player-pos">{{ batter.position }}</td>
+                                <td>{{ batter.at_bats }}</td>
+                                <td>{{ batter.runs }}</td>
+                                <td>{{ batter.hits }}</td>
+                                <td>{{ batter.rbi }}</td>
+                                <td>{{ batter.home_runs }}</td>
+                                <td>{{ batter.walks }}</td>
+                                <td>{{ batter.strikeouts }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    </div>
+                    {% else %}
+                    <p class="empty-stats">No batting data available</p>
+                    {% endif %}
+                </div>
+
+                <!-- Home Team Batting -->
+                <div class="batting-team">
+                    <h3 class="batting-team-title">{{ home_team }}</h3>
+                    {% if home_batters %}
+                    <div class="table-wrapper">
+                    <table class="batting-table">
+                        <thead>
+                            <tr>
+                                <th>Player</th>
+                                <th>Pos</th>
+                                <th>AB</th>
+                                <th>R</th>
+                                <th>H</th>
+                                <th>RBI</th>
+                                <th>HR</th>
+                                <th>BB</th>
+                                <th>K</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for batter in home_batters %}
+                            <tr>
+                                <td class="player-name">{{ batter.name }}</td>
+                                <td class="player-pos">{{ batter.position }}</td>
+                                <td>{{ batter.at_bats }}</td>
+                                <td>{{ batter.runs }}</td>
+                                <td>{{ batter.hits }}</td>
+                                <td>{{ batter.rbi }}</td>
+                                <td>{{ batter.home_runs }}</td>
+                                <td>{{ batter.walks }}</td>
+                                <td>{{ batter.strikeouts }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    </div>
+                    {% else %}
+                    <p class="empty-stats">No batting data available</p>
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- Pitching Stats -->
+        {% if away_pitchers or home_pitchers %}
+        <section class="gameday-card">
+            <div class="card-header">
+                <h2><i class="fas fa-baseball-ball"></i> Pitching Stats</h2>
+            </div>
+            
+            <div class="pitching-stats-grid">
+                <!-- Away Team Pitching -->
+                <div class="pitching-team">
+                    <h3 class="pitching-team-title">{{ away_team }}</h3>
+                    {% if away_pitchers %}
+                    <div class="table-wrapper">
+                    <table class="pitching-table">
+                        <thead>
+                            <tr>
+                                <th>Player</th>
+                                <th>IP</th>
+                                <th>H</th>
+                                <th>R</th>
+                                <th>ER</th>
+                                <th>BB</th>
+                                <th>K</th>
+                                <th>HR</th>
+                                <th>NP</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pitcher in away_pitchers %}
+                            <tr>
+                                <td class="player-name">{{ pitcher.name }}</td>
+                                <td>{{ pitcher.innings_pitched }}</td>
+                                <td>{{ pitcher.hits }}</td>
+                                <td>{{ pitcher.runs }}</td>
+                                <td>{{ pitcher.earned_runs }}</td>
+                                <td>{{ pitcher.walks }}</td>
+                                <td>{{ pitcher.strikeouts }}</td>
+                                <td>{{ pitcher.home_runs }}</td>
+                                <td>{{ pitcher.pitches }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    </div>
+                    {% else %}
+                    <p class="empty-stats">No pitching data available</p>
+                    {% endif %}
+                </div>
+
+                <!-- Home Team Pitching -->
+                <div class="pitching-team">
+                    <h3 class="pitching-team-title">{{ home_team }}</h3>
+                    {% if home_pitchers %}
+                    <div class="table-wrapper">
+                    <table class="pitching-table">
+                        <thead>
+                            <tr>
+                                <th>Player</th>
+                                <th>IP</th>
+                                <th>H</th>
+                                <th>R</th>
+                                <th>ER</th>
+                                <th>BB</th>
+                                <th>K</th>
+                                <th>HR</th>
+                                <th>NP</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pitcher in home_pitchers %}
+                            <tr>
+                                <td class="player-name">{{ pitcher.name }}</td>
+                                <td>{{ pitcher.innings_pitched }}</td>
+                                <td>{{ pitcher.hits }}</td>
+                                <td>{{ pitcher.runs }}</td>
+                                <td>{{ pitcher.earned_runs }}</td>
+                                <td>{{ pitcher.walks }}</td>
+                                <td>{{ pitcher.strikeouts }}</td>
+                                <td>{{ pitcher.home_runs }}</td>
+                                <td>{{ pitcher.pitches }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    </div>
+                    {% else %}
+                    <p class="empty-stats">No pitching data available</p>
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.box-score-page {
+    max-width: 1200px;
+}
+
+.back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    font-size: 0.875rem;
+    margin-bottom: 12px;
+    transition: color 0.2s ease;
+}
+
+.back-link:hover {
+    color: var(--color-accent);
+}
+
+.box-score-header-card {
+    margin-bottom: 24px;
+    width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.box-score-header {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 32px;
+    align-items: center;
+    padding: 24px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.team-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.team-logo-large {
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.team-logo-large img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
+}
+
+.team-info-large {
+    text-align: center;
+    width: 100%;
+    min-width: 0;
+}
+
+.team-name-large {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin: 0 0 8px 0;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    max-width: 100%;
+}
+
+.pitcher-info {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+}
+
+.team-score-large {
+    font-size: 3rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.game-status-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 16px;
+    background: var(--color-layer-soft);
+    border-radius: 12px;
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.game-date {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.875rem;
+    color: var(--color-text-primary);
+    font-weight: 500;
+    text-align: center;
+    width: 100%;
+}
+
+.game-date span {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.status-badge {
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-badge.final,
+.status-badge.game-over {
+    background: rgba(128, 128, 128, 0.1);
+    color: var(--color-text-secondary);
+}
+
+.status-badge.live,
+.status-badge.in-progress {
+    background: rgba(255, 59, 48, 0.1);
+    color: #ff3b30;
+}
+
+.venue-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    text-align: center;
+    width: 100%;
+    justify-content: center;
+}
+
+.venue-name span {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.inning-breakdown {
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid var(--color-layer-border);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-left: -30px;
+    margin-right: -30px;
+    padding-left: 30px;
+    padding-right: 30px;
+}
+
+.inning-header {
+    display: grid;
+    grid-template-columns: 120px repeat({{ innings_list|length }}, 1fr) 60px;
+    gap: 8px;
+    padding: 12px;
+    background: var(--color-layer-soft);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    min-width: max-content;
+}
+
+.inning-label {
+    text-align: center;
+}
+
+.inning-label-team {
+    text-align: left;
+}
+
+.inning-label-total {
+    text-align: center;
+}
+
+.inning-row {
+    display: grid;
+    grid-template-columns: 120px repeat({{ innings_list|length }}, 1fr) 60px;
+    gap: 8px;
+    padding: 12px;
+    border-radius: 8px;
+    transition: background 0.2s ease;
+    min-width: max-content;
+}
+
+.inning-row:hover {
+    background: var(--color-layer-soft);
+}
+
+.inning-team-name {
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+.inning-score {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-primary);
+}
+
+.inning-total {
+    text-align: center;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-primary);
+}
+
+.batting-stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.pitching-stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    margin-top: 24px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.pitching-team-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin: 0 0 16px 0;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--color-layer-border);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.pitching-table {
+    width: 100%;
+    border-collapse: collapse;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.pitching-team {
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.pitching-table thead {
+    background: var(--color-layer-soft);
+}
+
+.pitching-table th {
+    padding: 12px 8px;
+    text-align: left;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.pitching-table th:not(:first-child) {
+    text-align: center;
+}
+
+.pitching-table td {
+    padding: 12px 8px;
+    border-bottom: 1px solid var(--color-layer-border);
+}
+
+.pitching-table td:not(:first-child) {
+    text-align: center;
+}
+
+.batting-team-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin: 0 0 16px 0;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--color-layer-border);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.batting-team {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.batting-table {
+    width: 100%;
+    border-collapse: collapse;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.batting-table thead {
+    background: var(--color-layer-soft);
+}
+
+.batting-table th {
+    padding: 12px 8px;
+    text-align: left;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.batting-table th:not(:first-child) {
+    text-align: center;
+}
+
+.batting-table td {
+    padding: 12px 8px;
+    border-bottom: 1px solid var(--color-layer-border);
+}
+
+.batting-table td:not(:first-child) {
+    text-align: center;
+}
+
+.player-name {
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+.player-pos {
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+}
+
+.empty-stats {
+    padding: 32px;
+    text-align: center;
+    color: var(--color-text-secondary);
+    font-style: italic;
+}
+
+@media (max-width: 1024px) {
+    .box-score-header {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .game-status-box {
+        order: -1;
+        min-width: auto;
+    }
+    
+    .batting-stats-grid,
+    .pitching-stats-grid {
+        grid-template-columns: 1fr;
+        gap: 24px;
+    }
+    
+    .inning-breakdown {
+        margin-left: -20px;
+        margin-right: -20px;
+        padding-left: 20px;
+        padding-right: 20px;
+    }
+    
+    .inning-header,
+    .inning-row {
+        grid-template-columns: 100px repeat({{ innings_list|length }}, 40px) 50px;
+        gap: 4px;
+        font-size: 0.875rem;
+        min-width: max-content;
+    }
+    
+    .table-wrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin: 0 -20px;
+        padding: 0 20px;
+    }
+    
+    .batting-table,
+    .pitching-table {
+        min-width: 600px;
+        width: 100%;
+    }
+}
+
+@media (max-width: 768px) {
+    .table-wrapper {
+        margin: 0 -16px;
+        padding: 0 16px;
+    }
+    
+    .back-link {
+        font-size: 0.8125rem;
+        margin-bottom: 8px;
+    }
+    
+    .box-score-header {
+        gap: 12px;
+        padding: 16px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    
+    .team-box {
+        gap: 10px;
+        min-width: 0;
+        max-width: 100%;
+    }
+    
+    .team-name-large {
+        font-size: 0.9375rem;
+        line-height: 1.2;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        hyphens: auto;
+    }
+    
+    .team-score-large {
+        font-size: 1.75rem;
+    }
+    
+    .team-logo-large {
+        width: 45px;
+        height: 45px;
+        flex-shrink: 0;
+    }
+    
+    .game-status-box {
+        padding: 10px 8px;
+        gap: 6px;
+        min-width: 0;
+        width: 100%;
+    }
+    
+    .status-badge {
+        padding: 5px 10px;
+        font-size: 0.6875rem;
+    }
+    
+    .game-date,
+    .venue-name {
+        font-size: 0.75rem;
+        text-align: center;
+        width: 100%;
+    }
+    
+    .game-date span,
+    .venue-name span {
+        display: block;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        hyphens: auto;
+        max-width: 100%;
+    }
+    
+    .pitcher-info {
+        font-size: 0.75rem;
+    }
+    
+    .pitcher-info span {
+        max-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        display: block;
+    }
+    
+    .inning-breakdown {
+        margin-top: 16px;
+        padding-top: 16px;
+        margin-left: -16px;
+        margin-right: -16px;
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+    
+    .inning-header,
+    .inning-row {
+        grid-template-columns: 70px repeat({{ innings_list|length }}, 32px) 40px;
+        gap: 3px;
+        font-size: 0.6875rem;
+        padding: 8px 4px;
+        min-width: max-content;
+    }
+    
+    .inning-label-team,
+    .inning-team-name {
+        font-size: 0.6875rem;
+    }
+    
+    .batting-team-title,
+    .pitching-team-title {
+        font-size: 1.125rem;
+        margin-bottom: 12px;
+        padding-bottom: 8px;
+    }
+    
+    .batting-table th,
+    .batting-table td,
+    .pitching-table th,
+    .pitching-table td {
+        padding: 10px 6px;
+        font-size: 0.8125rem;
+    }
+    
+    .batting-table th,
+    .pitching-table th {
+        font-size: 0.75rem;
+        padding: 8px 6px;
+    }
+    
+    .player-name {
+        font-size: 0.875rem;
+    }
+    
+    .player-pos {
+        font-size: 0.75rem;
+    }
+    
+    .empty-stats {
+        padding: 24px 16px;
+        font-size: 0.875rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .table-wrapper {
+        margin: 0 -16px;
+        padding: 0 16px;
+    }
+    
+    .box-score-header {
+        padding: 12px;
+        gap: 10px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    
+    .team-name-large {
+        font-size: 0.8125rem;
+        line-height: 1.2;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        hyphens: auto;
+    }
+    
+    .team-score-large {
+        font-size: 1.5rem;
+    }
+    
+    .team-logo-large {
+        width: 35px;
+        height: 35px;
+    }
+    
+    .pitcher-info {
+        font-size: 0.6875rem;
+    }
+    
+    .pitcher-info span {
+        display: block;
+        max-width: 100px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    
+    .game-status-box {
+        padding: 8px 6px;
+        gap: 5px;
+    }
+    
+    .status-badge {
+        padding: 4px 8px;
+        font-size: 0.625rem;
+    }
+    
+    .game-date,
+    .venue-name {
+        font-size: 0.6875rem;
+    }
+    
+    .game-date span,
+    .venue-name span {
+        font-size: 0.625rem;
+        max-width: 100%;
+    }
+    
+    .inning-breakdown {
+        margin-left: -16px;
+        margin-right: -16px;
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+    
+    .inning-header,
+    .inning-row {
+        grid-template-columns: 60px repeat({{ innings_list|length }}, 26px) 32px;
+        gap: 2px;
+        font-size: 0.625rem;
+        padding: 6px 2px;
+    }
+    
+    .inning-label,
+    .inning-score,
+    .inning-total {
+        font-size: 0.625rem;
+    }
+    
+    .inning-label-team,
+    .inning-team-name {
+        font-size: 0.625rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    
+    .batting-table th,
+    .batting-table td,
+    .pitching-table th,
+    .pitching-table td {
+        padding: 8px 4px;
+        font-size: 0.75rem;
+    }
+    
+    .batting-table th,
+    .pitching-table th {
+        font-size: 0.6875rem;
+        padding: 6px 4px;
+    }
+    
+    .player-name {
+        font-size: 0.8125rem;
+        max-width: 100px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    
+    .batting-team-title,
+    .pitching-team-title {
+        font-size: 1rem;
+    }
+}
+
+/* Match mobile layout behavior of Player Database page exactly */
+@media (max-width: 768px) {
+    /* Use same container rules as player_database */
+    .page-container.box-score-page,
+    .box-score-page.page-container,
+    .box-score-page,
+    div.box-score-page.page-container {
+        padding: 0 16px 32px !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+        margin: 0 auto !important;
+    }
+
+    .main-content {
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+    }
+
+    body {
+        overflow-x: hidden !important;
+    }
+
+    .box-score-page .box-score-content {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .box-score-page .section-hero,
+    .box-score-page header.section-hero {
+        margin-bottom: 20px !important;
+        padding: 16px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .box-score-page .section-hero-heading h1,
+    .box-score-page .section-hero-heading .hero-content {
+        font-size: 1.5rem !important;
+    }
+
+    /* Ensure header card respects container width */
+    .box-score-page .box-score-header-card,
+    .box-score-page .gameday-card {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+    }
+}
+</style>
+{% endblock %}
+

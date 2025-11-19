@@ -229,4 +229,217 @@
         });
     });
     </script>
+    <style>
+    /* Mobile responsive styles for profile settings */
+    @media (max-width: 768px) {
+        .profile-settings .page-container {
+            padding: 0 16px 32px !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+            overflow-x: hidden !important;
+        }
+
+        .profile-settings .section-hero {
+            padding: 16px !important;
+            margin-bottom: 16px !important;
+        }
+
+        .profile-settings .section-hero-heading h1 {
+            font-size: 1.5rem !important;
+        }
+
+        .profile-settings .content-wrapper {
+            gap: 20px !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+        }
+
+        .profile-panel {
+            width: 100% !important;
+            box-sizing: border-box !important;
+        }
+
+        .profile-panel--primary {
+            padding: 20px 16px !important;
+        }
+
+        .profile-panel:not(.profile-panel--primary) {
+            padding: 20px 16px !important;
+        }
+
+        .panel-heading h2 {
+            font-size: 1.25rem !important;
+        }
+
+        .panel-heading p {
+            font-size: 0.9rem !important;
+        }
+
+        .profile-avatar-shell {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 20px !important;
+        }
+
+        .profile-avatar-preview {
+            width: 96px !important;
+            height: 96px !important;
+            margin: 0 auto;
+        }
+
+        .profile-avatar-actions {
+            width: 100% !important;
+            min-width: 100% !important;
+        }
+
+        .avatar-form {
+            width: 100% !important;
+        }
+
+        .file-input {
+            width: 100% !important;
+        }
+
+        .file-input-label {
+            width: 100% !important;
+            justify-content: center !important;
+        }
+
+        .btn-ghost {
+            width: 100% !important;
+            justify-content: center !important;
+        }
+
+        .field-group.two-column {
+            flex-direction: column !important;
+            gap: 1rem !important;
+        }
+
+        .field-group.two-column > .input-field {
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+            width: 100% !important;
+        }
+
+        .input-field {
+            width: 100% !important;
+        }
+
+        .input-field input,
+        .input-field textarea,
+        .input-field select {
+            width: 100% !important;
+            box-sizing: border-box !important;
+        }
+
+        .select-wrapper {
+            width: 100% !important;
+        }
+
+        .select-wrapper select {
+            width: 100% !important;
+            box-sizing: border-box !important;
+        }
+
+        .profile-settings .form-actions {
+            justify-content: stretch !important;
+            width: 100% !important;
+        }
+
+        .profile-settings .form-actions .btn {
+            width: 100% !important;
+            justify-content: center !important;
+        }
+
+        .profile-side-column {
+            flex-direction: column !important;
+            gap: 20px !important;
+        }
+
+        .profile-side-column > .profile-panel {
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+            width: 100% !important;
+        }
+
+        .theme-toggle-row {
+            flex-direction: column !important;
+            gap: 12px !important;
+        }
+
+        .theme-pill {
+            width: 100% !important;
+            justify-content: center !important;
+        }
+
+        .switch-card {
+            flex-direction: column !important;
+            align-items: stretch !important;
+            gap: 12px !important;
+        }
+
+        .switch-copy {
+            width: 100% !important;
+        }
+
+        .switch {
+            align-self: flex-start !important;
+        }
+
+        .full-width {
+            width: 100% !important;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .profile-settings .page-container {
+            padding: 0 12px 24px !important;
+        }
+
+        .profile-settings .section-hero {
+            padding: 12px !important;
+        }
+
+        .profile-settings .section-hero-heading h1 {
+            font-size: 1.25rem !important;
+        }
+
+        .profile-panel--primary {
+            padding: 16px 12px !important;
+        }
+
+        .profile-panel:not(.profile-panel--primary) {
+            padding: 16px 12px !important;
+        }
+
+        .panel-heading h2 {
+            font-size: 1.1rem !important;
+        }
+
+        .panel-heading p {
+            font-size: 0.85rem !important;
+        }
+
+        .profile-avatar-preview {
+            width: 80px !important;
+            height: 80px !important;
+        }
+
+        .field-label {
+            font-size: 0.9rem !important;
+        }
+
+        .input-field input,
+        .input-field textarea,
+        .input-field select {
+            font-size: 16px !important; /* Prevents zoom on iOS */
+            padding: 12px 16px !important;
+        }
+
+        .help-text {
+            font-size: 0.85rem !important;
+        }
+    }
+    </style>
 {% endblock %}

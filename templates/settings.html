@@ -242,15 +242,6 @@
                 <div class="settings-list">
                     <div class="setting-row multiline">
                         <div class="setting-info">
-                            <h3>Sportradar API Key</h3>
-                            <p>Used for live pitch tracking integrations.</p>
-                        </div>
-                        <div class="setting-control">
-                            <textarea id="integration_sportradar_api_key" class="setting-textarea" rows="2" data-setting-field autocomplete="off" spellcheck="false"></textarea>
-                        </div>
-                    </div>
-                    <div class="setting-row multiline">
-                        <div class="setting-info">
                             <h3>Statcast Cookie</h3>
                             <p>Paste the MLBAM <code>session</code> cookie for authenticated requests.</p>
                         </div>
@@ -431,7 +422,6 @@
             document.getElementById('data_auto_refresh_on_startup').checked = !!sources.auto_refresh_on_startup;
             document.getElementById('data_allow_unverified_sources').checked = !!sources.allow_unverified_sources;
 
-            document.getElementById('integration_sportradar_api_key').value = integrations.sportradar_api_key || '';
             document.getElementById('integration_statcast_cookie').value = integrations.statcast_cookie || '';
             document.getElementById('integration_fangraphs_username').value = integrations.fangraphs_username || '';
             document.getElementById('integration_fangraphs_password').value = integrations.fangraphs_password || '';
@@ -472,7 +462,6 @@
                     allow_unverified_sources: document.getElementById('data_allow_unverified_sources').checked,
                 },
                 integrations: {
-                    sportradar_api_key: document.getElementById('integration_sportradar_api_key').value.trim(),
                     statcast_cookie: document.getElementById('integration_statcast_cookie').value.trim(),
                     fangraphs_username: document.getElementById('integration_fangraphs_username').value.trim(),
                     fangraphs_password: document.getElementById('integration_fangraphs_password').value,

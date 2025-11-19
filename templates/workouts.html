@@ -112,24 +112,6 @@
                         </div>
                     </div>
 
-                    <div class="workout-meta" id="workoutMeta" {% if not initial_player_id or not workout_document %}hidden{% endif %}>
-                        <span id="workoutPlayerLabel">
-                            {% if initial_player_id %}
-                                {{ current_user_label or 'Player' }}
-                            {% endif %}
-                        </span>
-                        <span id="workoutFilename" class="workout-filename">
-                            {% if workout_document %}
-                                {{ workout_document.filename }}
-                            {% endif %}
-                        </span>
-                        <span id="workoutUploaded" class="workout-uploaded">
-                            {% if workout_document %}
-                                Uploaded {{ workout_document.uploaded_at }}
-                            {% endif %}
-                        </span>
-                    </div>
-
                     <div class="workout-viewer" id="workoutViewer" {% if not workout_document %}hidden{% endif %}>
                         <div class="viewer-frame">
                             <object id="workoutFrame"
@@ -889,6 +871,264 @@
         transform: translateY(-8px);
     }
 }
+
+/* Mobile responsive styles */
+@media (max-width: 768px) {
+    .workouts-page {
+        gap: 20px !important;
+    }
+
+    .page-container {
+        padding: 0 16px 32px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+    }
+
+    .section-hero {
+        padding: 16px !important;
+        margin-bottom: 16px !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 12px !important;
+    }
+
+    .section-hero-heading h1 {
+        font-size: 1.5rem !important;
+    }
+
+    .admin-toolbar {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 16px !important;
+        padding: 20px 16px !important;
+    }
+
+    .toolbar-group {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 12px !important;
+    }
+
+    .player-select {
+        width: 100% !important;
+    }
+
+    .player-select select {
+        min-width: 100% !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .toolbar-btn {
+        width: 100% !important;
+        justify-content: center !important;
+    }
+
+    .toolbar-hint {
+        width: 100% !important;
+        text-align: center !important;
+    }
+
+    .content-wrapper {
+        padding: 0 !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .workouts-grid {
+        gap: 20px !important;
+    }
+
+    .workout-card,
+    .admin-card {
+        padding: 20px 16px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .workout-card-header {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 16px !important;
+    }
+
+    .workout-card-overview {
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+
+    .workout-title {
+        font-size: 1.25rem !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+    }
+
+    .workout-meta-line {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 8px !important;
+        font-size: 0.9rem !important;
+    }
+
+    .overview-dot {
+        display: none !important;
+    }
+
+    .workout-card-actions {
+        width: 100% !important;
+        flex-direction: column !important;
+        gap: 10px !important;
+    }
+
+    .btn-ghost-pill {
+        width: 100% !important;
+        justify-content: center !important;
+        padding: 12px 20px !important;
+        box-sizing: border-box !important;
+    }
+
+    .workout-viewer {
+        padding: 12px !important;
+    }
+
+    .viewer-frame object {
+        height: clamp(300px, 60vh, 600px) !important;
+    }
+
+    .workout-empty {
+        padding: 40px 20px !important;
+    }
+
+    .empty-icon {
+        width: 80px !important;
+        height: 80px !important;
+    }
+
+    .empty-icon i {
+        font-size: 36px !important;
+    }
+
+    .empty-title {
+        font-size: 1.4rem !important;
+    }
+
+    .empty-message {
+        font-size: 0.95rem !important;
+    }
+
+    .admin-card-header h2 {
+        font-size: 1.1rem !important;
+    }
+
+    .workout-current {
+        padding: 16px !important;
+    }
+
+    .current-title {
+        font-size: 1rem !important;
+    }
+
+    .workout-upload {
+        padding: 16px !important;
+    }
+
+    .upload-drop {
+        padding: 28px 20px !important;
+    }
+
+    .upload-actions {
+        flex-direction: column !important;
+        width: 100% !important;
+    }
+
+    .upload-actions button {
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .history-item {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 12px !important;
+    }
+
+    .history-actions {
+        width: 100% !important;
+        flex-direction: column !important;
+        gap: 8px !important;
+    }
+
+    .history-actions a,
+    .history-actions button {
+        width: 100% !important;
+        justify-content: center !important;
+        box-sizing: border-box !important;
+    }
+
+    .view-toggle {
+        width: 100% !important;
+        justify-content: stretch !important;
+    }
+
+    .toggle-btn {
+        flex: 1 !important;
+        justify-content: center !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .page-container {
+        padding: 0 12px 24px !important;
+    }
+
+    .section-hero {
+        padding: 12px !important;
+    }
+
+    .section-hero-heading h1 {
+        font-size: 1.25rem !important;
+    }
+
+    .admin-toolbar {
+        padding: 16px 12px !important;
+    }
+
+    .workout-card,
+    .admin-card {
+        padding: 16px 12px !important;
+    }
+
+    .workout-title {
+        font-size: 1.1rem !important;
+    }
+
+    .workout-meta-line {
+        font-size: 0.85rem !important;
+    }
+
+    .btn-ghost-pill {
+        padding: 10px 16px !important;
+        font-size: 0.9rem !important;
+    }
+
+    .viewer-frame object {
+        height: clamp(250px, 50vh, 500px) !important;
+    }
+
+    .workout-empty {
+        padding: 32px 16px !important;
+    }
+
+    .empty-title {
+        font-size: 1.2rem !important;
+    }
+
+    .empty-message {
+        font-size: 0.9rem !important;
+    }
+}
 </style>
 <script>
 const WORKOUT_INITIAL = {{ workout_document|tojson|default('null') }};
@@ -1429,8 +1669,7 @@ window.addEventListener('DOMContentLoaded', () => {
         }
         const options = ['<option value="">Select a player</option>'];
         state.players.forEach((player) => {
-            const emailSuffix = player.email ? ` · ${escapeHtml(player.email)}` : '';
-            options.push(`<option value="${player.id}">${escapeHtml(player.name)}${emailSuffix}</option>`);
+            options.push(`<option value="${player.id}">${escapeHtml(player.name)}</option>`);
         });
         playerSelect.innerHTML = options.join('');
         if (state.playerId) {

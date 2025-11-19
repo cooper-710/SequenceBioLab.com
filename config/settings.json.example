@@ -15,7 +15,6 @@
   "integrations": {
     "fangraphs_password": "",
     "fangraphs_username": "",
-    "sportradar_api_key": "",
     "statcast_cookie": "",
     "trumedia_token": ""
   },
@@ -35,4 +34,7 @@
     "use_next_series": false
   }
 }
+
+
+
 

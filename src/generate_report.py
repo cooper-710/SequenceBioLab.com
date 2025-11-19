@@ -51,104 +51,6 @@ PITCH_NAME_MAP = {
 def _to_uri(p: Optional[str]) -> Optional[str]:
     return None if not p else Path(p).resolve().as_uri()
 
-
-def _whiten_background(img: "Image.Image", threshold: int = 235) -> "Image.Image":
-    """
-    Lift near-white pixels (background greys) to pure white so the headshot
-    blends cleanly with the report background.
-    """
-    if Image is None:
-        return img
-
-    try:
-        data = img.load()
-        width, height = img.size
-        for y in range(height):
-            for x in range(width):
-                r, g, b = data[x, y]
-                if r >= threshold and g >= threshold and b >= threshold:
-                    data[x, y] = (255, 255, 255)
-    except Exception:
-        pass
-    return img
-
-
-def _write_headshot_image(headshot_file: Path, image_bytes: bytes) -> None:
-    """
-    Persist a fetched headshot to disk while stripping alpha channels that can
-    introduce rendering artifacts in Chrome's PDF output.
-    """
-    if not image_bytes:
-        return
-
-    if Image is None:
-        headshot_file.write_bytes(image_bytes)
-        return
-
-    try:
-        with Image.open(io.BytesIO(image_bytes)) as img:
-            # Detect transparency and composite onto white to avoid speckling
-            has_alpha = (
-                ("A" in img.getbands())
-                or (img.mode == "P" and "transparency" in img.info)
-            )
-            if has_alpha:
-                img = img.convert("RGBA")
-                background = Image.new("RGBA", img.size, (255, 255, 255, 255))
-                background.alpha_composite(img)
-                processed = background.convert("RGB")
-            else:
-                processed = img.convert("RGB")
-
-            processed = _whiten_background(processed)
-            processed.save(headshot_file, format="PNG", optimize=True)
-    except Exception:
-        headshot_file.write_bytes(image_bytes)
-
-
-def _sanitize_cached_headshot(headshot_file: Path) -> None:
-    """
-    Re-process an existing cached headshot to ensure it does not contain an
-    alpha channel. This lets previously downloaded images benefit from the
-    transparency fix without requiring a manual cache clear.
-    """
-    if not headshot_file.exists() or Image is None:
-        return
-
-    try:
-        with Image.open(headshot_file) as img:
-            has_alpha = (
-                ("A" in img.getbands())
-                or (img.mode == "P" and "transparency" in img.info)
-            )
-    except Exception:
-        return
-
-    if not has_alpha:
-        return
-
-    try:
-        original_bytes = headshot_file.read_bytes()
-    except Exception:
-        return
-
-    _write_headshot_image(headshot_file, original_bytes)
-
-
-def _headshot_needs_refetch(headshot_file: Path) -> bool:
-    """
-    Detect legacy cached headshots that were stored as JPEGs with a PNG
-    extension, which introduced visible compression artifacts.
-    """
-    try:
-        with headshot_file.open("rb") as fh:
-            signature = fh.read(4)
-    except Exception:
-        return True
-
-    # PNG files start with 0x89 50 4E 47. Anything else should be refreshed.
-    return signature != b"\x89PNG"
-
 # Team abbreviation to MLB team ID mapping (for logos)
 TEAM_ABBR_TO_ID = {
     "ARI": 109, "ATL": 144, "BAL": 110, "BOS": 111, "CHC": 112, "CWS": 145, "CIN": 113,
@@ -190,138 +92,17 @@ def _get_team_name(team_abbr: Optional[str] = None, team_id: Optional[int] = Non
 
 def _fetch_team_logo(team_abbr: Optional[str] = None, team_id: Optional[int] = None, out_dir: str = "build/logos") -> Optional[str]:
     """
-    Fetch and cache team logo from MLB static assets.
+    Return None - logos are no longer used due to legal restrictions.
+    Team abbreviations with colors are used instead in templates.
     
     Args:
         team_abbr: Team abbreviation (e.g., "NYY", "LAD")
         team_id: Team ID (alternative to team_abbr)
-        out_dir: Directory to cache logos
+        out_dir: Directory to cache logos (unused)
         
     Returns:
-        Local file path as URI, or None if fetch fails
+        None - logos are not fetched
     """
-    # Get team ID and abbreviation
-    if team_id and not team_abbr:
-        team_abbr = _team_id_to_abbr(team_id)
-    
-    if not team_abbr and not team_id:
-        return None
-    
-    if not team_id:
-        team_abbr_upper = team_abbr.upper()
-        team_id = TEAM_ABBR_TO_ID.get(team_abbr_upper)
-        
-        if not team_id:
-            # Try to get team ID from statsapi
-            try:
-                teams = statsapi.get('teams', {'sportId': 1})['teams']
-                for team in teams:
-                    if (team.get('fileCode', '').upper() == team_abbr_upper or 
-                        team.get('abbreviation', '').upper() == team_abbr_upper):
-                        team_id = team['id']
-                        team_abbr = team.get('fileCode') or team.get('abbreviation')
-                        break
-            except Exception:
-                pass
-    
-    if not team_id:
-        return None
-    
-    team_abbr_upper = (team_abbr or str(team_id)).upper()
-    
-    # Create output directory
-    logo_dir = Path(out_dir)
-    logo_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Logo file path
-    logo_file = logo_dir / f"{team_abbr_upper}.svg"
-    
-    # If already cached, return it
-    if logo_file.exists():
-        return _to_uri(str(logo_file))
-    
-    # Try to fetch logo from MLB static assets
-    logo_urls = [
-        f"https://www.mlbstatic.com/team-logos/{team_id}.svg",
-        f"https://www.mlbstatic.com/team-logos/{team_id}_light.svg",
-    ]
-    
-    for url in logo_urls:
-        try:
-            resp = requests.get(url, headers=REQUEST_HEADERS, timeout=5)
-            if resp.status_code == 200 and 'image' in (resp.headers.get('Content-Type', '') or '').lower():
-                logo_file.write_bytes(resp.content)
-                return _to_uri(str(logo_file))
-        except requests.RequestException:
-            continue
-        except Exception:
-            continue
-    
-    return None
-
-def _fetch_player_headshot(player_name: str, out_dir: str = "build/headshots") -> Optional[str]:
-    """
-    Fetch and cache player headshot from MLB static assets.
-    
-    Args:
-        player_name: Player name (e.g., "Pete Alonso")
-        out_dir: Directory to cache headshots
-        
-    Returns:
-        Local file path as URI, or None if fetch fails
-    """
-    if not player_name:
-        return None
-    
-    # Get player ID
-    try:
-        player_id = lookup_batter_id(player_name)
-        if not player_id:
-            return None
-    except Exception:
-        return None
-    
-    # Create output directory
-    headshot_dir = Path(out_dir)
-    headshot_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Headshot file path (use player ID as filename)
-    headshot_file = headshot_dir / f"{player_id}.png"
-    
-    # If already cached, return it
-    if headshot_file.exists():
-        if _headshot_needs_refetch(headshot_file):
-            try:
-                headshot_file.unlink()
-            except Exception:
-                pass
-        else:
-            _sanitize_cached_headshot(headshot_file)
-            return _to_uri(str(headshot_file))
-    
-    # Try to fetch headshot from MLB static assets
-    # Multiple URL patterns to try
-    headshot_urls = [
-        f"https://img.mlbstatic.com/mlb-photos/image/upload/f_png,w_213,q_100/v1/people/{player_id}/headshot/67/current",
-        f"https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/f_png,w_213,q_100/v1/people/{player_id}/headshot/67/current",
-        f"https://content.mlb.com/images/headshots/current/60x60/{player_id}.png",
-        f"https://content.mlb.com/images/headshots/current/213x213/{player_id}.png",
-        f"https://securea.mlb.com/mlb/images/players/head_shot/{player_id}.jpg",
-    ]
-    
-    for url in headshot_urls:
-        try:
-            resp = requests.get(url, headers=REQUEST_HEADERS, timeout=5)
-            if resp.status_code == 200:
-                content_type = (resp.headers.get('Content-Type', '') or '').lower()
-                if 'image' in content_type:
-                    _write_headshot_image(headshot_file, resp.content)
-                    return _to_uri(str(headshot_file))
-        except requests.RequestException:
-            continue
-        except Exception:
-            continue
-    
     return None
 
 def _normalize_redeem_url(u: Optional[str]) -> str:
@@ -448,12 +229,6 @@ def _build_all_for_pitcher(p: Dict, season_start: str, game_date: str, want_stan
     try: mix = build_pitch_mix_by_count_for_pitcher(pid, pname, season_start, game_date, out_dir="build/figures", logo_path=logo_path, stand=want_stand)
     except Exception: mix = None
     labels = _pitch_labels_for_pitcher(pid, season_start, game_date, stand=want_stand)
-    # Fetch pitcher headshot
-    headshot_url = None
-    try:
-        headshot_url = _fetch_player_headshot(pname)
-    except Exception:
-        pass
     # Fetch pitcher stats using pybaseball
     pitcher_stats = {}
     try:
@@ -503,12 +278,11 @@ def _build_all_for_pitcher(p: Dict, season_start: str, game_date: str, want_stan
         "tables": {"name": pname, "RHH": (tables.get("RHH") if isinstance(tables, dict) else None), "LHH": (tables.get("LHH") if isinstance(tables, dict) else None)},
         "move": {"name": pname, "path": move},
         "mix":  {"name": pname, "path": mix},
-        "headshot": headshot_url,
         "stats": pitcher_stats,
     }
 
 def _collect_pitcher_assets_for_staff(opponent_id: int, season_start: str, game_date: str, want_stand: Optional[str], workers: int) -> Dict:
-    assets = { "oppo_heatmaps": [], "oppo_pitch_tables": [], "oppo_pitch_movement": [], "oppo_pitch_mix_by_count": [], "oppo_pitcher_headshots": [] }
+    assets = { "oppo_heatmaps": [], "oppo_pitch_tables": [], "oppo_pitch_movement": [], "oppo_pitch_mix_by_count": [] }
     staff = _opponent_active_pitchers(opponent_id)
     if not staff: return assets
     
@@ -542,16 +316,11 @@ def _collect_pitcher_assets_for_staff(opponent_id: int, season_start: str, game_
                 # Only include pitcher if every visualization is available
                 if has_heatmap and has_table and has_movement and has_mix:
                     # Only add entries with valid paths (not None or empty)
-                    assets["oppo_heatmaps"].append({ "name": pname, **res["heat"] })
+                    # Include stats in heatmaps entry so they're accessible in templates
+                    assets["oppo_heatmaps"].append({ "name": pname, **res["heat"], "stats": res.get("stats", {}) })
                     assets["oppo_pitch_tables"].append({ "name": pname, **res["tables"] })
                     assets["oppo_pitch_movement"].append({ "name": pname, **res["move"] })
                     assets["oppo_pitch_mix_by_count"].append({ "name": pname, **res["mix"] })
-                    # Always add headshot and stats when pitcher is included
-                    assets["oppo_pitcher_headshots"].append({ 
-                        "name": pname, 
-                        "headshot_url": res.get("headshot"),
-                        "stats": res.get("stats", {})
-                    })
             except Exception:
                 continue
     for key in assets:
@@ -614,10 +383,9 @@ def build_context(team_abbr: str, hitter_name: str, season_start: str, use_next_
     tok = token or _fetch_token() or ""
     red = _normalize_redeem_url(redeem_url or REDEEM_URL_DEFAULT)
     
-    # Fetch team logos and player headshot (non-blocking, graceful failure)
+    # Fetch team logos (non-blocking, graceful failure)
     team_logo_url = None
     opponent_logo_url = None
-    player_headshot_url = None
     team_name_full = None
     opponent_name_full = None
     try:
@@ -628,10 +396,6 @@ def build_context(team_abbr: str, hitter_name: str, season_start: str, use_next_
     try:
         opponent_logo_url = _fetch_team_logo(team_id=opponent_id)
         opponent_name_full = _get_team_name(team_id=opponent_id)
-    except Exception:
-        pass
-    try:
-        player_headshot_url = _fetch_player_headshot(hitter_name)
     except Exception:
         pass
     
@@ -647,7 +411,6 @@ def build_context(team_abbr: str, hitter_name: str, season_start: str, use_next_
         "season_start": season_start,
         "team_logo_url": team_logo_url,
         "opponent_logo_url": opponent_logo_url,
-        "player_headshot_url": player_headshot_url,
         "figures": {},
     }
     from build_hitter_checkin import build_hitter_checkin

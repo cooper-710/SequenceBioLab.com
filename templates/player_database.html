@@ -47,7 +47,7 @@
                         autocomplete="off"
                     >
                     <button id="searchButtonInHeader" class="search-button">Search</button>
-                    <div id="headerSearchSuggestions" class="search-suggestions" style="display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 1000;"></div>
+                    <div id="headerSearchSuggestions" class="search-suggestions" style="display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 100; background-color: var(--color-surface) !important;"></div>
                 </div>
                 <div id="playerInfo" class="player-info"></div>
                 <div id="yearSelector" class="year-selector" style="display: none;"></div>
@@ -127,15 +127,34 @@
 </div>
 
 <style>
+/* Ensure search container stays within main content area */
+.main-content .search-container {
+    position: relative;
+    z-index: 2; /* Higher than empty-state so suggestions can appear above it */
+}
+
 .search-container {
     background: var(--color-layer-card);
     border-radius: 12px;
     padding: 32px;
     margin-bottom: 32px;
     position: relative;
+    z-index: 2; /* Higher than empty-state (z-index: 1) so suggestions appear above */
     border: 1px solid var(--color-layer-border);
     box-shadow: var(--shadow-elevated);
     backdrop-filter: blur(8px);
+    width: 100%;
+    box-sizing: border-box;
+    max-width: 100%;
+    /* Don't isolate - allows search-suggestions to appear above empty-state */
+}
+
+/* On mobile, ensure search container doesn't appear over sidebar */
+@media (max-width: 1024px) {
+    .sidebar.open ~ .main-content .search-container,
+    .sidebar.open ~ * .main-content .search-container {
+        z-index: 1 !important;
+    }
 }
 
 .search-input-wrapper {
@@ -143,7 +162,7 @@
     gap: 16px;
     align-items: center;
     position: relative;
-    z-index: 1;
+    z-index: 2;
 }
 
 .search-input {
@@ -209,14 +228,33 @@
     left: 32px;
     right: 32px;
     margin-top: 4px;
-    background: var(--color-layer-card);
+    background: var(--color-surface) !important;
+    background-color: var(--color-surface) !important;
+    opacity: 1 !important;
     border: 1px solid var(--color-layer-border);
     border-radius: 0 0 10px 10px;
     max-height: 300px;
     overflow-y: auto;
-    z-index: 1000;
+    z-index: 100;
     box-shadow: var(--shadow-elevated);
     pointer-events: auto;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    isolation: isolate;
+    transform: translateZ(0);
+    will-change: transform;
+}
+
+.search-suggestions::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--color-surface);
+    z-index: -1;
+    border-radius: 0 0 10px 10px;
 }
 
 .suggestion-item {
@@ -226,10 +264,15 @@
     border-bottom: 1px solid var(--color-layer-border-subtle);
     transition: all 0.2s ease;
     font-size: 15px;
+    background-color: var(--color-surface) !important;
+    background: var(--color-surface) !important;
+    position: relative;
+    z-index: 1;
 }
 
 .suggestion-item:hover {
-    background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface));
+    background: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface)) !important;
+    background-color: color-mix(in srgb, var(--color-accent) 12%, var(--color-surface)) !important;
     color: var(--color-text-primary);
     padding-left: 24px;
 }
@@ -349,37 +392,6 @@
     flex: 1;
 }
 
-.player-headshot {
-    flex-shrink: 0;
-    width: 150px;
-    height: 150px;
-    border-radius: 12px;
-    overflow: hidden;
-    border: 3px solid rgba(255, 127, 0, 0.3);
-    box-shadow: var(--shadow-floating);
-    background: var(--color-layer-card);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.player-headshot img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-}
-
-.player-headshot .headshot-placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: rgba(255, 127, 0, 0.5);
-    font-size: 48px;
-}
-
 .player-info-item {
     display: flex;
     flex-direction: column;
@@ -402,6 +414,10 @@
     border-radius: 10px;
     border: 1px solid var(--color-layer-border);
     box-shadow: var(--shadow-floating);
+    width: 100%;
+    box-sizing: border-box;
+    max-width: 100%;
+    overflow: hidden;
 }
 
 .year-selector-label {
@@ -419,6 +435,9 @@
     gap: 10px;
     flex-wrap: wrap;
     flex: 1;
+    min-width: 0;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .year-checkbox-item {
@@ -449,6 +468,9 @@
     min-width: 70px;
     text-align: center;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    box-sizing: border-box;
+    flex-shrink: 1;
+    max-width: 100%;
 }
 
 .year-checkbox-item label.year-label:hover {
@@ -603,6 +625,21 @@
     opacity: 1;
 }
 
+/* Hide sort arrows on mobile but keep functionality */
+@media (max-width: 768px) {
+    .stats-table th.sortable::after,
+    .stats-table th.sort-asc::after,
+    .stats-table th.sort-desc::after {
+        display: none !important;
+        content: none !important;
+    }
+    
+    /* Keep padding consistent without arrow */
+    .stats-table th.sortable {
+        padding-right: 12px !important;
+    }
+}
+
 .stats-table td {
     padding: 10px 12px;
     border-bottom: 1px solid var(--color-surface-muted);
@@ -628,6 +665,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
+    z-index: 1;
 }
 
 .empty-state-content {
@@ -652,6 +691,8 @@
     justify-content: center;
     animation: pulse 2s ease-in-out infinite;
     box-shadow: 0 0 40px rgba(255, 127, 0, 0.2);
+    position: relative;
+    z-index: 1;
 }
 
 .icon-circle i {
@@ -936,6 +977,692 @@
     color: var(--color-text-subtle);
     font-style: italic;
 }
+
+/* Responsive styles for mobile and tablet */
+@media (max-width: 1024px) {
+    .page-container {
+        padding: 20px 16px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+    }
+
+    .main-content {
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+    }
+
+    .content-wrapper {
+        padding: 24px 20px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        max-width: 100% !important;
+    }
+
+    .section-hero {
+        margin-bottom: 24px !important;
+    }
+
+    .section-hero-heading h1 {
+        font-size: 1.75rem !important;
+    }
+
+    .search-container {
+        padding: 24px !important;
+        margin-bottom: 24px;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        max-width: 100% !important;
+        z-index: 2 !important;
+    }
+
+    .search-input-wrapper {
+        flex-direction: column !important;
+        gap: 12px;
+        width: 100%;
+    }
+
+    .search-input {
+        width: 100% !important;
+        box-sizing: border-box;
+    }
+
+    .search-button {
+        width: 100% !important;
+        padding: 14px 24px;
+        box-sizing: border-box;
+    }
+
+    .player-header .search-input-wrapper {
+        flex-direction: column !important;
+        gap: 12px;
+        width: 100%;
+    }
+
+    .player-header .search-input {
+        width: 100% !important;
+    }
+
+    .player-header .search-button {
+        width: 100% !important;
+    }
+
+    .player-info {
+        flex-direction: column !important;
+        gap: 16px;
+        align-items: stretch !important;
+    }
+
+    .player-info-content {
+        flex-direction: column !important;
+        gap: 16px;
+        width: 100% !important;
+    }
+
+    .player-info-item {
+        width: 100%;
+    }
+
+
+    .year-selector-wrapper {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 12px !important;
+        width: 100% !important;
+        padding: 16px !important;
+        overflow: visible !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .year-selector-label {
+        min-width: auto !important;
+        width: 100% !important;
+        flex-shrink: 0 !important;
+    }
+
+    .year-checkboxes {
+        width: 100% !important;
+        gap: 8px !important;
+        display: flex !important;
+        flex-wrap: wrap !important;
+        flex: 1 1 100% !important;
+        min-width: 0 !important;
+        overflow: visible !important;
+        box-sizing: border-box !important;
+        max-width: 100% !important;
+    }
+
+    .year-checkbox-item {
+        flex: 0 0 auto !important;
+        max-width: calc(50% - 4px) !important;
+        box-sizing: border-box !important;
+    }
+
+    .year-checkbox-item label.year-label {
+        padding: 10px 12px !important;
+        font-size: 13px !important;
+        min-width: auto !important;
+        width: 100% !important;
+        white-space: nowrap !important;
+        box-sizing: border-box !important;
+        text-align: center !important;
+    }
+
+    .year-select-all-btn {
+        width: 100% !important;
+        text-align: center;
+        box-sizing: border-box;
+        margin-left: 0 !important;
+        margin-top: 0 !important;
+    }
+
+    .stats-section {
+        padding: 20px;
+    }
+
+    .stats-section-title {
+        font-size: 20px;
+    }
+
+    .stats-table-wrapper {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+        margin: 0 -20px;
+        padding: 0 20px;
+        width: calc(100% + 40px);
+    }
+
+    .stats-table {
+        min-width: 800px !important;
+    }
+
+    .stats-table th,
+    .stats-table td {
+        padding: 10px 8px;
+        font-size: 12px;
+    }
+
+    .stats-table th {
+        font-size: 12px;
+        padding: 10px 8px;
+    }
+
+    .empty-state {
+        padding: 40px 20px;
+        min-height: 400px;
+    }
+
+    .empty-state-title {
+        font-size: 28px;
+    }
+
+    .empty-state-description {
+        font-size: 16px;
+    }
+
+    .empty-state-features {
+        grid-template-columns: 1fr !important;
+        gap: 20px;
+    }
+
+    .feature-card {
+        padding: 24px 20px;
+    }
+
+    .player-tags {
+        gap: 8px;
+    }
+
+    .player-tag {
+        padding: 8px 16px;
+        font-size: 13px;
+    }
+}
+
+@media (max-width: 768px) {
+    .page-container {
+        padding: 0 16px 32px !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+    }
+
+    .main-content {
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+    }
+
+    body {
+        overflow-x: hidden !important;
+    }
+
+    .content-wrapper {
+        padding: 20px 16px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        max-width: 100% !important;
+    }
+
+    .section-hero {
+        margin-bottom: 20px !important;
+        padding: 16px !important;
+    }
+
+    .section-hero-heading h1 {
+        font-size: 1.5rem !important;
+    }
+
+    .search-container {
+        padding: 20px !important;
+        margin-bottom: 20px;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        max-width: 100% !important;
+        z-index: 2 !important;
+    }
+
+    .search-input-wrapper {
+        flex-direction: column !important;
+        gap: 12px;
+        width: 100%;
+    }
+
+    .search-input {
+        font-size: 16px !important; /* Prevents zoom on iOS */
+        padding: 14px 16px;
+        width: 100% !important;
+        box-sizing: border-box;
+    }
+
+    .search-button {
+        width: 100% !important;
+        padding: 14px 24px;
+        box-sizing: border-box;
+    }
+
+    .search-container {
+        z-index: 2 !important;
+    }
+    
+    .search-input-wrapper {
+        z-index: 2 !important;
+    }
+    
+    .search-suggestions {
+        left: 20px !important;
+        right: 20px !important;
+        top: calc(100% - 20px) !important;
+        background: var(--color-surface) !important;
+        background-color: var(--color-surface) !important;
+        opacity: 1 !important;
+        z-index: 100 !important;
+        backdrop-filter: blur(10px) !important;
+        -webkit-backdrop-filter: blur(10px) !important;
+        isolation: isolate !important;
+        transform: translateZ(0) !important;
+    }
+    
+    .suggestion-item {
+        background-color: var(--color-surface) !important;
+        background: var(--color-surface) !important;
+    }
+
+    .player-data-container {
+        padding: 16px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        max-width: 100% !important;
+    }
+
+    .player-header {
+        margin-bottom: 20px;
+        padding-bottom: 12px;
+    }
+
+    .player-header .search-input-wrapper {
+        flex-direction: column !important;
+        width: 100%;
+    }
+
+    .player-header .search-input {
+        width: 100% !important;
+    }
+
+    .player-header .search-button {
+        width: 100% !important;
+    }
+
+    .player-info {
+        flex-direction: column !important;
+        gap: 16px;
+        align-items: stretch !important;
+    }
+
+    .player-info-content {
+        flex-direction: column !important;
+        gap: 16px;
+        width: 100% !important;
+    }
+
+    .player-info-item {
+        width: 100% !important;
+    }
+
+    .player-info-label {
+        font-size: 11px;
+    }
+
+    .player-info-value {
+        font-size: 14px;
+    }
+
+
+    .year-selector-wrapper {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 10px !important;
+        padding: 12px 16px !important;
+        width: 100% !important;
+        overflow: visible !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .year-selector-label {
+        min-width: auto !important;
+        width: 100% !important;
+        flex-shrink: 0 !important;
+    }
+
+    .year-checkboxes {
+        width: 100% !important;
+        gap: 6px !important;
+        display: flex !important;
+        flex-wrap: wrap !important;
+        flex: 1 1 100% !important;
+        min-width: 0 !important;
+        overflow: visible !important;
+        box-sizing: border-box !important;
+        max-width: 100% !important;
+    }
+
+    .year-checkbox-item {
+        flex: 0 0 auto !important;
+        max-width: calc(50% - 3px) !important;
+        box-sizing: border-box !important;
+    }
+
+    .year-checkbox-item label.year-label {
+        padding: 8px 10px !important;
+        font-size: 12px !important;
+        min-width: auto !important;
+        width: 100% !important;
+        white-space: nowrap !important;
+        box-sizing: border-box !important;
+        text-align: center !important;
+    }
+
+    .year-select-all-btn {
+        width: 100% !important;
+        text-align: center;
+        box-sizing: border-box;
+        margin-left: 0 !important;
+    }
+
+    .stats-section {
+        padding: 16px !important;
+    }
+
+    .stats-section-title {
+        font-size: 18px;
+        margin-bottom: 16px;
+    }
+
+    .stats-category-title {
+        font-size: 16px;
+    }
+
+    .stats-table-wrapper {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+        margin: 0 -16px !important;
+        padding: 0 16px !important;
+        width: calc(100% + 32px);
+    }
+
+    .stats-table {
+        min-width: 700px !important;
+    }
+
+    .stats-table th,
+    .stats-table td {
+        padding: 8px 6px;
+        font-size: 11px;
+    }
+
+    .stats-table th {
+        font-size: 11px;
+        padding: 8px 6px;
+    }
+
+    .empty-state {
+        padding: 32px 16px;
+        min-height: 300px;
+    }
+
+    .empty-state-title {
+        font-size: 24px;
+    }
+
+    .empty-state-description {
+        font-size: 14px;
+        margin-bottom: 32px;
+    }
+
+    .icon-circle {
+        width: 100px;
+        height: 100px;
+    }
+
+    .icon-circle i {
+        font-size: 48px;
+    }
+
+    .empty-state-features {
+        grid-template-columns: 1fr !important;
+    }
+
+    .feature-card {
+        padding: 20px 16px;
+    }
+
+    .feature-icon {
+        width: 50px;
+        height: 50px;
+        margin-bottom: 16px;
+    }
+
+    .feature-icon i {
+        font-size: 24px;
+    }
+
+    .feature-card h3 {
+        font-size: 18px;
+    }
+
+    .feature-card p {
+        font-size: 13px;
+    }
+
+    .popular-players {
+        margin-top: 32px;
+        padding-top: 24px;
+    }
+
+    .player-tags {
+        gap: 6px;
+        justify-content: flex-start;
+    }
+
+    .player-tag {
+        padding: 8px 14px;
+        font-size: 12px;
+    }
+}
+
+@media (max-width: 480px) {
+    .page-container {
+        padding: 0 12px 24px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+    }
+
+    .main-content {
+        width: 100% !important;
+        max-width: 100% !important;
+        overflow-x: hidden !important;
+    }
+
+    body {
+        overflow-x: hidden !important;
+    }
+
+    html {
+        overflow-x: hidden !important;
+    }
+
+    .content-wrapper {
+        padding: 16px 12px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        max-width: 100% !important;
+    }
+
+    .section-hero {
+        padding: 12px !important;
+        margin-bottom: 16px !important;
+    }
+
+    .section-hero-heading h1 {
+        font-size: 1.25rem !important;
+    }
+
+    .search-container {
+        padding: 16px !important;
+        margin-bottom: 16px;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        max-width: 100% !important;
+        z-index: 2 !important;
+    }
+
+    .search-input {
+        padding: 12px 14px !important;
+        font-size: 16px !important;
+        width: 100% !important;
+    }
+
+    .search-button {
+        padding: 12px 20px !important;
+        font-size: 14px !important;
+        width: 100% !important;
+    }
+
+    .player-data-container {
+        padding: 12px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        max-width: 100% !important;
+    }
+
+    .player-header {
+        padding-bottom: 8px;
+        margin-bottom: 16px;
+    }
+
+    .player-info {
+        gap: 12px;
+    }
+
+    .player-info-content {
+        gap: 12px;
+    }
+
+
+    .year-selector-wrapper {
+        padding: 10px 12px !important;
+        gap: 8px !important;
+        width: 100% !important;
+        overflow: visible !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .year-selector-label {
+        width: 100% !important;
+        flex-shrink: 0 !important;
+    }
+
+    .year-checkboxes {
+        width: 100% !important;
+        gap: 6px !important;
+        display: flex !important;
+        flex-wrap: wrap !important;
+        overflow: visible !important;
+        box-sizing: border-box !important;
+        max-width: 100% !important;
+    }
+
+    .year-checkbox-item {
+        flex: 0 0 auto !important;
+        max-width: calc(50% - 3px) !important;
+        box-sizing: border-box !important;
+    }
+
+    .year-checkbox-item label.year-label {
+        padding: 8px 10px !important;
+        font-size: 11px !important;
+        min-width: auto !important;
+        width: 100% !important;
+        white-space: nowrap !important;
+        box-sizing: border-box !important;
+        text-align: center !important;
+    }
+
+    .year-select-all-btn {
+        padding: 8px 16px !important;
+        font-size: 12px !important;
+    }
+
+    .stats-section {
+        padding: 12px !important;
+    }
+
+    .stats-section-title {
+        font-size: 16px;
+        margin-bottom: 12px;
+    }
+
+    .stats-table-wrapper {
+        margin: 0 -12px !important;
+        padding: 0 12px !important;
+        width: calc(100% + 24px);
+    }
+
+    .stats-table {
+        min-width: 600px !important;
+    }
+
+    .stats-table th,
+    .stats-table td {
+        padding: 6px 4px;
+        font-size: 10px;
+    }
+
+    .stats-table th {
+        font-size: 10px;
+        padding: 6px 4px;
+    }
+
+    .empty-state {
+        padding: 24px 12px;
+        min-height: 250px;
+    }
+
+    .empty-state-title {
+        font-size: 20px;
+    }
+
+    .empty-state-description {
+        font-size: 13px;
+        margin-bottom: 24px;
+    }
+
+    .icon-circle {
+        width: 80px;
+        height: 80px;
+    }
+
+    .icon-circle i {
+        font-size: 40px;
+    }
+
+    .feature-card {
+        padding: 16px 12px;
+    }
+
+    .player-tag {
+        padding: 6px 12px;
+        font-size: 11px;
+    }
+}
 </style>
 
 <script>
@@ -1145,16 +1872,19 @@ async function loadPlayerData(playerName, displayName = null) {
             mainSearchContainer.style.display = 'none';
         }
         
-        // Store positions data globally for use in fangraphs table and headshot
+        // Store positions data globally for use in fangraphs table
         window.positionsData = data.positions || [];
-        // Store fangraphs data globally for use in headshot lookup
-        window.fangraphsData = data.fangraphs || [];
+        // Store fangraphs data globally for use in team display
+        // Sort by season descending to ensure most recent is first
+        const fangraphsData = data.fangraphs || [];
+        window.fangraphsData = fangraphsData.sort((a, b) => (b.Season || 0) - (a.Season || 0));
+        
+        // Display Dashboard and Fangraphs data first (so fangraphsData is available)
+        displayDashboardAndFangraphsData(window.fangraphsData);
         
         // Display Positions data (extracts key info to header, hides table)
+        // This now uses the most recent team from fangraphs data
         displayPositionsData(window.positionsData);
-        
-        // Display Dashboard and Fangraphs data
-        displayDashboardAndFangraphsData(data.fangraphs || []);
         
         playerDataContainer.style.display = 'block';
         
@@ -2054,134 +2784,6 @@ window.filterFangraphsBySeason = function() {
     filterByYear();
 };
 
-// Load player headshot
-async function loadPlayerHeadshot(playerName) {
-    const headshotContainer = document.getElementById('playerHeadshot');
-    if (!headshotContainer) return;
-    
-    // Try to get player ID from multiple sources
-    let playerId = null;
-    try {
-        // First, try positions data
-        const positionsData = window.positionsData || [];
-        if (positionsData.length > 0) {
-            const firstRecord = positionsData[0];
-            // Check for common player ID fields in positions data
-            playerId = firstRecord['player_id'] || firstRecord['Player ID'] || firstRecord['PLAYER_ID'] || 
-                      firstRecord['mlbam_id'] || firstRecord['MLBAM_ID'] || firstRecord['mlb_id'] || 
-                      firstRecord['MLB_ID'] || null;
-        }
-        
-        // If not found in positions, try fangraphs data (works for both hitters and pitchers)
-        if (!playerId) {
-            const fangraphsData = window.fangraphsData || [];
-            if (fangraphsData.length > 0) {
-                const firstRecord = fangraphsData[0];
-                // Check for player ID fields in fangraphs data
-                // Fangraphs might have IDfg, playerid, or other ID fields
-                playerId = firstRecord['player_id'] || firstRecord['Player ID'] || firstRecord['PLAYER_ID'] ||
-                          firstRecord['IDfg'] || firstRecord['idfg'] || firstRecord['IDFG'] ||
-                          firstRecord['playerid'] || firstRecord['PlayerID'] || firstRecord['PLAYERID'] ||
-                          firstRecord['mlbam_id'] || firstRecord['MLBAM_ID'] || firstRecord['mlb_id'] || 
-                          firstRecord['MLB_ID'] || null;
-            }
-        }
-        
-        // If still not found, try to look up via API
-        if (!playerId) {
-            try {
-                const response = await fetch(`/api/csv/player/${encodeURIComponent(playerName)}`);
-                const data = await response.json();
-                if (data && !data.error) {
-                    // Check positions data from API response (this should have player_id from CSV)
-                    if (data.positions && data.positions.length > 0) {
-                        // Try all records, not just the first one
-                        for (const record of data.positions) {
-                            playerId = record['player_id'] || record['Player ID'] || record['PLAYER_ID'] ||
-                                      record['mlbam_id'] || record['MLBAM_ID'] || record['mlb_id'] || 
-                                      record['MLB_ID'] || null;
-                            if (playerId) break;
-                        }
-                    }
-                    // Check fangraphs data from API response
-                    if (!playerId && data.fangraphs && data.fangraphs.length > 0) {
-                        const firstRecord = data.fangraphs[0];
-                        playerId = firstRecord['player_id'] || firstRecord['Player ID'] || firstRecord['PLAYER_ID'] ||
-                                  firstRecord['IDfg'] || firstRecord['idfg'] || firstRecord['IDFG'] ||
-                                  firstRecord['playerid'] || firstRecord['PlayerID'] || firstRecord['PLAYERID'] ||
-                                  firstRecord['mlbam_id'] || firstRecord['MLBAM_ID'] || firstRecord['mlb_id'] || 
-                                  firstRecord['MLB_ID'] || null;
-                    }
-                }
-            } catch (apiError) {
-                console.log('Could not fetch player ID from API:', apiError);
-            }
-        }
-        
-        // Last resort: try to look up player ID by name using a lookup API
-        // Note: This would require a backend endpoint - for now we'll rely on the data we have
-    } catch (e) {
-        console.log('Could not get player ID from data:', e);
-    }
-    
-    console.log('Player ID found for', playerName, ':', playerId);
-    
-    // List of headshot URLs to try (in order of preference)
-    const headshotUrls = [];
-    
-    if (playerId) {
-        // If we have a player ID, use MLB.com URLs
-        headshotUrls.push(
-            `https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_213,q_auto:best/v1/people/${playerId}/headshot/67/current`,
-            `https://content.mlb.com/images/headshots/current/213x213/${playerId}.png`,
-            `https://content.mlb.com/images/headshots/current/60x60/${playerId}.png`,
-            `https://securea.mlb.com/mlb/images/players/head_shot/${playerId}.jpg`
-        );
-    }
-    
-    // Fallback: try name-based URLs (less reliable)
-    const nameSlug = playerName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-    headshotUrls.push(
-        `https://img.mlbstatic.com/mlb-photos/image/upload/w_213,q_auto:best/v1/people/${nameSlug}/headshot/67/current`
-    );
-    
-    // Try each URL until one works
-    let imgIndex = 0;
-    function tryNextImage() {
-        if (imgIndex >= headshotUrls.length) {
-            // All URLs failed, keep placeholder
-            return;
-        }
-        
-        const img = document.createElement('img');
-        img.src = headshotUrls[imgIndex];
-        img.alt = `${playerName} headshot`;
-        img.style.display = 'none';
-        
-        img.onload = function() {
-            const placeholder = headshotContainer.querySelector('.headshot-placeholder');
-            if (placeholder) {
-                placeholder.remove();
-            }
-            // Remove any existing failed images
-            const existingImgs = headshotContainer.querySelectorAll('img');
-            existingImgs.forEach(existingImg => existingImg.remove());
-            headshotContainer.appendChild(img);
-            img.style.display = 'block';
-        };
-        
-        img.onerror = function() {
-            imgIndex++;
-            tryNextImage();
-        };
-        
-        // Add image to container (hidden) to trigger load
-        headshotContainer.appendChild(img);
-    }
-    
-    tryNextImage();
-}
-
 // Display Positions data
 function displayPositionsData(data) {
     const container = document.getElementById('positionsTable');
@@ -2201,25 +2803,76 @@ function displayPositionsData(data) {
         return;
     }
     
-    // Extract Team Name, Position Name, and Player Name from first record
-    const firstRecord = data[0];
-    
     // Helper function to find value by various key name possibilities
-    const findValue = (possibleKeys) => {
+    const findValue = (record, possibleKeys) => {
+        if (!record) return null;
         for (const key of possibleKeys) {
-            if (firstRecord[key] !== null && firstRecord[key] !== undefined && firstRecord[key] !== '') {
-                return firstRecord[key];
+            if (record[key] !== null && record[key] !== undefined && record[key] !== '') {
+                return record[key];
             }
         }
         return null;
     };
     
-    // Extract Player Name
-    const playerName = findValue(['Player Name', 'player_name', 'name', 'Name', 'PLAYER_NAME']);
-    const teamName = findValue(['Team Name', 'team_name', 'Team', 'TEAM_NAME', 'team']);
-    const positionName = findValue(['Position Name', 'position_name', 'Position', 'POSITION_NAME', 'position', 'Pos']);
+    // Get the most recent team from fangraphs data if available
+    // Fangraphs data is sorted by season descending, so first row is most recent
+    const fangraphsData = window.fangraphsData || [];
+    let teamName = null;
+    let positionName = null;
     
-    // Build player info HTML with headshot
+    if (fangraphsData.length > 0) {
+        // Sort by season descending to ensure most recent is first
+        const sortedFangraphs = [...fangraphsData].sort((a, b) => (b.Season || 0) - (a.Season || 0));
+        const mostRecentRow = sortedFangraphs[0];
+        
+        // Try to get team from most recent fangraphs row
+        teamName = findValue(mostRecentRow, ['fg_Team', 'Team', 'team', 'TEAM']);
+    }
+    
+    // Fallback to positions data if team not found in fangraphs
+    if (!teamName) {
+        // Try to find most recent position record if it has season info
+        let positionsWithSeason = data.filter(record => {
+            const season = findValue(record, ['Season', 'season', 'YEAR', 'year']);
+            return season !== null;
+        });
+        
+        if (positionsWithSeason.length > 0) {
+            // Sort by season descending
+            positionsWithSeason.sort((a, b) => {
+                const seasonA = findValue(a, ['Season', 'season', 'YEAR', 'year']) || 0;
+                const seasonB = findValue(b, ['Season', 'season', 'YEAR', 'year']) || 0;
+                return seasonB - seasonA;
+            });
+            const mostRecentPosition = positionsWithSeason[0];
+            teamName = findValue(mostRecentPosition, ['Team Name', 'team_name', 'Team', 'TEAM_NAME', 'team']);
+            positionName = findValue(mostRecentPosition, ['Position Name', 'position_name', 'Position', 'POSITION_NAME', 'position', 'Pos']);
+        } else {
+            // No season info, use first record as fallback
+            const firstRecord = data[0];
+            teamName = findValue(firstRecord, ['Team Name', 'team_name', 'Team', 'TEAM_NAME', 'team']);
+            positionName = findValue(firstRecord, ['Position Name', 'position_name', 'Position', 'POSITION_NAME', 'position', 'Pos']);
+        }
+    }
+    
+    // Get position from most recent fangraphs if not already set
+    if (!positionName && fangraphsData.length > 0) {
+        const sortedFangraphs = [...fangraphsData].sort((a, b) => (b.Season || 0) - (a.Season || 0));
+        const mostRecentRow = sortedFangraphs[0];
+        positionName = findValue(mostRecentRow, ['Position', 'position', 'Pos', 'pos']);
+    }
+    
+    // Fallback to first position record for position if still not found
+    if (!positionName && data.length > 0) {
+        const firstRecord = data[0];
+        positionName = findValue(firstRecord, ['Position Name', 'position_name', 'Position', 'POSITION_NAME', 'position', 'Pos']);
+    }
+    
+    // Extract Player Name (should be consistent across all records)
+    const firstRecord = data[0];
+    const playerName = findValue(firstRecord, ['Player Name', 'player_name', 'name', 'Name', 'PLAYER_NAME']);
+    
+    // Build player info HTML
     let infoHtml = '<div class="player-info-content">';
     
     if (playerName) {
@@ -2245,18 +2898,8 @@ function displayPositionsData(data) {
     
     infoHtml += '</div>';
     
-    // Add headshot
-    infoHtml += '<div class="player-headshot" id="playerHeadshot">';
-    infoHtml += '<div class="headshot-placeholder"><i class="fas fa-user"></i></div>';
-    infoHtml += '</div>';
-    
     if (playerInfoContainer) {
         playerInfoContainer.innerHTML = infoHtml;
-        
-        // Load headshot image
-        if (playerName) {
-            loadPlayerHeadshot(playerName);
-        }
     }
 }
 

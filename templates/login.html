@@ -39,7 +39,7 @@
         </form>
         <div class="auth-switch">
             <span>Need an account?</span>
-            <a href="{{ url_for('register', next=request.args.get('next') or request.path) }}">Create one</a>
+            <a href="{{ url_for('auth.register', next=request.args.get('next') or request.path) }}">Create one</a>
         </div>
     </div>
 </div>

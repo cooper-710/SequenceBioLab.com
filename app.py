@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Web UI for Scouting Report Generator
+Web UI for Scouting Report Generator - Refactored
 """
 
 import os
@@ -25,7 +25,52 @@ from werkzeug.utils import secure_filename
 import statsapi
 from typing import Optional, List, Dict, Any, Set, Tuple
 
+# Load environment variables from .env file if it exists
+_env_file = Path(__file__).parent / ".env"
+if _env_file.exists():
+    with open(_env_file, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and 'export ' in line:
+                # Parse export VAR="value" or export VAR=value
+                line = line.replace('export ', '').strip()
+                if '=' in line:
+                    key, value = line.split('=', 1)
+                    key = key.strip()
+                    value = value.strip().strip('"').strip("'")
+                    if key and value and key not in os.environ:
+                        os.environ[key] = value
+
 import settings_manager
+
+# Import refactored modules
+from app.config import Config
+from app.constants import (
+    TEAM_ABBR_TO_ID, DIVISION_OPTIONS, LEAGUE_OPTIONS, LEADER_CATEGORY_ABBR,
+    REPORT_OPP_PATTERN, REPORT_LEAD_DAYS, AUTH_EXEMPT_ENDPOINTS,
+    JOURNAL_VISIBILITY_OPTIONS, MAX_JOURNAL_TIMELINE_ENTRIES, get_team_color
+)
+from app.utils.helpers import parse_bool, clean_str, sanitize_filename_component, get_safe_redirect
+from app.utils.validators import validate_auth_form_fields, detect_image_type
+from app.utils.formatters import (
+    normalize_journal_visibility, prepare_journal_timeline, augment_journal_entry,
+    format_journal_date, coerce_utc_datetime, extract_game_datetime
+)
+from app.middleware.csrf import generate_csrf_token, validate_csrf
+from app.middleware.auth import login_required, admin_required
+from app.services.cache_service import cache_service, CACHE_UPCOMING_GAMES
+from app.services.schedule_service import (
+    team_abbr_from_id, build_mock_upcoming_games, collect_upcoming_games,
+    collect_series_for_team
+)
+from app.services.player_service import lookup_team_for_name, determine_user_team
+from app.services.report_service import (
+    generate_single_report, generate_report_background, generate_single_pitcher_report,
+    generate_pitcher_report_background, parse_player_entry, generate_batch_reports,
+    parse_pitcher_entry, generate_batch_pitcher_reports, get_job_status,
+    job_status
+)
+from app.services.report_service import maybe_trigger_report
 
 # Import database and client modules
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -41,10 +86,30 @@ except ImportError as e:
     print(f"Warning: Could not import next_games: {e}")
     next_games = None
 
-app = Flask(__name__)
+# Create Flask app - use factory pattern if available, otherwise create directly
+try:
+    from app import create_app
+    app = create_app()
+except (ImportError, AttributeError) as e:
+    # Fallback to direct Flask creation if factory has issues
+    print(f"Warning: Could not use app factory, creating Flask app directly: {e}")
+    app = Flask(__name__)
+    app.config['SECRET_KEY'] = Config.SECRET_KEY
+    app.config['DEBUG'] = Config.DEBUG
+    app.config['USE_MOCK_SCHEDULE'] = Config.USE_MOCK_SCHEDULE
 
-# Get the project root directory
-ROOT_DIR = Path(__file__).parent.resolve()
+# Use config values
+ROOT_DIR = Config.ROOT_DIR
+OUT_DIR = Config.PDF_OUTPUT_DIR
+PROFILE_UPLOAD_DIR = Config.UPLOAD_DIR
+ALLOWED_PROFILE_IMAGE_EXT = Config.ALLOWED_PROFILE_EXTENSIONS
+ALLOWED_PROFILE_IMAGE_TYPES = Config.ALLOWED_PROFILE_TYPES
+MAX_PROFILE_IMAGE_BYTES = Config.MAX_UPLOAD_SIZE
+WORKOUT_CATEGORY = Config.WORKOUT_CATEGORY
+WORKOUT_ALLOWED_EXTENSIONS = Config.WORKOUT_ALLOWED_EXTENSIONS
+SERIES_AUTO_DELETE_GRACE_SECONDS = Config.SERIES_AUTO_DELETE_GRACE_SECONDS
+PLAYER_DOCS_DIR = Config.PLAYER_DOCS_DIR
+WORKOUT_DOCS_DIR = Config.WORKOUT_DOCS_DIR
 
 # Import CSV data loader
 try:
@@ -59,73 +124,8 @@ except Exception as e:
     import traceback
     traceback.print_exc()
     csv_loader = None
-OUT_DIR = ROOT_DIR / "build" / "pdf"
-OUT_DIR.mkdir(parents=True, exist_ok=True)
-PROFILE_UPLOAD_DIR = ROOT_DIR / "static" / "uploads" / "profile_photos"
-PROFILE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-ALLOWED_PROFILE_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
-ALLOWED_PROFILE_IMAGE_TYPES = {"png", "jpeg", "gif", "webp"}
-MAX_PROFILE_IMAGE_BYTES = 5 * 1024 * 1024
-def detect_image_type(data: bytes) -> Optional[str]:
-    """Detect image type for a small subset of formats using magic headers."""
-    if not data or len(data) < 4:
-        return None
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "png"
-    if data[:3] == b"\xff\xd8\xff":
-        return "jpeg"
-    if data.startswith(b"GIF87a") or data.startswith(b"GIF89a"):
-        return "gif"
-    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return "webp"
-    return None
 
-# Store job statuses (in production, use Redis or a database)
-job_status = {}
-
-AUTH_EXEMPT_ENDPOINTS = {
-    "login",
-    "register",
-    "static"
-}
-
-TEAM_ABBR_TO_ID = {
-    "ARI": 109, "ATL": 144, "BAL": 110, "BOS": 111, "CHC": 112, "CWS": 145, "CIN": 113,
-    "CLE": 114, "COL": 115, "DET": 116, "HOU": 117, "KC": 118, "LAA": 108, "LAD": 119,
-    "MIA": 146, "MIL": 158, "MIN": 142, "NYM": 121, "NYY": 147, "OAK": 133, "PHI": 143,
-    "PIT": 134, "SD": 135, "SF": 137, "SEA": 136, "STL": 138, "TB": 139, "TEX": 140,
-    "TOR": 141, "WSH": 120,
-    "ANA": 108, "CHW": 145, "KCR": 118, "SDP": 135, "SFG": 137, "TBR": 139,
-    "WSN": 120, "WAS": 120
-}
-
-DIVISION_OPTIONS = [
-    {"id": 201, "name": "American League East", "league_id": 103},
-    {"id": 202, "name": "American League Central", "league_id": 103},
-    {"id": 200, "name": "American League West", "league_id": 103},
-    {"id": 204, "name": "National League East", "league_id": 104},
-    {"id": 205, "name": "National League Central", "league_id": 104},
-    {"id": 203, "name": "National League West", "league_id": 104},
-]
-
-LEAGUE_OPTIONS = [
-    {"id": 103, "name": "American League"},
-    {"id": 104, "name": "National League"},
-]
-
-LEADER_CATEGORY_ABBR = {
-    "homeRuns": "HR",
-    "runsBattedIn": "RBI",
-    "battingAverage": "AVG",
-    "era": "ERA",
-    "strikeouts": "K",
-    "whip": "WHIP",
-}
-
-
-_REPORT_OPP_PATTERN = re.compile(r"_vs_([A-Za-z0-9]+)", re.IGNORECASE)
-
-REPORT_LEAD_DAYS = 3
+# Constants are now imported from app.constants
 _PENDING_REPORT_KEYS: Set[str] = set()
 _PENDING_REPORT_LOCK = threading.Lock()
 
@@ -160,930 +160,106 @@ def _purge_concluded_series_documents(reference_ts: Optional[float] = None) -> N
         print(f"Warning purging expired player documents: {exc}")
 
 
-def _cache_get(cache: Dict[Any, Any], key: Any):
-    entry = cache.get(key)
-    if not entry:
-        return None
-    value, expires_at = entry
-    if expires_at and expires_at > datetime.utcnow():
-        return value
-    cache.pop(key, None)
-    return None
-
-
-def _cache_set(cache: Dict[Any, Any], key: Any, value: Any, ttl_seconds: int):
-    cache[key] = (value, datetime.utcnow() + timedelta(seconds=ttl_seconds))
-
-
+# Cache functions are now in app.services.cache_service
+# Legacy cache dicts for backward compatibility
 _UPCOMING_GAMES_CACHE: Dict[Any, Any] = {}
 _LEAGUE_LEADERS_CACHE: Dict[Any, Any] = {}
 _STANDINGS_CACHE: Dict[Any, Any] = {}
 _TEAM_METADATA_CACHE: Dict[Any, Any] = {}
+_PLAYER_NEWS_CACHE: Dict[Any, Any] = {}
+
+def _cache_get(cache: Dict[Any, Any], key: Any):
+    """Legacy cache get - use cache_service in new code"""
+    return cache_service.get(CACHE_UPCOMING_GAMES, key) if cache == _UPCOMING_GAMES_CACHE else cache.get(key)
+
+def _cache_set(cache: Dict[Any, Any], key: Any, value: Any, ttl_seconds: int):
+    """Legacy cache set - use cache_service in new code"""
+    if cache == _UPCOMING_GAMES_CACHE:
+        cache_service.set(CACHE_UPCOMING_GAMES, key, value, ttl_seconds)
+    else:
+        cache[key] = (value, datetime.utcnow() + timedelta(seconds=ttl_seconds))
 
 
 JOURNAL_VISIBILITY_OPTIONS = ("private", "public")
 MAX_JOURNAL_TIMELINE_ENTRIES = 365
 
 
-def _normalize_journal_visibility(value: Optional[str], default: str = "private") -> str:
-    if value is None:
-        return default
-    normalized = value.strip().lower()
-    if normalized not in JOURNAL_VISIBILITY_OPTIONS:
-        return default
-    return normalized
+# Journal functions are now in app.utils.formatters
+# Create aliases for backward compatibility
+_normalize_journal_visibility = normalize_journal_visibility
+_prepare_journal_timeline = prepare_journal_timeline
+_augment_journal_entry = augment_journal_entry
+_format_journal_date = format_journal_date
 
 
-def _prepare_journal_timeline(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Group journal entries by date and prepare display metadata."""
-    grouped: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
-    for entry in entries:
-        entry_date = (entry.get("entry_date") or "").strip()
-        if not entry_date:
-            continue
-        normalized_visibility = _normalize_journal_visibility(entry.get("visibility"), "private")
-        body_text = entry.get("body") or ""
-        preview = body_text.strip()
-        max_preview = 160
-        if len(preview) > max_preview:
-            preview = preview[:max_preview].rstrip() + "…"
-        try:
-            display_date = datetime.strptime(entry_date, "%Y-%m-%d").strftime("%b %d, %Y")
-        except ValueError:
-            display_date = entry_date
-        updated_at_ts = entry.get("updated_at")
-        updated_at_human = None
-        if updated_at_ts:
-            try:
-                updated_at_human = datetime.fromtimestamp(updated_at_ts).strftime("%b %d, %Y %I:%M %p")
-            except (ValueError, OSError):
-                updated_at_human = None
+# Schedule functions are now in app.services.schedule_service
+# Create aliases for backward compatibility
+_team_abbr_from_id = team_abbr_from_id
+_build_mock_upcoming_games = build_mock_upcoming_games
 
-        grouped[entry_date].append({
-            **entry,
-            "visibility": normalized_visibility,
-            "display_date": display_date,
-            "preview": preview,
-            "updated_at_human": updated_at_human,
-        })
-
-    timeline: List[Dict[str, Any]] = []
-    for date_key in sorted(grouped.keys(), reverse=True):
-        timeline.append({
-            "date": date_key,
-            "display_date": grouped[date_key][0].get("display_date"),
-            "entries": sorted(grouped[date_key], key=lambda item: item["visibility"]),
-        })
-    return timeline
-
-
-def _augment_journal_entry(entry: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """Add display metadata to a single journal entry."""
-    if not entry:
-        return None
-    enriched = dict(entry)
-    entry_date = (enriched.get("entry_date") or "").strip()
-    try:
-        enriched["display_date"] = datetime.strptime(entry_date, "%Y-%m-%d").strftime("%b %d, %Y")
-    except ValueError:
-        enriched["display_date"] = entry_date
-    updated_at_ts = enriched.get("updated_at")
-    if updated_at_ts:
-        try:
-            enriched["updated_at_human"] = datetime.fromtimestamp(updated_at_ts).strftime("%b %d, %Y %I:%M %p")
-        except (ValueError, OSError):
-            enriched["updated_at_human"] = None
-    else:
-        enriched["updated_at_human"] = None
-    enriched["visibility"] = _normalize_journal_visibility(enriched.get("visibility"), default="private")
-    return enriched
-
-
-def _format_journal_date(date_str: Optional[str]) -> Optional[str]:
-    if not date_str:
-        return None
-    try:
-        return datetime.strptime(date_str, "%Y-%m-%d").strftime("%b %d, %Y")
-    except ValueError:
-        return date_str
-
-
-def _mock_schedule_enabled_default() -> bool:
-    env_value = os.environ.get("USE_MOCK_SCHEDULE")
-    if env_value is None:
-        return True
-    return env_value.strip().lower() in {"1", "true", "yes", "on"}
-
-
-app.config["USE_MOCK_SCHEDULE"] = _mock_schedule_enabled_default()
-
-if app.config["USE_MOCK_SCHEDULE"]:
+if Config.USE_MOCK_SCHEDULE:
     print("Mock schedule enabled; set USE_MOCK_SCHEDULE=0 to restore live data.")
+else:
+    print("Using live MLB schedule data from MLB StatsAPI.")
 
 
-@lru_cache(maxsize=1)
-def _team_directory() -> Dict[int, Dict[str, str]]:
-    """Cache team metadata keyed by team id for quick lookups."""
-    try:
-        teams = statsapi.get("teams", {"sportId": 1}).get("teams", [])
-    except Exception:
-        return {}
-    directory: Dict[int, Dict[str, str]] = {}
-    for entry in teams:
-        team_id = entry.get("id")
-        if not team_id:
-            continue
-        abbr = entry.get("abbreviation") or entry.get("fileCode") or entry.get("teamCode")
-        directory[int(team_id)] = {
-            "abbr": (abbr or "").upper(),
-            "name": entry.get("teamName"),
-        }
-    return directory
+# Template filters and globals
+@app.template_filter('team_abbr_from_id')
+def template_team_abbr_from_id(team_id):
+    """Template filter to get team abbreviation from ID."""
+    return team_abbr_from_id(team_id)
 
+@app.template_global()
+def get_team_color_global(team_id=None, team_abbr=None):
+    """Template global function to get team color."""
+    return get_team_color(team_id=team_id, team_abbr=team_abbr)
 
-def _build_mock_upcoming_games(team_abbr: Optional[str], limit: int = 5) -> List[Dict[str, Any]]:
-    """Generate a deterministic mock schedule for local testing."""
-    now = datetime.now().astimezone()
-    base_first_pitch = now.replace(hour=19, minute=10, second=0, microsecond=0)
 
-    blueprint = [
-        {
-            "days_offset": -6,
-            "status": "Final",
-            "opponent": "Miami Marlins",
-            "opponent_abbr": "MIA",
-            "opponent_id": 146,
-            "home": False,
-            "venue": "loanDepot park",
-            "series": "3-game series",
-            "game_pk": 499900,
-            "probable_pitchers": ["Jesús Luzardo"],
-        },
-        {
-            "days_offset": -5,
-            "status": "Final",
-            "opponent": "Miami Marlins",
-            "opponent_abbr": "MIA",
-            "opponent_id": 146,
-            "home": False,
-            "venue": "loanDepot park",
-            "series": "3-game series",
-            "game_pk": 499901,
-            "probable_pitchers": ["Sandy Alcantara"],
-        },
-        {
-            "days_offset": 0,
-            "status": "In Progress",
-            "opponent": "Washington Nationals",
-            "opponent_abbr": "WSH",
-            "opponent_id": 120,
-            "home": True,
-            "venue": "Citi Field",
-            "series": "Division matchup",
-            "game_pk": 500000,
-            "probable_pitchers": ["Josiah Gray"],
-        },
-        {
-            "days_offset": 1,
-            "status": "Pre-Game",
-            "opponent": "Washington Nationals",
-            "opponent_abbr": "WSH",
-            "opponent_id": 120,
-            "home": True,
-            "venue": "Citi Field",
-            "series": "Division matchup",
-            "game_pk": 500001,
-            "probable_pitchers": ["MacKenzie Gore"],
-        },
-        {
-            "days_offset": 2,
-            "status": "Scheduled",
-            "opponent": "Philadelphia Phillies",
-            "opponent_abbr": "PHI",
-            "opponent_id": 143,
-            "home": True,
-            "venue": "Citi Field",
-            "series": "3-game series",
-            "game_pk": 500100,
-            "probable_pitchers": ["Zack Wheeler"],
-        },
-        {
-            "days_offset": 3,
-            "status": "Scheduled",
-            "opponent": "Philadelphia Phillies",
-            "opponent_abbr": "PHI",
-            "opponent_id": 143,
-            "home": True,
-            "venue": "Citi Field",
-            "series": "3-game series",
-            "game_pk": 500101,
-            "probable_pitchers": ["Aaron Nola"],
-        },
-        {
-            "days_offset": 5,
-            "status": "Scheduled",
-            "opponent": "Atlanta Braves",
-            "opponent_abbr": "ATL",
-            "opponent_id": 144,
-            "home": False,
-            "venue": "Truist Park",
-            "series": "Division matchup",
-            "game_pk": 500200,
-            "probable_pitchers": ["Max Fried"],
-        },
-        {
-            "days_offset": 6,
-            "status": "Scheduled",
-            "opponent": "Atlanta Braves",
-            "opponent_abbr": "ATL",
-            "opponent_id": 144,
-            "home": False,
-            "venue": "Truist Park",
-            "series": "Division matchup",
-            "status": "Scheduled",
-            "game_pk": 500201,
-            "probable_pitchers": ["Chris Sale"],
-        },
-    ]
+# CSRF and redirect functions are now imported from app.middleware.csrf and app.utils.helpers
+# Secret key is handled by Config
 
-    formatted: List[Dict[str, Any]] = []
-    for entry in blueprint[:max(limit, len(blueprint))]:
-        game_dt = base_first_pitch + timedelta(days=entry["days_offset"])
-        formatted_time = game_dt.strftime("%I:%M %p %Z") if game_dt.tzinfo else game_dt.strftime("%I:%M %p")
-        formatted.append({
-            "date": game_dt.strftime("%a, %b %d"),
-            "time": formatted_time,
-            "opponent": entry["opponent"],
-            "opponent_abbr": entry["opponent_abbr"],
-            "opponent_id": entry["opponent_id"],
-            "home": entry["home"],
-            "venue": entry["venue"],
-            "series": entry["series"],
-            "status": entry["status"],
-            "game_pk": entry["game_pk"],
-            "probable_pitchers": entry["probable_pitchers"],
-            "reports": [],
-            "game_date_iso": game_dt.date().isoformat(),
-            "game_datetime_iso": game_dt.astimezone(timezone.utc).isoformat(),
-        })
-    return formatted
 
+# Functions are now imported from refactored modules
+# Create aliases for backward compatibility
+_sanitize_filename_component = sanitize_filename_component
+_current_player_full_name = lambda: None  # Will be replaced by app.utils.helpers.current_player_full_name
+_lookup_team_for_name = lookup_team_for_name
+_determine_user_team = determine_user_team
+_resolve_default_season_start = lambda: "2025-03-20"  # Will use app.utils.helpers.resolve_default_season_start
+_coerce_utc_datetime = coerce_utc_datetime
+_extract_game_datetime = extract_game_datetime
 
-def _team_abbr_from_id(team_id: Optional[int]) -> Optional[str]:
-    if not team_id:
-        return None
-    return (_team_directory().get(int(team_id)) or {}).get("abbr")
+# Import report exists check from file_utils
+from app.utils.file_utils import report_exists_for_player
+_report_exists_for_player = report_exists_for_player
 
+# Schedule functions
+_collect_upcoming_games = collect_upcoming_games
+_collect_series_for_team = collect_series_for_team
 
-def ensure_secret_key() -> str:
-    """Load or generate a persistent secret key for session signing."""
-    env_secret = os.environ.get("APP_SECRET_KEY")
-    if env_secret:
-        return env_secret
+# Settings functions
+get_cached_settings = Config.get_settings
+refresh_settings_cache = Config.refresh_settings_cache
 
-    settings = settings_manager.load_settings()
-    general = settings.get("general", {}) if isinstance(settings, dict) else {}
-    secret_key = general.get("secret_key")
-
-    if secret_key:
-        return secret_key
-
-    secret_key = secrets.token_hex(32)
-    try:
-        settings_manager.update_settings({"general": {"secret_key": secret_key}})
-        refresh_settings_cache()
-    except Exception as exc:  # pragma: no cover - best effort persistence
-        print(f"Warning: Unable to persist generated secret key: {exc}")
-    return secret_key
-
-
-def generate_csrf_token() -> str:
-    """Ensure a CSRF token exists in the session and return it."""
-    token = session.get("csrf_token")
-    if not token:
-        token = secrets.token_hex(32)
-        session["csrf_token"] = token
-    return token
-
-
-def validate_csrf(token: str) -> bool:
-    """Validate an incoming CSRF token."""
-    if not token:
-        return False
-    return token == session.get("csrf_token")
-
-
-def get_safe_redirect(default_endpoint: str = "home") -> str:
-    """Return a safe redirect target within this application."""
-    target = request.args.get("next") or request.form.get("next")
-    if target and target.startswith("/") and not target.startswith("//"):
-        return target
-    return url_for(default_endpoint)
-
-
-PLAYER_DOCS_DIR = ROOT_DIR / "build" / "player_documents"
-PLAYER_DOCS_DIR.mkdir(parents=True, exist_ok=True)
-
-WORKOUT_DOCS_DIR = ROOT_DIR / "build" / "workouts"
-WORKOUT_DOCS_DIR.mkdir(parents=True, exist_ok=True)
-
-WORKOUT_CATEGORY = "workout"
-WORKOUT_ALLOWED_EXTENSIONS = {".pdf"}
-
-SERIES_AUTO_DELETE_GRACE_SECONDS = 0
-
-app.secret_key = ensure_secret_key()
-
-
-@lru_cache(maxsize=1)
-def get_cached_settings():
-    """Return cached application settings."""
-    return settings_manager.load_settings()
-
-
-def refresh_settings_cache():
-    """Clear cached settings so the next access reloads from disk."""
-    get_cached_settings.cache_clear()
-
-
-def ensure_default_admin():
-    """Guarantee a default admin user exists for initial access."""
-    if not PlayerDB:
-        return
-
-    default_email = os.environ.get("DEFAULT_ADMIN_EMAIL", "admin@sequencebiolab.com").strip().lower()
-    default_password = os.environ.get("DEFAULT_ADMIN_PASSWORD", "1234")
-
-    try:
-        db = PlayerDB()
-        existing = db.get_user_by_email(default_email)
-        password_hash = generate_password_hash(default_password)
-
-        if not existing:
-            db.create_user(
-                email=default_email,
-                password_hash=password_hash,
-                first_name="Sequence",
-                last_name="Admin",
-                is_admin=True
-            )
-            print(f"Default admin user created: {default_email}")
-        else:
-            if not existing.get("is_admin"):
-                db.set_user_admin(existing["id"], True)
-            if not check_password_hash(existing.get("password_hash", ""), default_password):
-                db.update_user_password(existing["id"], password_hash)
-        db.close()
-    except Exception as exc:
-        print(f"Warning: Unable to ensure default admin user: {exc}")
-
-
-ensure_default_admin()
-
-@app.before_request
-def attach_settings_to_request():
-    """Load settings for the current request context."""
-    g.app_settings = get_cached_settings()
-    # Ensure the CSRF token is primed for subsequent form usage
-    generate_csrf_token()
-
-
-@app.before_request
-def load_authenticated_user():
-    """Attach the currently authenticated user (if any) to the request context."""
-    g.user = None
-    session.setdefault("is_admin", False)
-    user_id = session.get("user_id")
-    if not user_id or not PlayerDB:
-        session["is_admin"] = False
-        return
-
-    try:
-        db = PlayerDB()
-        g.user = db.get_user_by_id(user_id)
-        db.close()
-    except Exception as exc:  # pragma: no cover - defensive
-        print(f"Warning: Failed to load user {user_id}: {exc}")
-        g.user = None
-
-    session["is_admin"] = bool(g.user.get("is_admin")) if g.user else False
-    if g.user:
-        session["first_name"] = g.user.get("first_name", "")
-        session["last_name"] = g.user.get("last_name", "")
-        if g.user.get("theme_preference"):
-            session["theme_preference"] = g.user["theme_preference"]
-
-
-@app.before_request
-def enforce_global_authentication():
-    """Redirect unauthenticated visitors to the login page for protected routes."""
-    if session.get("user_id"):
-        return
-
-    endpoint = request.endpoint or ""
-
-    if endpoint in AUTH_EXEMPT_ENDPOINTS:
-        return
-
-    if endpoint.startswith("static"):
-        return
-
-    # Allow access to favicon or other public assets served via send_file endpoints if any
-    if endpoint in {"favicon"}:
-        return
-
-    # Avoid redirect loops when login/register POST fails
-    if endpoint in {"login", "register"}:
-        return
-
-    next_path = request.path if request.path not in {url_for("login"), url_for("register")} else None
-    flash("Please log in to continue.", "warning")
-    return redirect(url_for("login", next=next_path))
-
-
-@app.context_processor
-def inject_app_settings():
-    """Expose app settings and theme to templates."""
-    settings = getattr(g, "app_settings", None) or get_cached_settings()
-    general = settings.get("general", {}) if isinstance(settings, dict) else {}
-    theme = general.get("theme", "dark")
-    user = getattr(g, "user", None)
-    user_theme = (user or {}).get("theme_preference")
-    if user_theme:
-        theme = user_theme
-    return {
-        "app_settings": settings,
-        "app_theme": theme,
-        "csrf_token": generate_csrf_token(),
-        "current_user": user
-    }
-
-
-def login_required(fn):
-    """Decorator to enforce authentication before accessing a view."""
-
-    @wraps(fn)
-    def wrapper(*args, **kwargs):
-        if not session.get("user_id"):
-            flash("Please log in to continue.", "warning")
-            return redirect(url_for("login", next=request.path))
-        return fn(*args, **kwargs)
-
-    return wrapper
-
-
-def admin_required(fn):
-    """Decorator ensuring the current user has admin privileges."""
-
-    @wraps(fn)
-    def wrapper(*args, **kwargs):
-        if not session.get("user_id"):
-            flash("Please log in to continue.", "warning")
-            return redirect(url_for("login", next=request.path))
-        if not session.get("is_admin"):
-            flash("Admin privileges are required to access that page.", "error")
-            return redirect(url_for("home"))
-        return fn(*args, **kwargs)
-
-    return wrapper
-
-
-def parse_bool(value, default=False):
-    """Coerce a value into a boolean with a default fallback."""
-    if value is None:
-        return default
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes", "on"}
-    return bool(value)
-
-
-def clean_str(value):
-    """Return a trimmed string representation or empty string."""
-    if value is None:
-        return ""
-    if isinstance(value, str):
-        return value.strip()
-    return str(value).strip()
-
-
-def _sanitize_filename_component(value: str) -> str:
-    return re.sub(r'[\\/:*?"<>|]+', "", (value or "")).strip()
-
-
+# Legacy function aliases
 def _current_player_full_name() -> Optional[str]:
-    user = getattr(g, "user", None)
-    if not user:
-        return None
-    first = (user.get("first_name") or "").strip()
-    last = (user.get("last_name") or "").strip()
-    parts = [part for part in (first, last) if part]
-    if not parts:
-        return None
-    return " ".join(parts)
-
-
-def _lookup_team_for_name(first_name: Optional[str], last_name: Optional[str]) -> Optional[str]:
-    """Attempt to determine a team abbreviation for the given player name."""
-    if not PlayerDB:
-        return None
-    first = (first_name or "").strip()
-    last = (last_name or "").strip()
-    if not last:
-        return None
-    try:
-        db = PlayerDB()
-        candidates = db.search_players(search=last, limit=50)
-        team_abbr = None
-        for candidate in candidates:
-            cand_first = (candidate.get("first_name") or "").split()
-            cand_last = (candidate.get("last_name") or "").split()
-            # Basic matching on first + last
-            cand_first_name = cand_first[0] if cand_first else ""
-            cand_last_name = cand_last[-1] if cand_last else ""
-            if cand_first_name and first and cand_first_name.lower() != first.lower():
-                continue
-            if cand_last_name and last and cand_last_name.lower() != last.lower():
-                continue
-            team_abbr = (candidate.get("team_abbr") or candidate.get("team") or "").strip().upper()
-            if team_abbr:
-                break
-        db.close()
-        return team_abbr or None
-    except Exception as exc:
-        print(f"Warning resolving team for {first_name} {last_name}: {exc}")
-        return None
-
+    from app.utils.helpers import current_player_full_name
+    return current_player_full_name()
 
 def _resolve_default_season_start() -> str:
-    settings = getattr(g, "app_settings", {}) or {}
-    report_defaults = settings.get("reports", {}) if isinstance(settings, dict) else {}
-    return clean_str(report_defaults.get("default_season_start")) or "2025-03-20"
-
-
-def _coerce_utc_datetime(value) -> Optional[datetime]:
-    if not value:
-        return None
-    if isinstance(value, datetime):
-        dt = value
-    elif isinstance(value, str):
-        raw = value.strip()
-        if not raw:
-            return None
-        try:
-            if raw.endswith("Z"):
-                raw = raw[:-1] + "+00:00"
-            dt = datetime.fromisoformat(raw)
-        except ValueError:
-            for fmt in ("%Y-%m-%d", "%Y/%m/%d"):
-                try:
-                    dt = datetime.strptime(raw, fmt)
-                    break
-                except ValueError:
-                    continue
-            else:
-                return None
-    else:
-        return None
-
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
-
-
-def _extract_game_datetime(game: Dict[str, Any]) -> Optional[datetime]:
-    for key in ("game_datetime_iso", "game_datetime", "game_date_iso"):
-        dt = _coerce_utc_datetime(game.get(key))
-        if dt:
-            return dt
-    return None
-
-
-def _report_exists_for_player(player_name: str, opponent_abbr: Optional[str], opponent_label: Optional[str]) -> bool:
-    if not player_name:
-        return True
-    player_slug = _sanitize_filename_component(player_name).lower()
-    player_slug_alt = player_slug.replace(" ", "_")
-    opponent_code = (opponent_abbr or "").upper()
-    stubs = []
-    if opponent_label:
-        stubs.append(_sanitize_filename_component(f"{player_name} vs {opponent_label}").lower())
-    if opponent_code:
-        stubs.append(_sanitize_filename_component(f"{player_name} vs {opponent_code}").lower())
-    stubs_alt = [s.replace(" ", "_") for s in stubs]
-
-    for pdf in OUT_DIR.glob("*.pdf"):
-        stem_lower = pdf.stem.lower()
-        if opponent_code and f"_vs_{opponent_code.lower()}" in stem_lower and (player_slug in stem_lower or player_slug_alt in stem_lower):
-            return True
-        for stub in stubs:
-            if stub and stub in stem_lower:
-                return True
-        for stub in stubs_alt:
-            if stub and stub in stem_lower:
-                return True
-    return False
-
+    from app.utils.helpers import resolve_default_season_start
+    return resolve_default_season_start()
 
 def _schedule_auto_reports(games: List[Dict[str, Any]], team_abbr: Optional[str]) -> None:
+    """Schedule auto reports - uses new service"""
     if not games:
         return
     player_name = _current_player_full_name()
     if not player_name:
         return
-
     season_start = _resolve_default_season_start()
     for game in games:
-        _maybe_trigger_report(game, team_abbr, player_name, season_start)
-
-
-def _maybe_trigger_report(game: Dict[str, Any], team_abbr: Optional[str], player_name: str, season_start: str) -> None:
-    opponent_abbr = (game.get("opponent_abbr") or "").upper()
-    opponent_label = game.get("opponent")
-    if not opponent_abbr:
-        return
-
-    game_dt = _extract_game_datetime(game)
-    if not game_dt:
-        return
-
-    now = datetime.now(timezone.utc)
-    days_out = (game_dt.date() - now.date()).days
-    if days_out < 0 or days_out > REPORT_LEAD_DAYS:
-        return
-
-    if _report_exists_for_player(player_name, opponent_abbr, opponent_label):
-        return
-
-    key = "|".join([
-        player_name.lower(),
-        opponent_abbr,
-        str(game.get("game_pk") or game.get("game_date_iso") or game_dt.date().isoformat())
-    ])
-
-    with _PENDING_REPORT_LOCK:
-        if key in _PENDING_REPORT_KEYS:
-            return
-        _PENDING_REPORT_KEYS.add(key)
-
-    def _worker():
-        try:
-            filename = f"{_sanitize_filename_component(player_name).replace(' ', '_')}_vs_{opponent_abbr}.pdf"
-            generate_single_report(
-                hitter_name=player_name,
-                team=team_abbr or "AUTO",
-                season_start=season_start,
-                use_next_series=False,
-                opponent_team=opponent_abbr,
-                pdf_name=filename
-            )
-        except Exception as exc:
-            print(f"Warning: auto-generation failed for {player_name} vs {opponent_abbr}: {exc}")
-        finally:
-            with _PENDING_REPORT_LOCK:
-                _PENDING_REPORT_KEYS.discard(key)
-
-    thread = threading.Thread(target=_worker, name=f"report-auto-{opponent_abbr}-{game.get('game_pk')}", daemon=True)
-    thread.start()
-
-
-def _validate_auth_form_fields(email: str, password: str, first_name: str = "", last_name: str = "", confirm: str = ""):
-    """Perform basic validation for authentication forms."""
-    errors = []
-    if not email:
-        errors.append("Email is required.")
-    elif "@" not in email or "." not in email.split("@")[-1]:
-        errors.append("Please enter a valid email address.")
-
-    if first_name is not None and not first_name:
-        errors.append("First name is required.")
-    if last_name is not None and not last_name:
-        errors.append("Last name is required.")
-
-    if not password or len(password) < 8:
-        errors.append("Password must be at least 8 characters long.")
-
-    if confirm and password != confirm:
-        errors.append("Password confirmation does not match.")
-
-    return errors
-
-
-def _determine_user_team(user):
-    """Best-effort resolution of the user's team abbreviation."""
-    team_abbr = None
-
-    if user:
-        team_abbr = _lookup_team_for_name(user.get("first_name"), user.get("last_name"))
-
-    if not team_abbr:
-        try:
-            settings = getattr(g, "app_settings", {}) or get_cached_settings()
-            report_defaults = settings.get("reports", {}) if isinstance(settings, dict) else {}
-            default_team = (report_defaults.get("default_team") or "").strip().upper()
-            if default_team and default_team != "AUTO":
-                team_abbr = default_team
-        except Exception:
-            team_abbr = None
-
-    if not team_abbr or team_abbr == "AUTO":
-        team_abbr = "NYM"  # sensible default
-
-    return team_abbr
-
-
-def _collect_upcoming_games(team_abbr, limit=5):
-    """Return a formatted list of upcoming games for the given team."""
-    use_mock = bool(app.config.get("USE_MOCK_SCHEDULE"))
-    cache_key = ("MOCK" if use_mock else "LIVE", (team_abbr or "").upper(), limit)
-    cached = _cache_get(_UPCOMING_GAMES_CACHE, cache_key)
-    if cached is not None:
-        return cached
-
-    if use_mock:
-        formatted_mock = _build_mock_upcoming_games(team_abbr, limit)
-        _cache_set(_UPCOMING_GAMES_CACHE, cache_key, formatted_mock, ttl_seconds=60)
-        return formatted_mock
-
-    if not next_games:
-        return []
-
-    try:
-        games = next_games(team_abbr, days_ahead=14)
-    except Exception as exc:
-        print(f"Warning fetching upcoming games: {exc}")
-        _cache_set(_UPCOMING_GAMES_CACHE, cache_key, [], ttl_seconds=120)
-        return []
-
-    formatted = []
-    for game in games[:limit]:
-        date_str = game.get("game_date")
-        display_date = date_str
-        display_time = "TBD"
-        if date_str:
-            try:
-                display_date = datetime.fromisoformat(date_str).strftime("%a, %b %d")
-            except Exception:
-                pass
-
-        game_time = game.get("game_datetime")
-        if game_time:
-            try:
-                display_time = datetime.fromisoformat(game_time.replace("Z", "+00:00")).astimezone().strftime("%I:%M %p %Z")
-            except Exception:
-                display_time = "TBD"
-
-        team_abbr_code = _team_abbr_from_id(game.get("opponent_id"))
-        probables = [
-            p.get("name")
-            for p in (game.get("probable_pitchers") or [])
-            if p.get("name")
-        ]
-        formatted.append({
-            "date": display_date,
-            "time": display_time,
-            "opponent": game.get("opponent_name"),
-            "opponent_abbr": team_abbr_code,
-            "opponent_id": game.get("opponent_id"),
-            "home": game.get("is_home"),
-            "venue": game.get("venue"),
-            "series": game.get("series_description"),
-            "status": game.get("status"),
-            "game_pk": game.get("game_pk"),
-            "probable_pitchers": probables,
-            "reports": [],
-            "game_date_iso": date_str,
-            "game_datetime_iso": game_time,
-        })
-    _cache_set(_UPCOMING_GAMES_CACHE, cache_key, formatted, ttl_seconds=300)
-    return formatted
-
-
-def _collect_series_for_team(team_abbr: Optional[str], days_ahead: int = 14) -> List[Dict[str, Any]]:
-    """Group schedule into opponent series for selection purposes."""
-    if not team_abbr:
-        return []
-
-    games: List[Dict[str, Any]] = []
-    use_mock = bool(app.config.get("USE_MOCK_SCHEDULE"))
-
-    if use_mock:
-        raw = _build_mock_upcoming_games(team_abbr, limit=20)
-        for item in raw:
-            try:
-                games.append({
-                    "game_date": item.get("game_date_iso") or item.get("date"),
-                    "game_datetime": item.get("game_datetime_iso"),
-                    "opponent_id": item.get("opponent_id"),
-                    "opponent_name": item.get("opponent"),
-                    "is_home": item.get("home"),
-                    "venue": item.get("venue"),
-                    "series_description": item.get("series"),
-                    "status": item.get("status"),
-                })
-            except Exception:
-                continue
-    else:
-        if not next_games:
-            return []
-        try:
-            games = next_games(team_abbr, days_ahead=days_ahead, include_started=True)
-        except Exception as exc:
-            print(f"Warning fetching series schedule: {exc}")
-            games = []
-
-    if not games:
-        return []
-
-    chunks: List[List[Dict[str, Any]]] = []
-    current_chunk: List[Dict[str, Any]] = []
-    last_opponent = None
-    for game in games:
-        opponent = game.get("opponent_id")
-        if last_opponent is None or opponent == last_opponent:
-            current_chunk.append(game)
-        else:
-            if current_chunk:
-                chunks.append(current_chunk)
-            current_chunk = [game]
-        last_opponent = opponent
-    if current_chunk:
-        chunks.append(current_chunk)
-
-    now_ts = datetime.now(timezone.utc).timestamp()
-    out: List[Dict[str, Any]] = []
-
-    for chunk in chunks:
-        if not chunk:
-            continue
-        first_game = chunk[0]
-        last_game = chunk[-1]
-
-        start_dt = _coerce_utc_datetime(
-            first_game.get("game_datetime")
-            or first_game.get("game_datetime_iso")
-            or first_game.get("game_date")
-            or first_game.get("game_date_iso")
-        )
-        end_dt = _coerce_utc_datetime(
-            last_game.get("game_datetime")
-            or last_game.get("game_datetime_iso")
-            or last_game.get("game_date")
-            or last_game.get("game_date_iso")
-        )
-        if not start_dt or not end_dt:
-            continue
-
-        start_ts = start_dt.timestamp()
-        end_ts = end_dt.timestamp()
-
-        # Skip series that finished before the grace window
-        if end_ts < now_ts - SERIES_AUTO_DELETE_GRACE_SECONDS:
-            continue
-
-        opponent_id = first_game.get("opponent_id")
-        opponent_name = first_game.get("opponent_name")
-        opponent_abbr = _team_abbr_from_id(opponent_id) or (opponent_name or "")
-        home_label = "Home vs" if first_game.get("is_home") else "Road @"
-        series_label = f"{home_label} {opponent_name}".strip()
-
-        def _fmt_range(dt: datetime) -> str:
-            return dt.astimezone().strftime("%b %d")
-
-        range_label = _fmt_range(start_dt)
-        if end_dt.date() != start_dt.date():
-            range_label = f"{range_label} – {_fmt_range(end_dt)}"
-
-        status_lower_values = [str(game.get("status") or "").lower() for game in chunk]
-        if any("final" in s or "game over" in s for s in status_lower_values):
-            status = "expired"
-        elif any("in progress" in s or "pre-game" in s or "pregame" in s or "pre game" in s or "delayed" in s for s in status_lower_values):
-            status = "current"
-        elif start_ts <= now_ts <= end_ts:
-            status = "current"
-        elif end_ts < now_ts:
-            status = "expired"
-        else:
-            status = "upcoming"
-
-        out.append({
-            "id": f"{opponent_id}_{int(start_ts)}",
-            "opponent_id": opponent_id,
-            "opponent_name": opponent_name,
-            "opponent_abbr": opponent_abbr,
-            "is_home": bool(first_game.get("is_home")),
-            "series_label": series_label,
-            "series_description": first_game.get("series_description"),
-            "start": start_dt.isoformat(),
-            "end": end_dt.isoformat(),
-            "range": range_label,
-            "status": status,
-            "game_count": len(chunk),
-        })
-
-    out.sort(key=lambda item: item.get("start") or "")
-    return out
+        maybe_trigger_report(game, team_abbr, player_name, season_start)
 
 
 def _collect_recent_reports(limit=5):
@@ -1468,692 +644,57 @@ def _collect_standings_data(view, team_metadata, division_id=None, league_id=Non
     return payload
 
 
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    """User registration endpoint."""
-    if not PlayerDB:
-        flash("Database unavailable. Please contact support.", "error")
-        return redirect(url_for("home"))
-
-    if request.method == 'POST':
-        if not validate_csrf(request.form.get("csrf_token")):
-            flash("Invalid form submission. Please try again.", "error")
-            return redirect(url_for('register'))
-
-        email = clean_str(request.form.get('email', '')).lower()
-        password = request.form.get('password') or ''
-        confirm_password = request.form.get('confirm_password') or ''
-        first_name = clean_str(request.form.get('first_name', ''))
-        last_name = clean_str(request.form.get('last_name', ''))
-
-        errors = _validate_auth_form_fields(email, password, first_name, last_name, confirm_password)
-        if errors:
-            for error in errors:
-                flash(error, "error")
-            return redirect(url_for('register', next=request.form.get('next')))
-
-        try:
-            db = PlayerDB()
-            existing = db.get_user_by_email(email)
-            if existing:
-                flash("An account with that email already exists. Please sign in.", "error")
-                return redirect(url_for('login'))
-
-            password_hash = generate_password_hash(password)
-            user_id = db.create_user(email, password_hash, first_name, last_name, is_admin=False)
-        except Exception as exc:
-            flash(f"Could not create account: {exc}", "error")
-            return redirect(url_for('register'))
-        finally:
-            try:
-                db.close()
-            except Exception:
-                pass
-
-        # Rotate CSRF token and set session values
-        session.pop('csrf_token', None)
-        session['user_id'] = user_id
-        session['first_name'] = first_name
-        session['last_name'] = last_name
-        session['is_admin'] = False
-        generate_csrf_token()
-
-        flash("Welcome to Sequence BioLab!", "success")
-        return redirect(get_safe_redirect())
-
-    return render_template('register.html')
+# Auth routes are now in app.routes.auth
+# Keep these routes for backward compatibility until migration is complete
+# They will be registered via blueprints in the future
 
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    """User login endpoint."""
-    if not PlayerDB:
-        flash("Database unavailable. Please contact support.", "error")
-        return redirect(url_for("home"))
-
-    if request.method == 'POST':
-        if not validate_csrf(request.form.get("csrf_token")):
-            flash("Invalid form submission. Please try again.", "error")
-            return redirect(url_for('login'))
-
-        email = clean_str(request.form.get('email', '')).lower()
-        password = request.form.get('password') or ''
-
-        if not email or not password:
-            flash("Email and password are required.", "error")
-            return redirect(url_for('login', next=request.form.get('next')))
-
-        user = None
-        try:
-            db = PlayerDB()
-            user = db.get_user_by_email(email)
-        except Exception as exc:
-            flash(f"Login failed: {exc}", "error")
-            return redirect(url_for('login'))
-        finally:
-            try:
-                db.close()
-            except Exception:
-                pass
-
-        if not user or not check_password_hash(user['password_hash'], password):
-            flash("Invalid email or password.", "error")
-            return redirect(url_for('login', next=request.form.get('next')))
-
-        session.pop('csrf_token', None)
-        session['user_id'] = user['id']
-        session['first_name'] = user['first_name']
-        session['last_name'] = user['last_name']
-        session['is_admin'] = bool(user.get('is_admin'))
-        generate_csrf_token()
-
-        flash("Signed in successfully.", "success")
-        return redirect(get_safe_redirect())
-
-    return render_template('login.html')
-
-
-@app.route('/logout', methods=['POST'])
-def logout():
-    """Log out the current user."""
-    if not validate_csrf(request.form.get("csrf_token")):
-        flash("Invalid logout request.", "error")
-        return redirect(url_for('home'))
-
-    for key in ("user_id", "first_name", "last_name", "is_admin"):
-        session.pop(key, None)
-    session.pop('csrf_token', None)
-    generate_csrf_token()
-
-    flash("You have been logged out.", "info")
-    return redirect(url_for('home'))
-
-
+# Report generation functions - wrapper to use service
 def generate_single_report(hitter_name, team="AUTO", season_start="2025-03-20", use_next_series=False, opponent_team=None, pdf_name=None):
-    """Generate a single report and return the PDF path"""
-    try:
-        # Activate virtual environment and run the report generation
-        venv_python = ROOT_DIR / "venv" / "bin" / "python3"
-        if not venv_python.exists():
-            venv_python = "python3"
-        
-        script_path = ROOT_DIR / "src" / "generate_report.py"
-        template_path = ROOT_DIR / "src" / "templates" / "hitter_report.html"
-        
-        cmd = [
-            str(venv_python),
-            str(script_path),
-            "--team", team,
-            "--hitter", hitter_name,
-            "--season_start", season_start,
-            "--out", str(OUT_DIR),
-            "--template", str(template_path)
-        ]
-        
-        if pdf_name:
-            cmd.extend(["--pdf_name", pdf_name])
-
-        if opponent_team and opponent_team.strip():
-            cmd.extend(["--opponent", opponent_team.strip()])
-        
-        if use_next_series:
-            cmd.append("--use-next-series")
-        
-        # Run the command with environment variable to suppress urllib3 warnings
-        env = os.environ.copy()
-        env['PYTHONWARNINGS'] = 'ignore::UserWarning:urllib3,ignore::Warning'
-        
-        result = subprocess.run(
-            cmd,
-            cwd=str(ROOT_DIR / "src"),
-            capture_output=True,
-            text=True,
-            timeout=300,  # 5 minute timeout
-            env=env
-        )
-        
-        # First, check if PDF was generated (even if returncode != 0, warnings might cause non-zero exit)
-        output_lines = result.stdout.split('\n')
-        pdf_path = None
-        
-        for line in output_lines:
-            if "Saved report:" in line:
-                pdf_path = line.split("Saved report:")[-1].strip()
-                break
-        
-        # If we can't find it from output, try to find it by name
-        if not pdf_path or not Path(pdf_path).exists():
-            # Look for PDFs with the player's name
-            safe_name = hitter_name.replace(' ', '_').replace('"', '')
-            pdf_files = list(OUT_DIR.glob(f"*{safe_name}*.pdf"))
-            if pdf_files:
-                # Sort by modification time and get the most recent
-                pdf_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-                pdf_path = str(pdf_files[0])
-        
-        # If PDF was generated, return success regardless of returncode
-        if pdf_path and Path(pdf_path).exists():
-            return {
-                "success": True,
-                "pdf_path": pdf_path,
-                "pdf_filename": Path(pdf_path).name
-            }
-        
-        # If no PDF found and returncode != 0, report the error
-        if result.returncode != 0:
-            # Combine stderr and stdout to get full error
-            error_msg = ""
-            if result.stderr:
-                error_msg += result.stderr
-            if result.stdout and result.stdout.strip():
-                error_msg += "\n" + result.stdout if error_msg else result.stdout
-            
-            if not error_msg.strip():
-                error_msg = "Unknown error"
-            
-            # Filter out urllib3 warnings - they're not fatal errors
-            lines = error_msg.split('\n')
-            filtered_lines = []
-            skip_next_n_lines = 0
-            
-            for i, line in enumerate(lines):
-                # Skip lines after warnings.warn( calls
-                if skip_next_n_lines > 0:
-                    skip_next_n_lines -= 1
-                    continue
-                
-                # Skip urllib3/OpenSSL warnings
-                if any(keyword in line for keyword in ['NotOpenSSLWarning', 'urllib3', 'site-packages/urllib3', 'OpenSSL']):
-                    # If we see warnings.warn(, skip the next few lines too
-                    if 'warnings.warn(' in line:
-                        skip_next_n_lines = 2
-                    continue
-                
-                # Skip lines that are just file paths to urllib3
-                if line.strip().startswith('/Users') and ('urllib3' in line or 'site-packages' in line):
-                    continue
-                
-                # Skip warning-related lines
-                if 'warnings.warn(' in line or '__init__.py' in line and 'site-packages' in line:
-                    skip_next_n_lines = 1
-                    continue
-                
-                # Keep non-empty lines that aren't warnings
-                if line.strip() and not line.strip().startswith('warnings.'):
-                    filtered_lines.append(line)
-            
-            # If we filtered everything, keep some context
-            if filtered_lines:
-                filtered_error = '\n'.join(filtered_lines)
-            else:
-                # If only warnings were present, check if stdout has useful info
-                if result.stdout and result.stdout.strip():
-                    filtered_error = result.stdout.strip()
-                else:
-                    filtered_error = "Report generation failed (check logs for details)"
-            
-            # Get the actual error message (last meaningful line or traceback)
-            error_lines = filtered_error.split('\n')
-            # Look for the actual exception message
-            actual_error = None
-            for i in range(len(error_lines) - 1, -1, -1):
-                line = error_lines[i].strip()
-                if line and not line.startswith('File ') and not line.startswith('Traceback'):
-                    if 'Error' in line or 'Exception' in line or ':' in line:
-                        actual_error = line
-                        break
-            
-            if actual_error:
-                filtered_error = actual_error + "\n\n" + filtered_error[:300]
-            
-            return {
-                "success": False,
-                "error": f"Error generating report: {filtered_error[:800]}"
-            }
-        
-        # If returncode is 0 but no PDF found
-        return {
-            "success": False,
-            "error": "Report generation completed but PDF file not found"
-        }
-    except subprocess.TimeoutExpired:
-        return {
-            "success": False,
-            "error": "Report generation timed out (over 5 minutes)"
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": f"Error: {str(e)}"
-        }
+    """Generate a single report - uses service"""
+    from app.services.report_service import generate_single_report as _generate_single_report
+    return _generate_single_report(hitter_name, team, season_start, use_next_series, opponent_team, pdf_name)
 
 def generate_report(hitter_name, team="AUTO", season_start="2025-03-20", use_next_series=False, opponent_team=None, job_id=None):
-    """Generate a single report in the background (for backward compatibility)"""
-    result = generate_single_report(hitter_name, team, season_start, use_next_series, opponent_team)
-    
-    if result["success"]:
-        job_status[job_id] = {
-            "status": "completed",
-            "message": "Report generated successfully!",
-            "pdf_path": result["pdf_path"],
-            "pdf_filename": result["pdf_filename"]
-        }
-    else:
-        job_status[job_id] = {
-            "status": "error",
-            "message": result.get("error", "Unknown error")
-        }
+    """Generate a single report in background - uses service"""
+    from app.services.report_service import generate_report_background
+    generate_report_background(hitter_name, team, season_start, use_next_series, opponent_team, job_id)
 
+# Batch report functions - use service
 def parse_player_entry(entry):
-    """Parse a player entry that may include team and opponent.
-    
-    Format: "Player Name | Team | Opponent"
-    All parts are optional except player name.
-    Returns: (player_name, team, opponent)
-    """
-    parts = [p.strip() for p in entry.split('|')]
-    player_name = parts[0].strip() if parts else ""
-    team = parts[1].strip() if len(parts) > 1 and parts[1].strip() else None
-    opponent = parts[2].strip() if len(parts) > 2 and parts[2].strip() else None
-    
-    return player_name, team, opponent
+    """Parse a player entry - uses service"""
+    from app.services.report_service import parse_player_entry as _parse_player_entry
+    return _parse_player_entry(entry)
 
 def generate_batch_reports(player_entries, default_team, season_start, use_next_series, default_opponent, job_id):
-    """Generate reports for multiple players with individual settings"""
-    total = len(player_entries)
-    completed = 0
-    failed = 0
-    pdfs = []
-    errors = []
-    
-    for i, entry in enumerate(player_entries):
-        # Parse player entry
-        hitter_name, team, opponent = parse_player_entry(entry)
-        
-        if not hitter_name:
-            errors.append({
-                "player": entry,
-                "error": "Invalid format: missing player name"
-            })
-            failed += 1
-            continue
-        
-        # Use per-player settings if provided, otherwise use defaults
-        player_team = team if team else default_team
-        player_opponent = opponent if opponent else default_opponent
-        
-        try:
-            # Update status with player-specific info
-            status_msg = f"Generating report {i+1} of {total}: {hitter_name}"
-            if player_opponent:
-                status_msg += f" vs {player_opponent}"
-            
-            job_status[job_id] = {
-                "status": "running",
-                "message": status_msg,
-                "total": total,
-                "completed": completed,
-                "failed": failed,
-                "current": hitter_name,
-                "current_index": i + 1,
-                "pdfs": pdfs,
-                "errors": errors
-            }
-            
-            # Generate single report with this player's settings
-            result = generate_single_report(hitter_name, player_team, season_start, use_next_series, player_opponent)
-            
-            if result["success"]:
-                pdfs.append({
-                    "player": hitter_name,
-                    "team": player_team,
-                    "opponent": player_opponent,
-                    "path": result["pdf_path"],
-                    "filename": result["pdf_filename"]
-                })
-                completed += 1
-            else:
-                errors.append({
-                    "player": hitter_name,
-                    "error": result.get("error", "Unknown error")
-                })
-                failed += 1
-                
-        except Exception as e:
-            errors.append({
-                "player": hitter_name,
-                "error": str(e)
-            })
-            failed += 1
-    
-    # Update final status
-    job_status[job_id] = {
-        "status": "completed",
-        "message": f"Completed {completed} of {total} reports" + (f" ({failed} failed)" if failed > 0 else ""),
-        "total": total,
-        "completed": completed,
-        "failed": failed,
-        "pdfs": pdfs,
-        "errors": errors
-    }
+    """Generate batch reports - uses service"""
+    from app.services.report_service import generate_batch_reports as _generate_batch_reports
+    _generate_batch_reports(player_entries, default_team, season_start, use_next_series, default_opponent, job_id)
 
 # ============================================================================
 # PITCHER REPORT GENERATION FUNCTIONS (separate from hitter reports)
 # ============================================================================
 
+# Pitcher report functions - use service
 def generate_single_pitcher_report(pitcher_name, team="AUTO", season_start="2025-03-20", use_next_series=False, opponent_team=None):
-    """Generate a single pitcher report and return the PDF path"""
-    try:
-        # Activate virtual environment and run the report generation
-        venv_python = ROOT_DIR / "venv" / "bin" / "python3"
-        if not venv_python.exists():
-            venv_python = "python3"
-        
-        script_path = ROOT_DIR / "src" / "generate_pitcher_report.py"
-        template_path = ROOT_DIR / "src" / "templates" / "pitcher_report.html"
-        
-        cmd = [
-            str(venv_python),
-            str(script_path),
-            "--team", team,
-            "--pitcher", pitcher_name,
-            "--season_start", season_start,
-            "--out", str(OUT_DIR),
-            "--template", str(template_path)
-        ]
-        
-        if opponent_team and opponent_team.strip():
-            cmd.extend(["--opponent", opponent_team.strip()])
-        
-        if use_next_series:
-            cmd.append("--use-next-series")
-        
-        # Run the command with environment variable to suppress urllib3 warnings
-        env = os.environ.copy()
-        env['PYTHONWARNINGS'] = 'ignore::UserWarning:urllib3,ignore::Warning'
-        
-        result = subprocess.run(
-            cmd,
-            cwd=str(ROOT_DIR / "src"),
-            capture_output=True,
-            text=True,
-            timeout=300,  # 5 minute timeout
-            env=env
-        )
-        
-        # First, check if PDF was generated (even if returncode != 0, warnings might cause non-zero exit)
-        output_lines = result.stdout.split('\n')
-        pdf_path = None
-        
-        for line in output_lines:
-            if "Saved report:" in line:
-                pdf_path = line.split("Saved report:")[-1].strip()
-                break
-        
-        # If we can't find it from output, try to find it by name
-        if not pdf_path or not Path(pdf_path).exists():
-            # Look for PDFs with the player's name
-            safe_name = pitcher_name.replace(' ', '_').replace('"', '')
-            pdf_files = list(OUT_DIR.glob(f"*{safe_name}*.pdf"))
-            if pdf_files:
-                # Sort by modification time and get the most recent
-                pdf_files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-                pdf_path = str(pdf_files[0])
-        
-        # If PDF was generated, return success regardless of returncode
-        if pdf_path and Path(pdf_path).exists():
-            return {
-                "success": True,
-                "pdf_path": pdf_path,
-                "pdf_filename": Path(pdf_path).name
-            }
-        
-        # If no PDF found and returncode != 0, report the error
-        if result.returncode != 0:
-            # Combine stderr and stdout to get full error
-            error_msg = ""
-            if result.stderr:
-                error_msg += result.stderr
-            if result.stdout and result.stdout.strip():
-                error_msg += "\n" + result.stdout if error_msg else result.stdout
-            
-            if not error_msg.strip():
-                error_msg = "Unknown error"
-            
-            # Filter out urllib3 warnings - they're not fatal errors
-            lines = error_msg.split('\n')
-            filtered_lines = []
-            skip_next_n_lines = 0
-            
-            for i, line in enumerate(lines):
-                # Skip lines after warnings.warn( calls
-                if skip_next_n_lines > 0:
-                    skip_next_n_lines -= 1
-                    continue
-                
-                # Skip urllib3/OpenSSL warnings
-                if any(keyword in line for keyword in ['NotOpenSSLWarning', 'urllib3', 'site-packages/urllib3', 'OpenSSL']):
-                    # If we see warnings.warn(, skip the next few lines too
-                    if 'warnings.warn(' in line:
-                        skip_next_n_lines = 2
-                    continue
-                
-                # Skip lines that are just file paths to urllib3
-                if line.strip().startswith('/Users') and ('urllib3' in line or 'site-packages' in line):
-                    continue
-                
-                # Skip warning-related lines
-                if 'warnings.warn(' in line or '__init__.py' in line and 'site-packages' in line:
-                    skip_next_n_lines = 1
-                    continue
-                
-                # Keep non-empty lines that aren't warnings
-                if line.strip() and not line.strip().startswith('warnings.'):
-                    filtered_lines.append(line)
-            
-            # If we filtered everything, keep some context
-            if filtered_lines:
-                filtered_error = '\n'.join(filtered_lines)
-            else:
-                # If only warnings were present, check if stdout has useful info
-                if result.stdout and result.stdout.strip():
-                    filtered_error = result.stdout.strip()
-                else:
-                    filtered_error = "Report generation failed (check logs for details)"
-            
-            # Get the actual error message (last meaningful line or traceback)
-            error_lines = filtered_error.split('\n')
-            # Look for the actual exception message
-            actual_error = None
-            for i in range(len(error_lines) - 1, -1, -1):
-                line = error_lines[i].strip()
-                if line and not line.startswith('File ') and not line.startswith('Traceback'):
-                    if 'Error' in line or 'Exception' in line or ':' in line:
-                        actual_error = line
-                        break
-            
-            if actual_error:
-                filtered_error = actual_error + "\n\n" + filtered_error[:300]
-            
-            return {
-                "success": False,
-                "error": f"Error generating report: {filtered_error[:800]}"
-            }
-        
-        # If returncode is 0 but no PDF found
-        return {
-            "success": False,
-            "error": "Report generation completed but PDF file not found"
-        }
-    except subprocess.TimeoutExpired:
-        return {
-            "success": False,
-            "error": "Report generation timed out (over 5 minutes)"
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": f"Error: {str(e)}"
-        }
+    """Generate a single pitcher report - uses service"""
+    from app.services.report_service import generate_single_pitcher_report as _generate_single_pitcher_report
+    return _generate_single_pitcher_report(pitcher_name, team, season_start, use_next_series, opponent_team)
 
 def generate_pitcher_report(pitcher_name, team="AUTO", season_start="2025-03-20", use_next_series=False, opponent_team=None, job_id=None):
-    """Generate a single pitcher report in the background"""
-    result = generate_single_pitcher_report(pitcher_name, team, season_start, use_next_series, opponent_team)
-    
-    if result["success"]:
-        job_status[job_id] = {
-            "status": "completed",
-            "message": "Report generated successfully!",
-            "pdf_path": result["pdf_path"],
-            "pdf_filename": result["pdf_filename"]
-        }
-    else:
-        job_status[job_id] = {
-            "status": "error",
-            "message": result.get("error", "Unknown error")
-        }
+    """Generate a single pitcher report in background - uses service"""
+    from app.services.report_service import generate_pitcher_report_background
+    generate_pitcher_report_background(pitcher_name, team, season_start, use_next_series, opponent_team, job_id)
 
 def parse_pitcher_entry(entry):
-    """Parse a pitcher entry that may include team and opponent.
-    
-    Format: "Pitcher Name | Team | Opponent"
-    All parts are optional except pitcher name.
-    Returns: (pitcher_name, team, opponent)
-    """
-    parts = [p.strip() for p in entry.split('|')]
-    pitcher_name = parts[0].strip() if parts else ""
-    team = parts[1].strip() if len(parts) > 1 and parts[1].strip() else None
-    opponent = parts[2].strip() if len(parts) > 2 and parts[2].strip() else None
-    
-    return pitcher_name, team, opponent
+    """Parse a pitcher entry - uses service"""
+    from app.services.report_service import parse_pitcher_entry as _parse_pitcher_entry
+    return _parse_pitcher_entry(entry)
 
 def generate_batch_pitcher_reports(pitcher_entries, default_team, season_start, use_next_series, default_opponent, job_id):
-    """Generate pitcher reports for multiple players with individual settings"""
-    total = len(pitcher_entries)
-    completed = 0
-    failed = 0
-    pdfs = []
-    errors = []
-    
-    for i, entry in enumerate(pitcher_entries):
-        # Parse pitcher entry
-        pitcher_name, team, opponent = parse_pitcher_entry(entry)
-        
-        if not pitcher_name:
-            errors.append({
-                "pitcher": entry,
-                "player": entry,
-                "error": "Invalid format: missing pitcher name"
-            })
-            failed += 1
-            continue
-        
-        # Use per-player settings if provided, otherwise use defaults
-        player_team = team if team else default_team
-        player_opponent = opponent if opponent else default_opponent
-        
-        try:
-            # Update status with player-specific info
-            status_msg = f"Generating report {i+1} of {total}: {pitcher_name}"
-            if player_opponent:
-                status_msg += f" vs {player_opponent}"
-            
-            job_status[job_id] = {
-                "status": "running",
-                "message": status_msg,
-                "total": total,
-                "completed": completed,
-                "failed": failed,
-                "current": pitcher_name,
-                "current_index": i + 1,
-                "pdfs": pdfs,
-                "errors": errors
-            }
-            
-            # Generate single report with this pitcher's settings
-            result = generate_single_pitcher_report(pitcher_name, player_team, season_start, use_next_series, player_opponent)
-            
-            if result["success"]:
-                pdfs.append({
-                    "pitcher": pitcher_name,
-                    "player": pitcher_name,
-                    "team": player_team,
-                    "opponent": player_opponent,
-                    "path": result["pdf_path"],
-                    "filename": result["pdf_filename"]
-                })
-                completed += 1
-            else:
-                errors.append({
-                    "pitcher": pitcher_name,
-                    "player": pitcher_name,
-                    "error": result.get("error", "Unknown error")
-                })
-                failed += 1
-                
-        except Exception as e:
-            errors.append({
-                "pitcher": pitcher_name,
-                "player": pitcher_name,
-                "error": str(e)
-            })
-            failed += 1
-    
-    # Update final status
-    job_status[job_id] = {
-        "status": "completed",
-        "message": f"Completed {completed} of {total} reports" + (f" ({failed} failed)" if failed > 0 else ""),
-        "total": total,
-        "completed": completed,
-        "failed": failed,
-        "pdfs": pdfs,
-        "errors": errors
-    }
-
-def _get_player_headshot_url(user: Dict[str, Any]) -> Optional[str]:
-    """Get the player's headshot URL from MLB.com."""
-    first_name = (user.get("first_name") or "").strip()
-    last_name = (user.get("last_name") or "").strip()
-    
-    if not first_name or not last_name:
-        return None
-    
-    player_name = f"{first_name} {last_name}"
-    
-    try:
-        # Use the more reliable lookup_batter_id function
-        from scrape_savant import lookup_batter_id
-        player_id = lookup_batter_id(player_name)
-        if player_id:
-            # Return MLB headshot URL
-            return f"https://img.mlbstatic.com/mlb-photos/image/upload/f_png,w_213,q_100/v1/people/{player_id}/headshot/67/current"
-    except Exception as e:
-        print(f"Warning: Could not get player headshot for {player_name}: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    return None
-
+    """Generate batch pitcher reports - uses service"""
+    from app.services.report_service import generate_batch_pitcher_reports as _generate_batch_pitcher_reports
+    _generate_batch_pitcher_reports(pitcher_entries, default_team, season_start, use_next_series, default_opponent, job_id)
 
 def _build_player_home_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if not user:
@@ -2167,7 +708,6 @@ def _build_player_home_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]
     support_team = _load_support_contacts()
     focus_highlights = _build_focus_highlights(next_series, latest_document, outstanding_count)
     player_news = _load_player_news(user)
-    player_headshot_url = _get_player_headshot_url(user)
     # Use local MLB logo file
     mlb_logo_url = url_for('static', filename='MLB_Logo.png')
     schedule_calendar = _load_schedule_calendar(user)
@@ -2184,7 +724,6 @@ def _build_player_home_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]
         "support_team": support_team,
         "focus_highlights": focus_highlights,
         "player_news": player_news,
-        "player_headshot_url": player_headshot_url,
         "mlb_logo_url": mlb_logo_url,
         "schedule_calendar": schedule_calendar,
     }
@@ -2193,7 +732,7 @@ def _build_player_home_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]
 def _load_next_series_snapshot(user: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     try:
         team_abbr = _determine_user_team(user)
-        series_list = _collect_series_for_team(team_abbr, days_ahead=21)
+        series_list = _collect_series_for_team(team_abbr, days_ahead=365)
     except Exception as exc:
         print(f"Warning building next series snapshot: {exc}")
         series_list = []
@@ -2256,9 +795,10 @@ def _load_schedule_calendar(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                 {"days_offset": 10, "opponent": "New York Yankees", "opponent_abbr": "NYY", "opponent_id": 147, "is_home": False, "status": "Scheduled"},
             ]
             
-            # Generate games for the next 60 days to cover multiple months
-            # Repeat the pattern every 14 days to create a realistic schedule (same as schedule page)
-            for week_offset in range(0, 5):  # 5 weeks = ~35 days, extend to 60
+            # Generate games for the next 365 days to cover full season
+            # Repeat the pattern every 14 days to create a realistic schedule
+            # Calculate weeks needed: 365 days / 14 days per cycle ≈ 26 weeks
+            for week_offset in range(0, 26):  # 26 weeks ≈ 365 days
                 for entry in mock_blueprint:
                     days_offset = entry["days_offset"] + (week_offset * 14)
                     
@@ -2274,8 +814,8 @@ def _load_schedule_calendar(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                         "venue": "TBD",
                     })
         elif next_games:
-            # Get 60 days of games to cover full months
-            games = next_games(team_abbr, days_ahead=60, include_started=True)
+            # Get 365 days of games to show all upcoming games (same as gameday hub)
+            games = next_games(team_abbr, days_ahead=365, include_started=True)
         else:
             return []
         
@@ -2343,8 +883,18 @@ def _load_full_season_schedule(user: Dict[str, Any], start_date: Optional[str] =
         games = []
         if use_mock:
             # Get mock games with raw date data (same as calendar widget)
-            now = datetime.now().astimezone()
-            base_first_pitch = now.replace(hour=19, minute=10, second=0, microsecond=0)
+            # Start from start_date (March 1st) or today, whichever is later
+            if start_dt > datetime.now().date():
+                # Season hasn't started yet, start from season start date
+                base_date = start_dt
+            else:
+                # Season has started, use today
+                base_date = datetime.now().date()
+            
+            # Create base datetime for game times (7:10 PM)
+            base_first_pitch = datetime.combine(base_date, datetime.min.time().replace(hour=19, minute=10))
+            if base_first_pitch.tzinfo is None:
+                base_first_pitch = base_first_pitch.replace(tzinfo=datetime.now().astimezone().tzinfo)
             
             mock_blueprint = [
                 {"days_offset": 0, "opponent": "Washington Nationals", "opponent_abbr": "WSH", "opponent_id": 120, "is_home": True, "status": "Scheduled"},
@@ -2356,9 +906,13 @@ def _load_full_season_schedule(user: Dict[str, Any], start_date: Optional[str] =
                 {"days_offset": 10, "opponent": "New York Yankees", "opponent_abbr": "NYY", "opponent_id": 147, "is_home": False, "status": "Scheduled"},
             ]
             
-            # Generate games for the next 60 days to cover multiple months
+            # Generate games for the full season (March to October)
+            # Calculate how many weeks we need to cover from start_date to end_date
+            days_span = (end_dt - start_dt).days
+            weeks_needed = max(1, (days_span // 14) + 2)  # Add buffer
+            
             # Repeat the pattern every 14 days to create a realistic schedule
-            for week_offset in range(0, 5):  # 5 weeks = ~35 days, extend to 60
+            for week_offset in range(0, weeks_needed):
                 for entry in mock_blueprint:
                     days_offset = entry["days_offset"] + (week_offset * 14)
                     
@@ -2383,10 +937,16 @@ def _load_full_season_schedule(user: Dict[str, Any], start_date: Optional[str] =
             if days_ahead == 0:
                 days_ahead = 365  # If end date is in past, get a full year
             
-            # Get all games in range
-            games = next_games(team_abbr, days_ahead=min(days_ahead, 365), include_started=True)
+            # Get all games in range - USE REAL DATA ONLY
+            try:
+                games = next_games(team_abbr, days_ahead=min(days_ahead, 365), include_started=True)
+                print(f"Loaded {len(games)} games from real API for {team_abbr}")
+            except Exception as e:
+                print(f"Error fetching games from API: {e}")
+                games = []
         else:
-            return []
+            print(f"Warning: next_games not available, cannot load real schedule data")
+            games = []
         
         # Filter by date range if provided
         filtered_games = []
@@ -2442,7 +1002,7 @@ def _load_player_deliverables(user: Dict[str, Any]) -> Tuple[Optional[Dict[str, 
             db.close()
 
     if not rows:
-        return _sample_deliverables()
+        return None, [], 0
 
     now_local = datetime.now(timezone.utc).astimezone()
     deliverables: List[Dict[str, Any]] = []
@@ -2842,6 +1402,13 @@ def _load_player_news(user: Dict[str, Any]) -> List[Dict[str, Any]]:
         return []
     
     player_name = f"{first_name} {last_name}"
+    
+    # Check cache first (5 minute TTL for fast repeated loads)
+    cache_key = f"news_{player_name}"
+    cached = _cache_get(_PLAYER_NEWS_CACHE, cache_key)
+    if cached is not None:
+        return cached
+    
     player_news_items = []
     league_news_items = []
     
@@ -2862,6 +1429,104 @@ def _load_player_news(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                 return True
             return False
         return True
+    
+    # Helper function to parse date for sorting (newest first)
+    def parse_date_for_sort(date_str):
+        if not date_str:
+            return datetime.min.replace(tzinfo=timezone.utc)
+        try:
+            from dateutil import parser
+            parsed = parser.parse(date_str)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed
+        except (ImportError, Exception):
+            # Fallback to datetime.strptime for common formats
+            date_formats = [
+                "%Y-%m-%dT%H:%M:%S%z",
+                "%Y-%m-%dT%H:%M:%S",
+                "%Y-%m-%d %H:%M:%S",
+                "%Y-%m-%d",
+                "%m/%d/%Y",
+            ]
+            for fmt in date_formats:
+                try:
+                    parsed = datetime.strptime(date_str, fmt)
+                    if parsed.tzinfo is None:
+                        parsed = parsed.replace(tzinfo=timezone.utc)
+                    return parsed
+                except ValueError:
+                    continue
+        return datetime.min.replace(tzinfo=timezone.utc)
+    
+    # Helper function to fetch image for a news item (called only for selected items)
+    # OPTIMIZED: Skip article page fetching - only use RSS feed images (much faster)
+    def fetch_news_image(link, entry=None, headers=None):
+        """Fetch image URL for a news item from RSS feed only. Returns None if no good image found."""
+        if not entry:
+            return None
+        
+        image_url = None
+        
+        # Use RSS feed images only (skip slow article page fetching)
+        # Try media_content
+        if entry.get('media_content'):
+            media = entry.get('media_content', [])
+            if isinstance(media, list) and len(media) > 0:
+                media_item = media[0]
+                candidate = None
+                if isinstance(media_item, dict):
+                    candidate = media_item.get('url')
+                elif isinstance(media_item, str):
+                    candidate = media_item
+                if candidate and is_good_image_url(candidate):
+                    image_url = candidate
+        
+        # Try media_thumbnail
+        if not image_url and entry.get('media_thumbnail'):
+            thumb = entry.get('media_thumbnail', [])
+            if isinstance(thumb, list) and len(thumb) > 0:
+                thumb_item = thumb[0]
+                candidate = None
+                if isinstance(thumb_item, dict):
+                    candidate = thumb_item.get('url')
+                elif isinstance(thumb_item, str):
+                    candidate = thumb_item
+                if candidate and is_good_image_url(candidate):
+                    image_url = candidate
+        
+        # Try to extract from summary/description HTML
+        if not image_url:
+            summary_html = entry.get('summary', entry.get('description', ''))
+            if summary_html and '<img' in summary_html:
+                try:
+                    soup = BeautifulSoup(summary_html, 'html.parser')
+                    for img_tag in soup.find_all('img'):
+                        candidate = img_tag.get('src')
+                        if candidate:
+                            # Handle relative URLs
+                            if not candidate.startswith('http'):
+                                if candidate.startswith('//'):
+                                    candidate = 'https:' + candidate
+                                elif candidate.startswith('/'):
+                                    try:
+                                        from urllib.parse import urlparse
+                                        parsed = urlparse(link)
+                                        candidate = f"{parsed.scheme}://{parsed.netloc}{candidate}"
+                                    except:
+                                        continue
+                            
+                            if is_good_image_url(candidate):
+                                image_url = candidate
+                                break
+                except:
+                    pass
+        
+        # If we only have a Google proxy image, set to None to use fallback icon
+        if image_url and not is_good_image_url(image_url):
+            image_url = None
+        
+        return image_url
     
     try:
         import feedparser
@@ -2893,10 +1558,10 @@ def _load_player_news(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                         feed = feedparser.parse(response.content)
                         
                         if feed.entries and len(feed.entries) > 0:
+                            # Collect all matching entries first, then sort by date
+                            matching_entries = []
+                            
                             for entry in feed.entries[:20]:
-                                if len(player_news_items) >= 2:
-                                    break
-                                
                                 title = entry.get('title', '')
                                 # Clean Google News title (remove " - Source" suffix)
                                 if ' - ' in title:
@@ -2917,8 +1582,9 @@ def _load_player_news(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                                     last_lower in search_text or
                                     (first_name.lower() in search_text and last_lower in search_text)):
                                     
-                                    # Skip duplicates
-                                    if any(existing.get('title', '').lower().startswith(title.lower()[:50]) for existing in player_news_items):
+                                    # Skip duplicates (check against both existing items and collected matches)
+                                    if (any(existing.get('title', '').lower().startswith(title.lower()[:50]) for existing in player_news_items) or
+                                        any(existing.get('title', '').lower().startswith(title.lower()[:50]) for existing in matching_entries)):
                                         continue
                                     
                                     # Determine category
@@ -2930,177 +1596,40 @@ def _load_player_news(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                                     elif any(word in search_text for word in ['injury', 'health', 'disabled list', 'dl']):
                                         category = "Health"
                                     
-                                    # Try to fetch image from article page first (best quality)
-                                    image_url = None
-                                    if link and link != '#':
-                                        try:
-                                            article_response = requests.get(link, headers=headers, timeout=5, allow_redirects=True)
-                                            if article_response.status_code == 200:
-                                                article_soup = BeautifulSoup(article_response.text, 'html.parser')
-                                                
-                                                # Try og:image first (usually best quality)
-                                                og_image = article_soup.find('meta', property='og:image')
-                                                if og_image and og_image.get('content'):
-                                                    candidate = og_image.get('content')
-                                                    if is_good_image_url(candidate):
-                                                        image_url = candidate
-                                                
-                                                # Try twitter:image as backup
-                                                if not image_url:
-                                                    twitter_image = article_soup.find('meta', attrs={'name': 'twitter:image'})
-                                                    if twitter_image and twitter_image.get('content'):
-                                                        candidate = twitter_image.get('content')
-                                                        if is_good_image_url(candidate):
-                                                            image_url = candidate
-                                                
-                                                # Try to find article hero/main image
-                                                if not image_url:
-                                                    # Look for images with specific classes/attributes that indicate article images
-                                                    for img in article_soup.find_all('img', src=True):
-                                                        img_src = img.get('src', '')
-                                                        if not img_src:
-                                                            continue
-                                                        
-                                                        # Handle relative URLs
-                                                        if not img_src.startswith('http'):
-                                                            if img_src.startswith('//'):
-                                                                img_src = 'https:' + img_src
-                                                            else:
-                                                                try:
-                                                                    from urllib.parse import urljoin
-                                                                    img_src = urljoin(link, img_src)
-                                                                except:
-                                                                    continue
-                                                        
-                                                        if not is_good_image_url(img_src):
-                                                            continue
-                                                        
-                                                        # Check for article image indicators
-                                                        img_class = img.get('class', [])
-                                                        img_id = img.get('id', '')
-                                                        parent_class = ''
-                                                        if img.parent:
-                                                            parent_class = ' '.join(img.parent.get('class', []))
-                                                        
-                                                        search_text = ' '.join([
-                                                            ' '.join(img_class) if isinstance(img_class, list) else str(img_class),
-                                                            img_id,
-                                                            parent_class,
-                                                            img_src.lower()
-                                                        ]).lower()
-                                                        
-                                                        # Prefer images that look like article images
-                                                        if any(keyword in search_text for keyword in ['article', 'news', 'story', 'feature', 'hero', 'main', 'headline', 'lead', 'cover']):
-                                                            image_url = img_src
-                                                            break
-                                                    
-                                                    # If still no image, take first decent-sized image
-                                                    if not image_url:
-                                                        for img in article_soup.find_all('img', src=True):
-                                                            img_src = img.get('src', '')
-                                                            if not img_src:
-                                                                continue
-                                                            
-                                                            # Handle relative URLs
-                                                            if not img_src.startswith('http'):
-                                                                if img_src.startswith('//'):
-                                                                    img_src = 'https:' + img_src
-                                                                else:
-                                                                    try:
-                                                                        from urllib.parse import urljoin
-                                                                        img_src = urljoin(link, img_src)
-                                                                    except:
-                                                                        continue
-                                                            
-                                                            if is_good_image_url(img_src):
-                                                                # Check image dimensions if available
-                                                                width = img.get('width')
-                                                                height = img.get('height')
-                                                                if width and height:
-                                                                    try:
-                                                                        w, h = int(width), int(height)
-                                                                        if w >= 200 and h >= 150:  # Reasonable size
-                                                                            image_url = img_src
-                                                                            break
-                                                                    except:
-                                                                        pass
-                                                                else:
-                                                                    # No dimensions, but URL looks good
-                                                                    image_url = img_src
-                                                                    break
-                                        except Exception as e:
-                                            pass  # Don't fail if we can't fetch the article
-                                    
-                                    # Fallback to RSS feed images only if we didn't get a good one from article
-                                    if not image_url:
-                                        # Try media_content
-                                        if entry.get('media_content'):
-                                            media = entry.get('media_content', [])
-                                            if isinstance(media, list) and len(media) > 0:
-                                                media_item = media[0]
-                                                candidate = None
-                                                if isinstance(media_item, dict):
-                                                    candidate = media_item.get('url')
-                                                elif isinstance(media_item, str):
-                                                    candidate = media_item
-                                                if candidate and is_good_image_url(candidate):
-                                                    image_url = candidate
-                                        
-                                        # Try media_thumbnail
-                                        if not image_url and entry.get('media_thumbnail'):
-                                            thumb = entry.get('media_thumbnail', [])
-                                            if isinstance(thumb, list) and len(thumb) > 0:
-                                                thumb_item = thumb[0]
-                                                candidate = None
-                                                if isinstance(thumb_item, dict):
-                                                    candidate = thumb_item.get('url')
-                                                elif isinstance(thumb_item, str):
-                                                    candidate = thumb_item
-                                                if candidate and is_good_image_url(candidate):
-                                                    image_url = candidate
-                                        
-                                        # Try to extract from summary/description HTML
-                                        if not image_url:
-                                            summary_html = entry.get('summary', entry.get('description', ''))
-                                            if summary_html and '<img' in summary_html:
-                                                try:
-                                                    from bs4 import BeautifulSoup
-                                                    soup = BeautifulSoup(summary_html, 'html.parser')
-                                                    for img_tag in soup.find_all('img'):
-                                                        candidate = img_tag.get('src')
-                                                        if candidate:
-                                                            # Handle relative URLs
-                                                            if not candidate.startswith('http'):
-                                                                if candidate.startswith('//'):
-                                                                    candidate = 'https:' + candidate
-                                                                elif candidate.startswith('/'):
-                                                                    try:
-                                                                        from urllib.parse import urlparse
-                                                                        parsed = urlparse(link)
-                                                                        candidate = f"{parsed.scheme}://{parsed.netloc}{candidate}"
-                                                                    except:
-                                                                        continue
-                                                            
-                                                            if is_good_image_url(candidate):
-                                                                image_url = candidate
-                                                                break
-                                                except:
-                                                    pass
-                                    
-                                    # If we only have a Google proxy image, set to None to use fallback icon
-                                    if image_url and not is_good_image_url(image_url):
-                                        image_url = None
-                                    
-                                    player_news_items.append({
+                                    # Store basic info first (no image fetching yet - that's expensive)
+                                    matching_entries.append({
                                         "category": category,
                                         "title": title[:100] + "..." if len(title) > 100 else title,
                                         "description": (summary[:150] + "..." if len(summary) > 150 else summary) or "Read more...",
-                                        "time_ago": _format_news_time(published),
+                                        "published_date": published,  # Keep raw date for sorting
                                         "link": link,
                                         "icon": _get_news_icon(category),
-                                        "image": image_url,
-                                        "type": "player"
+                                        "type": "player",
+                                        "entry": entry,  # Store entry for later image fetching
                                     })
+                            
+                            # Sort matching entries by date (newest first) and take top 2
+                            if matching_entries:
+                                matching_entries.sort(
+                                    key=lambda x: parse_date_for_sort(x.get("published_date", "")),
+                                    reverse=True
+                                )
+                                # Add up to 2 items (or however many we still need)
+                                needed = 2 - len(player_news_items)
+                                selected_entries = matching_entries[:needed]
+                                
+                                # Now fetch images only for the selected items
+                                for item in selected_entries:
+                                    image_url = fetch_news_image(item["link"], item.get("entry"), headers)
+                                    # Remove entry from final item (not needed in output)
+                                    entry_data = item.pop("entry", None)
+                                    item["image"] = image_url
+                                    item["time_ago"] = _format_news_time(item["published_date"])
+                                    # Remove published_date from final output (only used for sorting)
+                                    item.pop("published_date", None)
+                                
+                                player_news_items.extend(selected_entries)
+                                
                 except Exception as e:
                     print(f"Warning: Could not fetch Google News for query '{query}': {e}")
                     continue
@@ -3127,10 +1656,10 @@ def _load_player_news(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                         feed = feedparser.parse(response.content)
                         
                         if feed.entries and len(feed.entries) > 0:
+                            # Collect all matching entries first, then sort by date
+                            matching_entries = []
+                            
                             for entry in feed.entries[:20]:
-                                if len(league_news_items) >= 2:
-                                    break
-                                
                                 title = entry.get('title', '')
                                 # Clean Google News title
                                 if ' - ' in title:
@@ -3151,8 +1680,9 @@ def _load_player_news(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                                     (first_name.lower() in search_text and last_lower in search_text)):
                                     continue  # Skip player-specific news
                                 
-                                # Skip duplicates
-                                if any(existing.get('title', '').lower().startswith(title.lower()[:50]) for existing in league_news_items):
+                                # Skip duplicates (check against both existing items and collected matches)
+                                if (any(existing.get('title', '').lower().startswith(title.lower()[:50]) for existing in league_news_items) or
+                                    any(existing.get('title', '').lower().startswith(title.lower()[:50]) for existing in matching_entries)):
                                     continue
                                 
                                 # Determine category
@@ -3162,35 +1692,40 @@ def _load_player_news(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                                 elif any(word in search_text for word in ['stat', 'performance', 'batting', 'hitting']):
                                     category = "Performance"
                                 
-                                # Try to fetch image from article page
-                                image_url = None
-                                if link and link != '#':
-                                    try:
-                                        article_response = requests.get(link, headers=headers, timeout=5, allow_redirects=True)
-                                        if article_response.status_code == 200:
-                                            article_soup = BeautifulSoup(article_response.text, 'html.parser')
-                                            og_image = article_soup.find('meta', property='og:image')
-                                            if og_image and og_image.get('content'):
-                                                candidate = og_image.get('content')
-                                                if is_good_image_url(candidate):
-                                                    image_url = candidate
-                                    except:
-                                        pass
-                                
-                                # If we only have a Google proxy image, set to None
-                                if image_url and not is_good_image_url(image_url):
-                                    image_url = None
-                                
-                                league_news_items.append({
+                                # Store basic info first (no image fetching yet - that's expensive)
+                                matching_entries.append({
                                     "category": category,
                                     "title": title[:100] + "..." if len(title) > 100 else title,
                                     "description": (summary[:150] + "..." if len(summary) > 150 else summary) or "Read more...",
-                                    "time_ago": _format_news_time(published),
+                                    "published_date": published,  # Keep raw date for sorting
                                     "link": link,
                                     "icon": _get_news_icon(category),
-                                    "image": image_url,
-                                    "type": "league"
+                                    "type": "league",
+                                    "entry": entry,  # Store entry for later image fetching
                                 })
+                            
+                            # Sort matching entries by date (newest first) and take top 2
+                            if matching_entries:
+                                matching_entries.sort(
+                                    key=lambda x: parse_date_for_sort(x.get("published_date", "")),
+                                    reverse=True
+                                )
+                                # Add up to 2 items (or however many we still need)
+                                needed = 2 - len(league_news_items)
+                                selected_entries = matching_entries[:needed]
+                                
+                                # Now fetch images only for the selected items
+                                for item in selected_entries:
+                                    image_url = fetch_news_image(item["link"], item.get("entry"), headers)
+                                    # Remove entry from final item (not needed in output)
+                                    entry_data = item.pop("entry", None)
+                                    item["image"] = image_url
+                                    item["time_ago"] = _format_news_time(item["published_date"])
+                                    # Remove published_date from final output (only used for sorting)
+                                    item.pop("published_date", None)
+                                
+                                league_news_items.extend(selected_entries)
+                                
                 except Exception as e:
                     print(f"Warning: Could not fetch league news for query '{query}': {e}")
                     continue
@@ -3215,10 +1750,10 @@ def _load_player_news(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                 try:
                     feed = feedparser.parse(rss_url)
                     if feed.entries and len(feed.entries) > 0:
+                        # Collect all matching entries first, then sort by date
+                        matching_entries = []
+                        
                         for entry in feed.entries[:30]:
-                            if len(player_news_items) >= 2:
-                                break
-                            
                             title = entry.get('title', '')
                             summary = entry.get('summary', entry.get('description', ''))
                             link = entry.get('link', '#')
@@ -3232,8 +1767,9 @@ def _load_player_news(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                                 last_lower in search_text or
                                 (first_name.lower() in search_text and last_lower in search_text)):
                                 
-                                # Skip duplicates
-                                if any(existing.get('title', '').lower().startswith(title.lower()[:50]) for existing in player_news_items):
+                                # Skip duplicates (check against both existing items and collected matches)
+                                if (any(existing.get('title', '').lower().startswith(title.lower()[:50]) for existing in player_news_items) or
+                                    any(existing.get('title', '').lower().startswith(title.lower()[:50]) for existing in matching_entries)):
                                     continue
                                 
                                 category = "MLB News"
@@ -3242,51 +1778,40 @@ def _load_player_news(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                                 elif any(word in search_text for word in ['stat', 'performance', 'batting', 'hitting', 'home run', 'homer']):
                                     category = "Performance"
                                 
-                                # Try to extract image
-                                image_url = None
-                                # Try to fetch from article page first
-                                if link and link != '#':
-                                    try:
-                                        article_response = requests.get(link, headers=rss_headers, timeout=5, allow_redirects=True)
-                                        if article_response.status_code == 200:
-                                            article_soup = BeautifulSoup(article_response.text, 'html.parser')
-                                            og_image = article_soup.find('meta', property='og:image')
-                                            if og_image and og_image.get('content'):
-                                                candidate = og_image.get('content')
-                                                if is_good_image_url(candidate):
-                                                    image_url = candidate
-                                    except:
-                                        pass
-                                
-                                # Fallback to RSS feed images
-                                if not image_url:
-                                    if entry.get('media_content'):
-                                        media = entry.get('media_content', [])
-                                        if isinstance(media, list) and len(media) > 0:
-                                            candidate = media[0].get('url') if isinstance(media[0], dict) else None
-                                            if candidate and is_good_image_url(candidate):
-                                                image_url = candidate
-                                    if not image_url and entry.get('media_thumbnail'):
-                                        thumb = entry.get('media_thumbnail', [])
-                                        if isinstance(thumb, list) and len(thumb) > 0:
-                                            candidate = thumb[0].get('url') if isinstance(thumb[0], dict) else None
-                                            if candidate and is_good_image_url(candidate):
-                                                image_url = candidate
-                                
-                                # If we only have a bad image, set to None to use fallback icon
-                                if image_url and not is_good_image_url(image_url):
-                                    image_url = None
-                                
-                                player_news_items.append({
+                                # Store basic info first (no image fetching yet - that's expensive)
+                                matching_entries.append({
                                     "category": category,
                                     "title": title[:100] + "..." if len(title) > 100 else title,
                                     "description": (summary[:150] + "..." if len(summary) > 150 else summary) or "Read more...",
-                                    "time_ago": _format_news_time(published),
+                                    "published_date": published,  # Keep raw date for sorting
                                     "link": link,
                                     "icon": _get_news_icon(category),
-                                    "image": image_url,
-                                    "type": "player"
+                                    "type": "player",
+                                    "entry": entry,  # Store entry for later image fetching
                                 })
+                        
+                        # Sort matching entries by date (newest first) and take top items needed
+                        if matching_entries:
+                            matching_entries.sort(
+                                key=lambda x: parse_date_for_sort(x.get("published_date", "")),
+                                reverse=True
+                            )
+                            # Add up to 2 items (or however many we still need)
+                            needed = 2 - len(player_news_items)
+                            selected_entries = matching_entries[:needed]
+                            
+                            # Now fetch images only for the selected items
+                            for item in selected_entries:
+                                image_url = fetch_news_image(item["link"], item.get("entry"), rss_headers)
+                                # Remove entry from final item (not needed in output)
+                                entry_data = item.pop("entry", None)
+                                item["image"] = image_url
+                                item["time_ago"] = _format_news_time(item["published_date"])
+                                # Remove published_date from final output (only used for sorting)
+                                item.pop("published_date", None)
+                            
+                            player_news_items.extend(selected_entries)
+                            
                 except Exception as e:
                     print(f"Warning: Could not parse RSS feed {rss_url}: {e}")
                     continue
@@ -3429,7 +1954,12 @@ def _load_player_news(user: Dict[str, Any]) -> List[Dict[str, Any]]:
     
     # Combine player and league news: 2 player-specific, 2 league-wide
     combined_news = player_news_items[:2] + league_news_items[:2]
-    return combined_news if combined_news else []
+    result = combined_news if combined_news else []
+    
+    # Cache the result for 5 minutes (300 seconds) for fast repeated loads
+    _cache_set(_PLAYER_NEWS_CACHE, cache_key, result, ttl_seconds=300)
+    
+    return result
 
 
 def _format_news_time(date_str: Optional[str]) -> str:
@@ -3469,11 +1999,15 @@ def _format_news_time(date_str: Optional[str]) -> str:
         
         delta = now - news_date
         days = delta.days
-        hours = delta.seconds // 3600
+        total_seconds = delta.total_seconds()
+        hours = int(total_seconds // 3600)
+        minutes = int((total_seconds % 3600) // 60)
         
         if days == 0:
-            if hours == 0:
+            if total_seconds < 60:
                 return "Just now"
+            elif hours == 0:
+                return f"{minutes} min{'s' if minutes != 1 else ''} ago"
             return f"{hours} hour{'s' if hours != 1 else ''} ago"
         elif days == 1:
             return "Yesterday"
@@ -3861,7 +2395,7 @@ def pitchviz():
 def contractviz():
     """ContractViz analysis page"""
     # Base URL for the ContractViz webapp
-    base_url = "https://contract-viz-boras.vercel.app/"
+    base_url = "https://contract-viz.vercel.app/"
     
     # Build the URL (can add query parameters here if needed in the future)
     contractviz_url = base_url
@@ -4018,22 +2552,25 @@ def api_csv_player_seasons(player_name):
             
             if seasons:
                 seasons_str = sorted([str(s) for s in seasons], reverse=True)
+                # Use the actual name from the data (preserves accents)
+                actual_name = player_data.get('name', player_name)
                 return jsonify({
-                    "player": player_name,
+                    "player": actual_name,
                     "seasons": seasons_str
                 })
         
         # Fallback: Get all players summary to find this player
         players = csv_loader.get_all_players_summary()
-        player_name_lower = player_name.lower().strip()
+        # Use normalization for matching
+        player_name_normalized = csv_loader._normalize_name(player_name)
         
         for player in players:
-            if player.get('name', '').lower().strip() == player_name_lower:
+            if csv_loader._normalize_name(player.get('name', '')) == player_name_normalized:
                 seasons = player.get('seasons', [])
                 # Ensure seasons are strings for the dropdown
                 seasons_str = [str(s) for s in seasons] if seasons else []
                 return jsonify({
-                    "player": player.get('name'),
+                    "player": player.get('name'),  # Return original name with accents
                     "seasons": seasons_str
                 })
         
@@ -4063,11 +2600,11 @@ def api_csv_player_data(player_name):
 
 @app.route('/api/players/sync', methods=['POST'])
 def api_sync_players():
-    """Trigger database sync from Sportradar (background job)"""
+    """Trigger database sync (background job)"""
     # This would trigger a background sync job
     # For now, return a message indicating it needs to be run manually
     return jsonify({
-        "message": "Sync initiated. This is a long-running operation. Run src/populate_players.py manually.",
+        "message": "Sync initiated. This is a long-running operation.",
         "status": "queued"
     }), 202
 
@@ -8470,6 +7007,8 @@ def journaling():
     selected_date_raw = request.values.get("date") if request.method == "GET" else request.form.get("entry_date")
     if not selected_date_raw:
         selected_date_raw = today_iso
+    # Check if we should reset the form (after saving)
+    should_reset_form = request.values.get("reset") == "1"
 
     entry_errors: List[str] = []
     just_saved = False
@@ -8507,10 +7046,14 @@ def journaling():
                 )
                 flash("Journal entry saved.", "success")
                 just_saved = True
+                # Redirect to today to reset form for new entry
+                # The saved entry will appear in the timeline automatically
+                # Use 'reset=1' parameter to indicate we should show blank form
                 return redirect(url_for(
                     "journaling",
-                    date=entry_date,
+                    date=today_iso,
                     visibility=visibility_choice,
+                    reset=1,
                 ))
             except ValueError as exc:
                 entry_errors.append(str(exc))
@@ -8538,16 +7081,22 @@ def journaling():
             timeline_entries = _prepare_journal_timeline(entries)
 
             # Ensure the selected date corresponds to an existing entry if possible
-            known_dates = {item["date"] for item in timeline_entries}
-            if selected_date_raw not in known_dates and timeline_entries:
-                selected_date_raw = timeline_entries[0]["date"]
+            # But skip this if we're resetting the form after save
+            if not should_reset_form:
+                known_dates = {item["date"] for item in timeline_entries}
+                if selected_date_raw not in known_dates and timeline_entries:
+                    selected_date_raw = timeline_entries[0]["date"]
 
-            current_entry = db.get_journal_entry(
-                user_id=viewer_user["id"],
-                entry_date=selected_date_raw,
-                visibility=selected_visibility,
-            )
-            current_entry = _augment_journal_entry(current_entry)
+            # Don't load entry if we're resetting the form (after saving)
+            if should_reset_form:
+                current_entry = None
+            else:
+                current_entry = db.get_journal_entry(
+                    user_id=viewer_user["id"],
+                    entry_date=selected_date_raw,
+                    visibility=selected_visibility,
+                )
+                current_entry = _augment_journal_entry(current_entry)
         except Exception as exc:
             print(f"Warning: unable to load journal entries: {exc}")
             timeline_entries = []
@@ -8913,70 +7462,149 @@ def gameday():
     # Get date parameter if provided (from calendar click)
     requested_date = request.args.get("date")
     
-    # Get raw games first if we need to filter by date
+    # Always load full season schedule (365 days) to support date filtering and series display
     raw_games = None
-    if requested_date:
-        try:
-            filter_date = datetime.fromisoformat(requested_date).date()
-            # Get raw games to filter by date
-            use_mock = bool(app.config.get("USE_MOCK_SCHEDULE"))
-            if use_mock:
-                raw_games = _build_mock_upcoming_games(team_abbr, limit=20)
-            elif next_games:
-                try:
-                    raw_games = next_games(team_abbr, days_ahead=14)
-                except Exception:
-                    raw_games = []
-            
-            # Filter raw games by date
-            if raw_games:
-                filtered_raw = []
-                for game in raw_games:
-                    game_date_str = game.get("game_date") or game.get("game_date_iso") or game.get("date")
-                    if game_date_str:
-                        try:
-                            if isinstance(game_date_str, str):
-                                if 'T' in game_date_str:
-                                    game_date = datetime.fromisoformat(game_date_str.split('T')[0]).date()
-                                else:
-                                    game_date = datetime.fromisoformat(game_date_str).date()
-                                if game_date == filter_date:
-                                    filtered_raw.append(game)
-                        except Exception:
-                            continue
-                if filtered_raw:
-                    raw_games = filtered_raw
-        except Exception as e:
-            print(f"Warning filtering games by date {requested_date}: {e}")
-            raw_games = None
+    from datetime import date as date_type
+    today = date_type.today()
+    end_date = today + timedelta(days=365)
     
-    # Get formatted games (will use filtered raw games if available)
-    if raw_games:
-        # Format the filtered games
-        formatted = []
-        for game in raw_games[:5]:
+    try:
+        raw_games = _load_full_season_schedule(
+            target_user,
+            start_date=today.isoformat(),
+            end_date=end_date.isoformat()
+        )
+        import sys
+        print(f"DEBUG Gameday: Loaded {len(raw_games)} games from _load_full_season_schedule (date range: {today.isoformat()} to {end_date.isoformat()})", file=sys.stderr, flush=True)
+    except Exception as e:
+        import sys
+        print(f"Warning loading games from _load_full_season_schedule: {e}", file=sys.stderr, flush=True)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        raw_games = []
+    
+    # Store requested_date for later use (we'll check if it's in displayed series)
+    # Don't filter raw_games here - we want to show all displayed series, just switch tabs if needed
+    
+    # Get formatted games (will use filtered raw games if a date was requested, or all games otherwise)
+    import sys
+    print(f"DEBUG Gameday route: raw_games={raw_games is not None}, requested_date={requested_date}, num_games={len(raw_games) if raw_games else 0}", file=sys.stderr, flush=True)
+    if raw_games and len(raw_games) > 0:
+        # Format the games and group into series
+        from datetime import date as date_type
+        today = date_type.today()
+        
+        # Group games into series (consecutive games against same opponent)
+        series_groups = []
+        current_series = None
+        last_opponent_id = None
+        last_game_date = None
+        
+        # Sort games by date first
+        sorted_games = sorted(raw_games, key=lambda g: g.get("game_date", ""))
+        
+        for game in sorted_games:
             date_str = game.get("game_date") or game.get("game_date_iso") or game.get("date")
-            display_date = date_str
+            if not date_str:
+                continue
+                
+            try:
+                if isinstance(date_str, str):
+                    game_date = datetime.fromisoformat(date_str.split('T')[0] if 'T' in date_str else date_str).date()
+                else:
+                    game_date = date_str if isinstance(date_str, date_type) else datetime.combine(date_str, datetime.min.time()).date()
+            except Exception:
+                continue
+            
+            opponent_id = game.get("opponent_id")
+            
+            # Start new series if opponent changes or gap > 1 day
+            if (last_opponent_id is not None and 
+                (opponent_id != last_opponent_id or 
+                 (last_game_date and (game_date - last_game_date).days > 1))):
+                if current_series:
+                    series_groups.append(current_series)
+                current_series = None
+            
+            if not current_series:
+                current_series = {
+                    "opponent_id": opponent_id,
+                    "opponent_name": game.get("opponent_name") or game.get("opponent"),
+                    "opponent_abbr": game.get("opponent_abbr"),
+                    "games": [],
+                    "start_date": game_date,
+                    "end_date": game_date,
+                }
+            
+            current_series["games"].append(game)
+            current_series["end_date"] = max(current_series["end_date"], game_date)
+            last_opponent_id = opponent_id
+            last_game_date = game_date
+        
+        if current_series:
+            series_groups.append(current_series)
+        
+        # Sort series by start date
+        series_groups.sort(key=lambda s: s["start_date"])
+        
+        # Find the next upcoming series (first future series) to mark as "current" if no actual current series
+        next_upcoming_series_key = None
+        has_current_series = False
+        for series in series_groups:
+            if not series["games"]:
+                continue
+            series_start = series["start_date"]
+            series_end = series["end_date"]
+            if series_start <= today <= series_end:
+                has_current_series = True
+                break
+            elif series_start > today and next_upcoming_series_key is None:
+                # Store a unique key for the next upcoming series
+                next_upcoming_series_key = (series["opponent_id"], series["start_date"])
+        
+        # Format series for display
+        formatted = []
+        for series in series_groups:
+            if not series["games"]:
+                continue
+                
+            first_game = series["games"][0]
+            series_start = series["start_date"]
+            series_end = series["end_date"]
+            
+            # Determine category (past, current, future)
+            if series_end < today:
+                category = "past"
+            elif series_start <= today <= series_end:
+                category = "current"
+            elif not has_current_series and next_upcoming_series_key and (series["opponent_id"], series["start_date"]) == next_upcoming_series_key:
+                # If no actual current series, mark the next upcoming as "current" for display
+                category = "current"
+            else:
+                category = "future"
+            
+            # Format date
+            if series_start == series_end:
+                display_date = series_start.strftime("%a, %b %d")
+            else:
+                display_date = f"{series_start.strftime('%a, %b %d')} - {series_end.strftime('%b %d')}"
+            
+            game_time = first_game.get("game_datetime")
             display_time = "TBD"
-            if date_str:
-                try:
-                    if isinstance(date_str, str) and 'T' not in date_str and len(date_str) > 10:
-                        display_date = datetime.fromisoformat(date_str).strftime("%a, %b %d")
-                    elif isinstance(date_str, str):
-                        display_date = datetime.fromisoformat(date_str.split('T')[0] if 'T' in date_str else date_str).strftime("%a, %b %d")
-                except Exception:
-                    pass
-
-            game_time = game.get("game_datetime")
             if game_time:
                 try:
                     display_time = datetime.fromisoformat(game_time.replace("Z", "+00:00")).astimezone().strftime("%I:%M %p %Z")
                 except Exception:
                     display_time = "TBD"
-
-            team_abbr_code = _team_abbr_from_id(game.get("opponent_id"))
-            # Handle probable_pitchers as either list of dicts or list of strings
-            probables_raw = game.get("probable_pitchers") or []
+            
+            team_abbr_code = _team_abbr_from_id(series["opponent_id"])
+            series_label = f"{len(series['games'])}-game series" if len(series["games"]) > 1 else "Single game"
+            
+            # Get status from first game
+            status = first_game.get("status", "Scheduled")
+            
+            # Handle probable_pitchers
+            probables_raw = first_game.get("probable_pitchers") or []
             probables = []
             for p in probables_raw:
                 if isinstance(p, dict):
@@ -8985,23 +7613,212 @@ def gameday():
                         probables.append(name)
                 elif isinstance(p, str):
                     probables.append(p)
+            
             formatted.append({
                 "date": display_date,
                 "time": display_time,
-                "opponent": game.get("opponent_name") or game.get("opponent"),
+                "opponent": series["opponent_name"],
                 "opponent_abbr": team_abbr_code,
-                "opponent_id": game.get("opponent_id"),
-                "home": game.get("is_home"),
-                "venue": game.get("venue"),
-                "series": game.get("series_description") or game.get("series"),
-                "status": game.get("status"),
-                "game_pk": game.get("game_pk"),
+                "opponent_id": series["opponent_id"],
+                "home": first_game.get("is_home"),
+                "venue": first_game.get("venue"),
+                "series": series_label,
+                "status": status,
+                "game_pk": first_game.get("game_pk"),
                 "probable_pitchers": probables,
                 "reports": [],
+                "category": category,  # Add category for JavaScript filtering
             })
+        
+        # formatted is already in the correct order (same as sorted series_groups)
         upcoming_games = formatted
+        import sys
+        print(f"DEBUG Gameday: Formatted {len(upcoming_games)} series from {len(raw_games)} games", file=sys.stderr, flush=True)
+        if upcoming_games:
+            sample_series = upcoming_games[0] if upcoming_games else {}
+            print(f"DEBUG Gameday: Sample series - opponent: {sample_series.get('opponent')}, category: {sample_series.get('category')}, date: {sample_series.get('date')}", file=sys.stderr, flush=True)
+        else:
+            print(f"DEBUG Gameday: WARNING - No series formatted! raw_games had {len(raw_games)} games, series_groups had {len(series_groups)} groups", file=sys.stderr, flush=True)
     else:
-        upcoming_games = _collect_upcoming_games(team_abbr)
+        # Load full season schedule and group into series
+        from datetime import date as date_type
+        today = date_type.today()
+        
+        # Load full season schedule (same as schedule page)
+        import sys
+        try:
+            all_games = _load_full_season_schedule(target_user)
+            print(f"DEBUG Gameday: Loaded {len(all_games)} games from _load_full_season_schedule", file=sys.stderr, flush=True)
+        except Exception as e:
+            print(f"Warning loading full season schedule for gameday: {e}", file=sys.stderr, flush=True)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            all_games = []
+        
+        # Group games into series (consecutive games against same opponent)
+        series_groups = []
+        current_series = None
+        last_opponent_id = None
+        last_game_date = None
+        
+        if not all_games:
+            import sys
+            team_abbr_debug = _determine_user_team(target_user) if target_user else 'None'
+            print(f"Warning: No games returned from _load_full_season_schedule for user {target_user.get('first_name') if target_user else 'unknown'}, team={team_abbr_debug}", file=sys.stderr, flush=True)
+        
+        for game in all_games:
+            game_date_str = game.get("game_date")
+            if not game_date_str:
+                continue
+                
+            try:
+                if isinstance(game_date_str, str):
+                    game_date = datetime.fromisoformat(game_date_str.split('T')[0] if 'T' in game_date_str else game_date_str).date()
+                else:
+                    game_date = game_date_str if isinstance(game_date_str, date_type) else datetime.combine(game_date_str, datetime.min.time()).date()
+            except Exception:
+                continue
+            
+            opponent_id = game.get("opponent_id")
+            
+            # Start new series if opponent changes or gap > 1 day
+            if (last_opponent_id is not None and 
+                (opponent_id != last_opponent_id or 
+                 (last_game_date and (game_date - last_game_date).days > 1))):
+                if current_series:
+                    series_groups.append(current_series)
+                current_series = None
+            
+            if not current_series:
+                current_series = {
+                    "opponent_id": opponent_id,
+                    "opponent_name": game.get("opponent_name") or game.get("opponent"),
+                    "opponent_abbr": game.get("opponent_abbr"),
+                    "games": [],
+                    "start_date": game_date,
+                    "end_date": game_date,
+                }
+            
+            current_series["games"].append(game)
+            current_series["end_date"] = max(current_series["end_date"], game_date)
+            last_opponent_id = opponent_id
+            last_game_date = game_date
+        
+        if current_series:
+            series_groups.append(current_series)
+        
+        import sys
+        print(f"DEBUG Gameday: Created {len(series_groups)} series groups from {len(all_games)} games", file=sys.stderr, flush=True)
+        
+        # Format series for display and categorize
+        formatted_series = []
+        
+        # Find the next upcoming series (first future series)
+        next_upcoming_series = None
+        for series in series_groups:
+            if not series["games"]:
+                continue
+            series_start = series["start_date"]
+            if series_start >= today:
+                next_upcoming_series = series
+                break
+        
+        for series in series_groups:
+            if not series["games"]:
+                continue
+                
+            first_game = series["games"][0]
+            series_start = series["start_date"]
+            series_end = series["end_date"]
+            
+            # Determine if series is past, current, or upcoming
+            if series_end < today:
+                category = "past"
+            elif series_start <= today <= series_end:
+                category = "current"
+            elif series == next_upcoming_series:
+                # If no current series, mark the next upcoming series as "current" for display
+                category = "current"
+            else:
+                category = "future"
+            
+            # Format the date range
+            if series_start == series_end:
+                display_date = series_start.strftime("%a, %b %d")
+            else:
+                display_date = f"{series_start.strftime('%a, %b %d')} - {series_end.strftime('%b %d')}"
+            
+            game_time = first_game.get("game_datetime")
+            display_time = "TBD"
+            if game_time:
+                try:
+                    display_time = datetime.fromisoformat(game_time.replace("Z", "+00:00")).astimezone().strftime("%I:%M %p %Z")
+                except Exception:
+                    display_time = "TBD"
+            
+            team_abbr_code = _team_abbr_from_id(series["opponent_id"])
+            series_label = f"{len(series['games'])}-game series" if len(series["games"]) > 1 else "Single game"
+            
+            # Get status from first game
+            status = first_game.get("status", "Scheduled")
+            
+            # Handle probable_pitchers
+            probables_raw = first_game.get("probable_pitchers") or []
+            probables = []
+            for p in probables_raw:
+                if isinstance(p, dict):
+                    name = p.get("name")
+                    if name:
+                        probables.append(name)
+                elif isinstance(p, str):
+                    probables.append(p)
+            
+            formatted_game = {
+                "date": display_date,
+                "time": display_time,
+                "opponent": series["opponent_name"],
+                "opponent_abbr": team_abbr_code,
+                "opponent_id": series["opponent_id"],
+                "home": first_game.get("is_home"),
+                "venue": first_game.get("venue"),
+                "series": series_label,
+                "status": status,
+                "game_pk": first_game.get("game_pk"),
+                "probable_pitchers": probables,
+                "reports": [],
+                "category": category,  # Add category for filtering
+                "series_games": series["games"],  # Keep all games in series
+            }
+            
+            formatted_series.append(formatted_game)
+        
+        # Sort by start date - get the first game's date from series_games
+        def get_sort_key(series_item):
+            series_games = series_item.get("series_games", [])
+            if series_games and len(series_games) > 0:
+                first_game = series_games[0]
+                game_date_str = first_game.get("game_date", "")
+                if game_date_str:
+                    try:
+                        if isinstance(game_date_str, str):
+                            return datetime.fromisoformat(game_date_str.split('T')[0] if 'T' in game_date_str else game_date_str).date()
+                        return game_date_str
+                    except:
+                        return date_type.max  # Put invalid dates at end
+            return date_type.max
+        
+        formatted_series.sort(key=get_sort_key)
+        
+        # Default to showing current and upcoming series
+        upcoming_games = formatted_series
+        
+        # Debug: print how many series we found
+        import sys
+        if not upcoming_games:
+            print(f"Warning: No series found for gameday. Total games loaded: {len(all_games)}, Series groups: {len(series_groups)}, Formatted series: {len(formatted_series)}", file=sys.stderr, flush=True)
+        else:
+            categories = [g.get('category') for g in upcoming_games[:5]]
+            print(f"Gameday: Found {len(upcoming_games)} series for display (categories: {categories})", file=sys.stderr, flush=True)
     
     _schedule_auto_reports(upcoming_games, team_abbr)
 
@@ -9082,6 +7899,135 @@ def gameday():
     if not selected_league_id:
         selected_league_id = (team_metadata or {}).get("league_id") or LEAGUE_OPTIONS[0]["id"]
 
+    # Check if requested_date doesn't match any displayed series (i.e., is beyond the upcoming series)
+    show_date_redirect_note = False
+    requested_tab = None  # Will be "past", "current", or "future" if a date was requested
+    if requested_date:
+        try:
+            from datetime import date as date_type
+            today = date_type.today()
+            filter_date = datetime.fromisoformat(requested_date).date()
+            
+            # Load full season schedule to check what series are actually displayed
+            # (The displayed series are: one past, one current, one upcoming)
+            full_schedule_games = _load_full_season_schedule(
+                target_user,
+                start_date=today.isoformat(),
+                end_date=(today + timedelta(days=365)).isoformat()
+            )
+            
+            if full_schedule_games:
+                # Group into series to find which ones are displayed
+                all_series_groups = []
+                current_series = None
+                last_opponent_id = None
+                last_game_date = None
+                
+                sorted_games = sorted(full_schedule_games, key=lambda g: g.get("game_date", ""))
+                for game in sorted_games:
+                    date_str = game.get("game_date") or game.get("game_date_iso") or game.get("date")
+                    if not date_str:
+                        continue
+                    try:
+                        if isinstance(date_str, str):
+                            game_date = datetime.fromisoformat(date_str.split('T')[0] if 'T' in date_str else date_str).date()
+                        else:
+                            game_date = date_str if isinstance(date_str, date_type) else datetime.combine(date_str, datetime.min.time()).date()
+                    except Exception:
+                        continue
+                    
+                    opponent_id = game.get("opponent_id")
+                    if (last_opponent_id is not None and 
+                        (opponent_id != last_opponent_id or 
+                         (last_game_date and (game_date - last_game_date).days > 1))):
+                        if current_series:
+                            all_series_groups.append(current_series)
+                        current_series = None
+                    
+                    if not current_series:
+                        current_series = {
+                            "opponent_id": opponent_id,
+                            "start_date": game_date,
+                            "end_date": game_date,
+                        }
+                    current_series["end_date"] = max(current_series["end_date"], game_date)
+                    last_opponent_id = opponent_id
+                    last_game_date = game_date
+                
+                if current_series:
+                    all_series_groups.append(current_series)
+                
+                # Find displayed series (one past, one current, one upcoming)
+                past_series = []
+                current_series_list = []
+                upcoming_series_list = []
+                
+                for series in all_series_groups:
+                    series_start = series["start_date"]
+                    series_end = series["end_date"]
+                    if series_end < today:
+                        past_series.append(series)
+                    elif series_start <= today <= series_end:
+                        current_series_list.append(series)
+                    else:
+                        upcoming_series_list.append(series)
+                
+                past_series.sort(key=lambda s: s["start_date"], reverse=True)
+                upcoming_series_list.sort(key=lambda s: s["start_date"])
+                
+                # Get the latest date from displayed series (matching gameday hub logic)
+                displayed_series = []
+                if past_series:
+                    displayed_series.append(past_series[0])
+                if current_series_list:
+                    displayed_series.append(current_series_list[0])
+                    if upcoming_series_list:
+                        displayed_series.append(upcoming_series_list[0])
+                elif upcoming_series_list:
+                    displayed_series.append(upcoming_series_list[0])
+                    if len(upcoming_series_list) > 1:
+                        displayed_series.append(upcoming_series_list[1])
+                
+                # Check if requested date is in any displayed series and determine which tab
+                date_in_displayed = False
+                for series in displayed_series:
+                    if series["start_date"] <= filter_date <= series["end_date"]:
+                        date_in_displayed = True
+                        # Determine which tab this series belongs to by comparing series identifiers
+                        # (opponent_id and start_date) since object identity won't work
+                        series_key = (series["opponent_id"], series["start_date"])
+                        
+                        # Check past series
+                        if past_series and (past_series[0]["opponent_id"], past_series[0]["start_date"]) == series_key:
+                            requested_tab = "past"
+                        # Check current series
+                        elif current_series_list and (current_series_list[0]["opponent_id"], current_series_list[0]["start_date"]) == series_key:
+                            requested_tab = "current"
+                        # Check upcoming series
+                        elif upcoming_series_list:
+                            # Check first upcoming (which might be shown as "current" if no actual current)
+                            if (upcoming_series_list[0]["opponent_id"], upcoming_series_list[0]["start_date"]) == series_key:
+                                # If there's no current series, first upcoming is shown as "current"
+                                if not current_series_list:
+                                    requested_tab = "current"
+                                else:
+                                    requested_tab = "future"
+                            # Check second upcoming if it exists
+                            elif len(upcoming_series_list) > 1 and (upcoming_series_list[1]["opponent_id"], upcoming_series_list[1]["start_date"]) == series_key:
+                                requested_tab = "future"
+                        break
+                
+                # If date is not in displayed series and is after the latest displayed series, show note
+                if not date_in_displayed and displayed_series:
+                    latest_displayed_date = max(s["end_date"] for s in displayed_series)
+                    if filter_date > latest_displayed_date:
+                        show_date_redirect_note = True
+                        requested_tab = None  # Don't switch tabs if showing note
+        except Exception as e:
+            import sys
+            print(f"Error checking date redirect note: {e}", file=sys.stderr, flush=True)
+            pass  # If date parsing fails, don't show note
+
     return render_template(
         'gameday.html',
         team_abbr=team_abbr,
@@ -9099,6 +8045,8 @@ def gameday():
         selected_user_id=(target_user.get("id") if target_user else None),
         target_user_label=_format_user_label(target_user),
         viewer_user=viewer_user,
+        show_date_redirect_note=show_date_redirect_note,
+        default_schedule_tab=requested_tab or "current",
     )
 
 
@@ -9714,8 +8662,69 @@ def api_admin_player_series(user_id: int):
         return jsonify({"series": []})
 
     team_abbr = _determine_user_team(user)
-    series = _collect_series_for_team(team_abbr)
-    return jsonify({"series": series, "team": team_abbr})
+    # Use 365 days to match gameday hub timeframe
+    all_series = _collect_series_for_team(team_abbr, days_ahead=365)
+    
+    # Filter to show only the same series as gameday hub (one per category: current, next upcoming, most recent past)
+    from datetime import date as date_type
+    today = date_type.today()
+    
+    # Separate series by category
+    past_series = []
+    current_series_list = []
+    upcoming_series_list = []
+    
+    for series in all_series:
+        status = series.get("status", "")
+        start_str = series.get("start", "")
+        end_str = series.get("end", "")
+        
+        if not start_str or not end_str:
+            continue
+            
+        try:
+            start_dt = datetime.fromisoformat(start_str.split('T')[0] if 'T' in start_str else start_str).date()
+            end_dt = datetime.fromisoformat(end_str.split('T')[0] if 'T' in end_str else end_str).date()
+        except Exception:
+            continue
+        
+        # Categorize series (same logic as gameday hub)
+        if end_dt < today or status == "expired":
+            past_series.append(series)
+        elif start_dt <= today <= end_dt or status == "current":
+            current_series_list.append(series)
+        else:
+            upcoming_series_list.append(series)
+    
+    # Sort each category
+    past_series.sort(key=lambda s: s.get("start", ""), reverse=True)  # Most recent first
+    current_series_list.sort(key=lambda s: s.get("start", ""))
+    upcoming_series_list.sort(key=lambda s: s.get("start", ""))
+    
+    # Select the series to show (matching gameday hub logic: one per category)
+    filtered_series = []
+    
+    # Current series (or next upcoming if no current) - this is what shows in "Current Series" tab
+    if current_series_list:
+        filtered_series.append(current_series_list[0])
+        # Next upcoming after current - this is what shows in "Upcoming Series" tab
+        if upcoming_series_list:
+            filtered_series.append(upcoming_series_list[0])
+    elif upcoming_series_list:
+        # No current, so first upcoming becomes "current" - this is what shows in "Current Series" tab
+        filtered_series.append(upcoming_series_list[0])
+        # Next upcoming after that - this is what shows in "Upcoming Series" tab
+        if len(upcoming_series_list) > 1:
+            filtered_series.append(upcoming_series_list[1])
+    
+    # Most recent past series - this is what shows in "Past Series" tab
+    if past_series:
+        filtered_series.append(past_series[0])
+    
+    # Sort by start date
+    filtered_series.sort(key=lambda s: s.get("start", ""))
+    
+    return jsonify({"series": filtered_series, "team": team_abbr})
 
 
 @app.route('/api/admin/player-docs/<player_id>', methods=['GET'])

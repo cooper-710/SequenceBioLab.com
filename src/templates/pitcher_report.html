@@ -470,11 +470,6 @@
             </div>
             {% endif %}
           </div>
-          {% if player_headshot_url %}
-          <div class="header-right">
-            <img src="{{ player_headshot_url }}" alt="{{ player }}" class="header-headshot">
-          </div>
-          {% endif %}
         </div>
         <div class="header-meta">
           <div class="header-meta-item">
@@ -604,7 +599,6 @@
     {% for hitter_data in figures.oppo_hitter_checkins %}
       {% set hc = hitter_data.checkin %}
       {% set hitter_name = hitter_data.name %}
-      {% set hitter_headshot = hitter_data.headshot_url %}
       
       {% if hc and ((hc.RHP and hc.RHP != '') or (hc.LHP and hc.LHP != '')) %}
       <section class="page compact-hitter">
@@ -614,9 +608,6 @@
               <div class="h1">Opposing Hitter</div>
               <div class="hitter-name">{{ hitter_name }}</div>
             </div>
-            {% if hitter_headshot %}
-            <img src="{{ hitter_headshot }}" alt="{{ hitter_name }}" class="hitter-headshot">
-            {% endif %}
           </div>
 
           {% if hc.overall_metrics %}

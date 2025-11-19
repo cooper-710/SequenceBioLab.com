@@ -30,22 +30,30 @@
                 
                 <nav class="sidebar-nav">
                     {% if session.get('is_admin') %}
-                    <a href="{{ url_for('home') }}" class="nav-item {% if request.endpoint == 'home' %}active{% endif %}">
+                    <a href="{{ url_for('pages.home') }}" class="nav-item {% if request.endpoint == 'pages.home' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-house-chimney"></i></span>
                         <span class="nav-text">Home</span>
                     </a>
-                    <a href="{{ url_for('admin_dashboard') }}" class="nav-item {% if request.endpoint == 'admin_dashboard' %}active{% endif %}">
+                    <a href="{{ url_for('pages.admin_dashboard') }}" class="nav-item {% if request.endpoint == 'pages.admin_dashboard' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-shield-halved"></i></span>
                         <span class="nav-text">Admin</span>
                     </a>
+                    <a href="{{ url_for('pages.data_refresh') }}" class="nav-item {% if request.endpoint == 'pages.data_refresh' %}active{% endif %}">
+                        <span class="nav-icon"><i class="fas fa-database"></i></span>
+                        <span class="nav-text">Data Refresh</span>
+                    </a>
                     <div class="nav-divider"></div>
-                    <a href="{{ url_for('gameday') }}" class="nav-item {% if request.endpoint == 'gameday' %}active{% endif %}">
+                    <a href="{{ url_for('pages.gameday') }}" class="nav-item {% if request.endpoint == 'pages.gameday' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-trophy"></i></span>
                         <span class="nav-text">Gameday</span>
                     </a>
-                    <a href="{{ url_for('schedule') }}" class="nav-item {% if request.endpoint == 'schedule' %}active{% endif %}">
+                    <a href="{{ url_for('pages.schedule') }}" class="nav-item {% if request.endpoint == 'pages.schedule' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-calendar-days"></i></span>
                         <span class="nav-text">Schedule</span>
+                    </a>
+                    <a href="{{ url_for('pages.live_scores') }}" class="nav-item {% if request.endpoint == 'pages.live_scores' %}active{% endif %}">
+                        <span class="nav-icon"><i class="fas fa-baseball-ball"></i></span>
+                        <span class="nav-text">Live Scores</span>
                     </a>
                     <a href="{{ url_for('scouting_report') }}" class="nav-item {% if request.endpoint == 'scouting_report' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-clipboard-user"></i></span>
@@ -79,40 +87,44 @@
                         <span class="nav-icon"><i class="fas fa-pen-to-square"></i></span>
                         <span class="nav-text">Journaling</span>
                     </a>
+                    <a href="{{ url_for('pages.matchups') }}" class="nav-item {% if request.endpoint == 'pages.matchups' %}active{% endif %}">
+                        <span class="nav-icon"><i class="fas fa-crosshairs"></i></span>
+                        <span class="nav-text">Matchups</span>
+                    </a>
                     <a href="{{ url_for('contractviz') }}" class="nav-item {% if request.endpoint == 'contractviz' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-file-contract"></i></span>
                         <span class="nav-text">ContractViz</span>
                     </a>
                     <div class="nav-divider"></div>
-                    <a href="{{ url_for('profile_settings') }}" class="nav-item {% if request.endpoint == 'profile_settings' %}active{% endif %}">
+                    <a href="{{ url_for('pages.profile_settings') }}" class="nav-item {% if request.endpoint == 'pages.profile_settings' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-user-gear"></i></span>
                         <span class="nav-text">Profile Settings</span>
                     </a>
-                    <a href="{{ url_for('settings') }}" class="nav-item {% if request.endpoint == 'settings' %}active{% endif %}">
+                    <a href="{{ url_for('settings.settings_page') }}" class="nav-item {% if request.endpoint == 'settings.settings_page' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-sliders"></i></span>
                         <span class="nav-text">Settings</span>
                     </a>
                     <div class="nav-divider"></div>
                     {% else %}
-                    <a href="{{ url_for('home') }}" class="nav-item {% if request.endpoint == 'home' %}active{% endif %}">
+                    <a href="{{ url_for('pages.home') }}" class="nav-item {% if request.endpoint == 'pages.home' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-house-chimney"></i></span>
                         <span class="nav-text">Home</span>
                     </a>
-                    <a href="{{ url_for('gameday') }}" class="nav-item {% if request.endpoint == 'gameday' %}active{% endif %}">
+                    <a href="{{ url_for('pages.gameday') }}" class="nav-item {% if request.endpoint == 'pages.gameday' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-trophy"></i></span>
                         <span class="nav-text">Gameday</span>
                     </a>
-                    <a href="{{ url_for('schedule') }}" class="nav-item {% if request.endpoint == 'schedule' %}active{% endif %}">
+                    <a href="{{ url_for('pages.schedule') }}" class="nav-item {% if request.endpoint == 'pages.schedule' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-calendar-days"></i></span>
                         <span class="nav-text">Schedule</span>
+                    </a>
+                    <a href="{{ url_for('pages.live_scores') }}" class="nav-item {% if request.endpoint == 'pages.live_scores' %}active{% endif %}">
+                        <span class="nav-icon"><i class="fas fa-baseball-ball"></i></span>
+                        <span class="nav-text">Live Scores</span>
                     </a>
                     <a href="{{ url_for('player_database') }}" class="nav-item {% if request.endpoint == 'player_database' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-magnifying-glass"></i></span>
                         <span class="nav-text">Player Database</span>
-                    </a>
-                    <a href="{{ url_for('visuals') }}" class="nav-item {% if request.endpoint == 'visuals' %}active{% endif %}">
-                        <span class="nav-icon"><i class="fas fa-chart-line"></i></span>
-                        <span class="nav-text">Visuals</span>
                     </a>
                     <a href="{{ url_for('mocap') }}" class="nav-item {% if request.endpoint == 'mocap' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-person-running"></i></span>
@@ -130,20 +142,30 @@
                         <span class="nav-icon"><i class="fas fa-pen-to-square"></i></span>
                         <span class="nav-text">Journaling</span>
                     </a>
+                    <a href="{{ url_for('pages.matchups') }}" class="nav-item {% if request.endpoint == 'pages.matchups' %}active{% endif %}">
+                        <span class="nav-icon"><i class="fas fa-crosshairs"></i></span>
+                        <span class="nav-text">Matchups</span>
+                    </a>
                     <div class="nav-divider"></div>
-                    <a href="{{ url_for('profile_settings') }}" class="nav-item {% if request.endpoint == 'profile_settings' %}active{% endif %}">
+                    <a href="{{ url_for('pages.profile_settings') }}" class="nav-item {% if request.endpoint == 'pages.profile_settings' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-user-gear"></i></span>
                         <span class="nav-text">Profile Settings</span>
                     </a>
                     {% endif %}
                     <div class="nav-user-block">
                         <div class="nav-item nav-item-static">
-                            <span class="nav-icon"><i class="fas fa-user-circle"></i></span>
+                            <span class="nav-icon">
+                                {% if current_user and current_user.profile_image_path %}
+                                    <img src="{{ url_for('static', filename=current_user.profile_image_path) }}" alt="{{ current_user.first_name }} {{ current_user.last_name }}" class="nav-profile-picture">
+                                {% else %}
+                                    <i class="fas fa-user-circle"></i>
+                                {% endif %}
+                            </span>
                             <span class="nav-text nav-user-name">
                                 {{ session.get('first_name', '') }} {{ session.get('last_name', '') }}
                             </span>
                         </div>
-                        <form method="post" action="{{ url_for('logout') }}" class="nav-item nav-logout-form">
+                        <form method="post" action="{{ url_for('auth.logout') }}" class="nav-item nav-logout-form">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <button type="submit">
                                 <span class="nav-icon"><i class="fas fa-right-from-bracket"></i></span>
@@ -157,6 +179,14 @@
                     <p class="version-text">v1.0</p>
                 </div>
             </aside>
+            {% if user_authenticated %}
+                <!-- Sidebar Overlay for Mobile -->
+                <div class="sidebar-overlay" id="sidebarOverlay"></div>
+                <!-- Mobile Menu Button - Always visible on mobile -->
+                <button class="mobile-menu-button" id="mobileMenuButton" aria-label="Toggle menu">
+                    <img src="{{ url_for('static', filename='sequence-logo.png') }}" alt="Sequence Logo" class="mobile-menu-logo" id="mobileMenuIcon">
+                </button>
+            {% endif %}
         {% endif %}
         
         <!-- Main Content -->
@@ -189,59 +219,183 @@
     
     {% block scripts %}{% endblock %}
     <script>
-        // Sidebar toggle functionality
+        // Enhanced Sidebar toggle functionality with mobile support
         (function() {
             const sidebar = document.getElementById('sidebar');
             const sidebarToggle = document.getElementById('sidebarToggle');
             const toggleIcon = document.getElementById('sidebarToggleIcon');
+            const mobileMenuButton = document.getElementById('mobileMenuButton');
+            const mobileMenuIcon = document.getElementById('mobileMenuIcon');
             const mainContent = document.querySelector('.main-content');
+            const sidebarOverlay = document.getElementById('sidebarOverlay');
             
-            if (!sidebar || !sidebarToggle || !toggleIcon || !mainContent) {
+            if (!sidebar) {
                 return;
             }
             
-            // Check localStorage for saved state
-            const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+            // Check if mobile
+            const isMobile = () => window.innerWidth <= 1024;
             
-            // Update icon based on state
-            function updateIcon(collapsed) {
-                if (toggleIcon) {
-                    if (collapsed) {
-                        toggleIcon.classList.remove('fa-chevron-left');
-                        toggleIcon.classList.add('fa-chevron-right');
-                    } else {
-                        toggleIcon.classList.remove('fa-chevron-right');
-                        toggleIcon.classList.add('fa-chevron-left');
+            // Update icons based on state
+            function updateIcons(collapsed, isOpen = false) {
+                if (isMobile()) {
+                    // Mobile: logo stays as logo, but we can add visual feedback
+                    if (mobileMenuIcon && mobileMenuButton) {
+                        // Add/remove active class for visual feedback
+                        if (isOpen) {
+                            mobileMenuButton.classList.add('sidebar-open');
+                        } else {
+                            mobileMenuButton.classList.remove('sidebar-open');
+                        }
+                    }
+                    // Hide desktop toggle icon on mobile
+                    if (toggleIcon) {
+                        toggleIcon.style.display = 'none';
+                    }
+                } else {
+                    // Desktop: update desktop toggle icon
+                    if (toggleIcon) {
+                        toggleIcon.style.display = '';
+                        if (collapsed) {
+                            toggleIcon.className = 'fas fa-chevron-right';
+                        } else {
+                            toggleIcon.className = 'fas fa-chevron-left';
+                        }
+                    }
+                    // Hide mobile button on desktop
+                    if (mobileMenuButton) {
+                        mobileMenuButton.style.display = 'none';
                     }
                 }
             }
             
-            // Initialize sidebar state
-            if (isCollapsed) {
-                sidebar.classList.add('collapsed');
-                if (mainContent) {
-                    mainContent.classList.add('sidebar-collapsed');
-                }
-                updateIcon(true);
-            }
-            
-            // Toggle sidebar
-            if (sidebarToggle) {
-                sidebarToggle.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    
+            // Toggle sidebar function
+            function toggleSidebar() {
+                if (isMobile()) {
+                    const isOpen = sidebar.classList.contains('open');
+                    if (isOpen) {
+                        sidebar.classList.remove('open');
+                        if (sidebarOverlay) sidebarOverlay.classList.remove('active');
+                        document.body.style.overflow = '';
+                        // Show mobile button when sidebar closes
+                        if (mobileMenuButton) mobileMenuButton.style.display = 'flex';
+                    } else {
+                        sidebar.classList.add('open');
+                        if (sidebarOverlay) sidebarOverlay.classList.add('active');
+                        document.body.style.overflow = 'hidden';
+                        // Hide mobile button when sidebar opens
+                        if (mobileMenuButton) mobileMenuButton.style.display = 'none';
+                    }
+                    updateIcons(false, !isOpen);
+                } else {
                     sidebar.classList.toggle('collapsed');
                     if (mainContent) {
                         mainContent.classList.toggle('sidebar-collapsed');
                     }
-                    
-                    // Save state to localStorage
                     const nowCollapsed = sidebar.classList.contains('collapsed');
                     localStorage.setItem('sidebarCollapsed', nowCollapsed.toString());
-                    updateIcon(nowCollapsed);
+                    updateIcons(nowCollapsed, false);
+                }
+            }
+            
+            // Initialize sidebar state
+            function initSidebar() {
+                if (isMobile()) {
+                    // Mobile: start closed (hidden)
+                    sidebar.classList.remove('open', 'collapsed');
+                    if (sidebarOverlay) sidebarOverlay.classList.remove('active');
+                    if (mainContent) mainContent.classList.remove('sidebar-collapsed');
+                    document.body.style.overflow = '';
+                    // Show mobile button, hide desktop button
+                    if (mobileMenuButton) mobileMenuButton.style.display = 'flex';
+                    if (sidebarToggle) sidebarToggle.style.display = 'none';
+                    updateIcons(false, false);
+                } else {
+                    // Desktop: use saved state
+                    const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+                    sidebar.classList.remove('open');
+                    if (sidebarOverlay) sidebarOverlay.classList.remove('active');
+                    // Show desktop button, hide mobile button
+                    if (mobileMenuButton) mobileMenuButton.style.display = 'none';
+                    if (sidebarToggle) sidebarToggle.style.display = 'flex';
+                    if (isCollapsed) {
+                        sidebar.classList.add('collapsed');
+                        if (mainContent) {
+                            mainContent.classList.add('sidebar-collapsed');
+                        }
+                    }
+                    updateIcons(isCollapsed, false);
+                }
+            }
+            
+            // Initialize on load
+            initSidebar();
+            
+            // Toggle sidebar - both buttons use same function
+            if (sidebarToggle) {
+                sidebarToggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleSidebar();
                 });
             }
+            
+            if (mobileMenuButton) {
+                mobileMenuButton.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleSidebar();
+                });
+            }
+            
+            // Close sidebar on overlay click (mobile)
+            if (sidebarOverlay) {
+                sidebarOverlay.addEventListener('click', function() {
+                    if (isMobile() && sidebar.classList.contains('open')) {
+                        sidebar.classList.remove('open');
+                        sidebarOverlay.classList.remove('active');
+                        document.body.style.overflow = '';
+                        // Show mobile button when sidebar closes
+                        if (mobileMenuButton) mobileMenuButton.style.display = 'flex';
+                        updateIcons(false, false);
+                    }
+                });
+            }
+            
+            // Close sidebar on navigation click (mobile)
+            function setupMobileNavClose() {
+                if (isMobile()) {
+                    const navItems = sidebar.querySelectorAll('.nav-item');
+                    navItems.forEach(item => {
+                        // Remove existing listeners by cloning
+                        const newItem = item.cloneNode(true);
+                        item.parentNode.replaceChild(newItem, item);
+                        newItem.addEventListener('click', function() {
+                            setTimeout(() => {
+                                if (sidebar.classList.contains('open')) {
+                                    sidebar.classList.remove('open');
+                                    if (sidebarOverlay) sidebarOverlay.classList.remove('active');
+                                    document.body.style.overflow = '';
+                                    // Show mobile button when sidebar closes
+                                    if (mobileMenuButton) mobileMenuButton.style.display = 'flex';
+                                    updateIcons(false, false);
+                                }
+                            }, 150);
+                        });
+                    });
+                }
+            }
+            setupMobileNavClose();
+            
+            // Handle window resize
+            let resizeTimer;
+            window.addEventListener('resize', function() {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(function() {
+                    initSidebar();
+                    setupMobileNavClose();
+                }, 250);
+            });
         })();
 
         // Auto-dismiss flash messages after 5 seconds

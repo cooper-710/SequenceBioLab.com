@@ -3,8 +3,11 @@ __pycache__/
 *.py[cod]
 *.so
 *.dylib
+
+# Logs directory and log files
+logs/
 *.log
-*.sqlite*
+
 # Python virtual environments
 venv/
 .venv/
@@ -26,14 +29,36 @@ desktop-app/dist/
 desktop-app/build/
 desktop-app/.vite/
 
+# Data backups
+data/backups/
+*.csv.backup_*
+*_backup_*.csv
+
+# Settings backups
+config/backups/
+config/*.backup.json
+
+# Database backups
+*.db.backup
+
 # Secrets/tokens
 build/token.txt
 
 # Config files with sensitive data
 config/settings.json
-server.log
 
 # Local environment files
 .env
 .env.*
+
+# Temporary/system files
+Terminal
+~/
+*.swp
+*.swo
+*~
+
+# Backup Python files
+*.backup.py
+*_backup.py
 

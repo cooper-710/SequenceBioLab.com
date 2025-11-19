@@ -1,0 +1,935 @@
+
+
+# api_visuals_heatmap
+@app.route('/api/visuals/heatmap', methods=['GET'])
+def api_visuals_heatmap():
+    """Get heatmap data for visualization - returns location-based heatmap data"""
+    if not csv_loader:
+        return jsonify({"error": "CSV data loader not available"}), 500
+    
+    try:
+        player_name = request.args.get('player', '').strip()
+        if not player_name:
+            return jsonify({"error": "Player name is required"}), 400
+        
+        metric = request.args.get('metric', '').strip()
+        if not metric:
+            return jsonify({"error": "Metric is required"}), 400
+        
+        season = request.args.get('season', '').strip() or None
+        if season:
+            try:
+                season = int(season)
+            except ValueError:
+                season = None
+        
+        team = request.args.get('team', '').strip() or None
+        position = request.args.get('position', '').strip() or None
+        count = request.args.get('count', '').strip() or None
+        pitcher_hand = request.args.get('pitcher_hand', '').strip() or None
+        pitch_type = request.args.get('pitch_type', '').strip() or None
+        
+        # Import statcast functions
+        sys.path.insert(0, str(ROOT_DIR / "src"))
+        from scrape_savant import fetch_batter_statcast, fetch_pitcher_statcast, lookup_batter_id
+        from datetime import datetime, timedelta
+        import pandas as pd
+        import numpy as np
+        
+        # Get player data filtered by criteria
+        try:
+            players = csv_loader.get_all_players_summary()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": f"Error loading player data: {str(e)}"}), 500
+        
+        if not players:
+            return jsonify({"error": "No players found in database"}), 404
+        
+        # Find the selected player (case-insensitive match with whitespace handling)
+        selected_player_data = None
+        player_name_normalized = player_name.strip().lower()
+        for player in players:
+            player_name_from_data = player.get('name', '').strip().lower()
+            if player_name_from_data == player_name_normalized:
+                selected_player_data = player
+                break
+        
+        # If exact match not found, try partial match
+        if not selected_player_data:
+            for player in players:
+                player_name_from_data = player.get('name', '').strip().lower()
+                if player_name_normalized in player_name_from_data or player_name_from_data in player_name_normalized:
+                    selected_player_data = player
+                    break
+        
+        if not selected_player_data:
+            # Return more helpful error with available players for debugging
+            similar_names = [p['name'] for p in players if player_name_normalized[:3] in p['name'].lower()][:5]
+            error_msg = f"Player '{player_name}' not found"
+            if similar_names:
+                error_msg += f". Similar names: {', '.join(similar_names)}"
+            return jsonify({"error": error_msg}), 404
+        
+        # Use the actual player name from the database (to handle case differences)
+        actual_player_name = selected_player_data.get('name')
+        
+        # Determine if player is a pitcher or hitter
+        player_position = selected_player_data.get('position', '').upper()
+        is_pitcher = 'P' in player_position or 'PITCHER' in player_position
+        
+        # Additional filters (if they match player's data)
+        # Note: Team and position filters apply to the player's overall data
+        if team and selected_player_data.get('team') != team:
+            return jsonify({
+                "error": f"Player '{actual_player_name}' does not match team filter '{team}'",
+                "metric": metric,
+                "data": [],
+                "summary": {}
+            }), 200
+        
+        if position and selected_player_data.get('position') != position:
+            return jsonify({
+                "error": f"Player '{actual_player_name}' does not match position filter '{position}'",
+                "metric": metric,
+                "data": [],
+                "summary": {}
+            }), 200
+        
+        # Get player ID (works for both batters and pitchers)
+        try:
+            player_id = lookup_batter_id(actual_player_name)
+        except Exception as e:
+            return jsonify({"error": f"Could not find player ID for '{actual_player_name}': {str(e)}"}), 404
+        
+        # Calculate date range for the season
+        # If season is specified, use it; otherwise fetch all available data
+        if season:
+            start_date = f"{season}-03-01"  # Start of season
+            end_date = f"{season}-11-30"    # End of season
+            filter_by_season = True
+        else:
+            # Fetch data from a wide range to get all available seasons
+            # Statcast data goes back to 2008, but we'll use a reasonable range
+            current_year = datetime.now().year
+            start_date = "2008-03-01"  # Statcast started in 2008
+            end_date = f"{current_year}-11-30"
+            filter_by_season = False
+        
+        # Fetch statcast data based on player type
+        # Try to determine player type by attempting to fetch both types of data
+        statcast_df = None
+        is_pitcher_confirmed = False
+        
+        if is_pitcher:
+            # Try pitcher data first
+            try:
+                statcast_df = fetch_pitcher_statcast(player_id, start_date, end_date)
+                if statcast_df is not None and not statcast_df.empty:
+                    is_pitcher_confirmed = True
+            except Exception:
+                pass
+        
+        # If not confirmed as pitcher or no pitcher data, try batter data
+        if statcast_df is None or statcast_df.empty:
+            try:
+                statcast_df = fetch_batter_statcast(player_id, start_date, end_date)
+                if statcast_df is not None and not statcast_df.empty:
+                    is_pitcher_confirmed = False
+            except Exception:
+                pass
+        
+        # If still no data, try the other type
+        if (statcast_df is None or statcast_df.empty) and not is_pitcher:
+            try:
+                statcast_df = fetch_pitcher_statcast(player_id, start_date, end_date)
+                if statcast_df is not None and not statcast_df.empty:
+                    is_pitcher_confirmed = True
+            except Exception:
+                pass
+        
+        if statcast_df is None or statcast_df.empty:
+            return jsonify({
+                "error": f"No statcast data found for {actual_player_name}",
+                "metric": metric,
+                "data": [],
+                "grid": []
+            }), 200
+        
+        # Filter by season if specified
+        if filter_by_season:
+            # First, try to filter by year column if it exists (most reliable)
+            year_column = None
+            for col_name in ['game_year', 'year', 'Year', 'season']:
+                if col_name in statcast_df.columns:
+                    year_column = col_name
+                    break
+            
+            if year_column:
+                # Filter by year (this is the most reliable method)
+                # Convert to int if needed for comparison
+                if not pd.api.types.is_integer_dtype(statcast_df[year_column]):
+                    statcast_df[year_column] = pd.to_numeric(statcast_df[year_column], errors='coerce')
+                statcast_df = statcast_df[
+                    (statcast_df[year_column].notna()) & 
+                    (statcast_df[year_column] == int(season))
+                ]
+            else:
+                # Fallback: try filtering by date column
+                date_column = None
+                for col_name in ['game_date', 'gameDate', 'date', 'Date', 'game_day']:
+                    if col_name in statcast_df.columns:
+                        date_column = col_name
+                        break
+                
+                if date_column:
+                    # Convert date column to datetime if it's not already
+                    if not pd.api.types.is_datetime64_any_dtype(statcast_df[date_column]):
+                        statcast_df[date_column] = pd.to_datetime(statcast_df[date_column], errors='coerce')
+                    
+                    # Filter to the specific season
+                    season_start = pd.to_datetime(f"{season}-03-01")
+                    season_end = pd.to_datetime(f"{season}-11-30")
+                    
+                    # Drop rows where date conversion failed
+                    statcast_df = statcast_df[statcast_df[date_column].notna()]
+                    
+                    # Filter by date range
+                    statcast_df = statcast_df[
+                        (statcast_df[date_column] >= season_start) & 
+                        (statcast_df[date_column] <= season_end)
+                    ]
+            
+            # Check if we have data after season filtering
+            if statcast_df.empty:
+                return jsonify({
+                    "error": f"No statcast data found for {actual_player_name} for season {season}",
+                    "metric": metric,
+                    "data": [],
+                    "grid": []
+                }), 200
+        
+        # Filter by count if specified
+        if count:
+            count_parts = count.split('-')
+            if len(count_parts) == 2:
+                try:
+                    balls_filter = int(count_parts[0])
+                    strikes_filter = int(count_parts[1])
+                    if 'balls' in statcast_df.columns and 'strikes' in statcast_df.columns:
+                        statcast_df = statcast_df[
+                            (statcast_df['balls'] == balls_filter) & 
+                            (statcast_df['strikes'] == strikes_filter)
+                        ]
+                except ValueError:
+                    pass
+        
+        # Filter by pitcher/batter handedness if specified
+        if is_pitcher_confirmed:
+            # For pitchers, filter by batter handedness (stand column)
+            if pitcher_hand and 'stand' in statcast_df.columns:
+                statcast_df = statcast_df[statcast_df['stand'] == pitcher_hand]
+        else:
+            # For hitters, filter by pitcher handedness (p_throws column)
+            if pitcher_hand and 'p_throws' in statcast_df.columns:
+                statcast_df = statcast_df[statcast_df['p_throws'] == pitcher_hand]
+        
+        # Filter by pitch type if specified
+        if pitch_type and 'pitch_type' in statcast_df.columns:
+            statcast_df = statcast_df[statcast_df['pitch_type'] == pitch_type]
+        
+        # Filter out rows without location data
+        if 'plate_x' not in statcast_df.columns or 'plate_z' not in statcast_df.columns:
+            return jsonify({
+                "error": "Location data (plate_x, plate_z) not available in statcast data",
+                "metric": metric,
+                "data": [],
+                "grid": []
+            }), 200
+        
+        statcast_df = statcast_df[
+            statcast_df['plate_x'].notna() & 
+            statcast_df['plate_z'].notna()
+        ]
+        
+        if statcast_df.empty:
+            return jsonify({
+                "error": "No valid location data found",
+                "metric": metric,
+                "data": [],
+                "grid": []
+            }), 200
+        
+        # Helper function to calculate SLG from events
+        def calculate_slg(cell_data):
+            """Calculate slugging percentage from events column"""
+            if 'events' not in cell_data.columns:
+                return None
+            
+            # Filter to only at-bats - need events that are not NaN
+            # At-bats exclude walks, hit-by-pitch, etc.
+            ab_data = cell_data[
+                cell_data['events'].notna() & 
+                cell_data['events'].isin([
+                    'single', 'double', 'triple', 'home_run', 'field_out', 
+                    'strikeout', 'force_out', 'grounded_into_double_play',
+                    'fielders_choice', 'field_error', 'double_play', 'triple_play',
+                    'sac_fly', 'sac_bunt', 'sac_fly_double_play', 'catcher_interf'
+                ])
+            ]
+            
+            if len(ab_data) == 0:
+                return None
+            
+            # Calculate total bases
+            bases_map = {
+                'single': 1,
+                'double': 2,
+                'triple': 3,
+                'home_run': 4
+            }
+            
+            total_bases = 0
+            for event in ab_data['events']:
+                total_bases += bases_map.get(event, 0)
+            
+            return total_bases / len(ab_data)
+        
+        # Helper function to calculate OBP from events
+        def calculate_obp(cell_data):
+            """Calculate on-base percentage from events column"""
+            if 'events' not in cell_data.columns:
+                return None
+            
+            # Plate appearances = all events that are not NaN (actual outcomes)
+            # Exclude stolen bases and caught stealing
+            pa_data = cell_data[
+                cell_data['events'].notna() & 
+                ~cell_data['events'].isin([
+                    'stolen_base_2b', 'stolen_base_3b', 'stolen_base_home',
+                    'caught_stealing_2b', 'caught_stealing_3b', 'caught_stealing_home'
+                ])
+            ]
+            
+            if len(pa_data) == 0:
+                return None
+            
+            # On-base events: hits, walks, hit-by-pitch
+            on_base_events = ['single', 'double', 'triple', 'home_run', 'walk', 'hit_by_pitch']
+            on_base_count = pa_data['events'].isin(on_base_events).sum()
+            
+            return on_base_count / len(pa_data)
+        
+        # Helper function to calculate HR rate from events
+        def calculate_hr_rate(cell_data):
+            """Calculate home run rate (HR per plate appearance)"""
+            if 'events' not in cell_data.columns:
+                return None
+            
+            # Count plate appearances (events that are not NaN)
+            pa_data = cell_data[
+                cell_data['events'].notna() & 
+                ~cell_data['events'].isin([
+                    'stolen_base_2b', 'stolen_base_3b', 'stolen_base_home',
+                    'caught_stealing_2b', 'caught_stealing_3b', 'caught_stealing_home'
+                ])
+            ]
+            
+            if len(pa_data) == 0:
+                return None
+            
+            hr_count = (pa_data['events'] == 'home_run').sum()
+            return hr_count / len(pa_data)
+        
+        # Helper function to calculate RBI rate from events (approximate)
+        def calculate_rbi_rate(cell_data):
+            """Calculate approximate RBI rate - home runs always have RBI, others may vary"""
+            if 'events' not in cell_data.columns:
+                return None
+            
+            # Count plate appearances (events that are not NaN)
+            pa_data = cell_data[
+                cell_data['events'].notna() & 
+                ~cell_data['events'].isin([
+                    'stolen_base_2b', 'stolen_base_3b', 'stolen_base_home',
+                    'caught_stealing_2b', 'caught_stealing_3b', 'caught_stealing_home'
+                ])
+            ]
+            
+            if len(pa_data) == 0:
+                return None
+            
+            # Home runs always have at least 1 RBI (often more)
+            # For other hits, we'll estimate based on hit type
+            rbi_estimate = 0
+            for event in pa_data['events']:
+                if event == 'home_run':
+                    rbi_estimate += 1.5  # Average ~1.5 RBI per HR
+                elif event == 'triple':
+                    rbi_estimate += 0.8  # High probability of scoring runner
+                elif event == 'double':
+                    rbi_estimate += 0.6
+                elif event == 'single':
+                    rbi_estimate += 0.4
+            
+            return rbi_estimate / len(pa_data)
+        
+        # Map metric to calculation method
+        metric_upper = metric.upper()
+        calculate_metric = None
+        metric_column = None
+        
+        # Pitcher-specific metrics
+        if is_pitcher_confirmed:
+            if metric_upper in ['WHIFF_RATE', 'WHIFF RATE', 'WHIFF', 'WHIFF%']:
+                def calculate_whiff_rate(cell_data):
+                    """Calculate whiff rate (swinging strikes / swings)"""
+                    if 'description' not in cell_data.columns:
+                        return None
+                    desc = cell_data['description'].astype(str).str.lower()
+                    swings = desc.isin(['swinging_strike', 'swinging_strike_blocked', 'foul', 'foul_tip', 'hit_into_play']).sum()
+                    whiffs = desc.isin(['swinging_strike', 'swinging_strike_blocked']).sum()
+                    return (whiffs / swings) if swings > 0 else None
+                calculate_metric = calculate_whiff_rate
+            elif metric_upper in ['STRIKE_RATE', 'STRIKE RATE', 'STRIKE', 'STRIKE%']:
+                def calculate_strike_rate(cell_data):
+                    """Calculate strike rate (strikes / total pitches)"""
+                    total = len(cell_data)
+                    if total == 0:
+                        return None
+                    # Check for type column (S = strike, X = in play, B = ball)
+                    if 'type' in cell_data.columns:
+                        strikes = cell_data['type'].isin(['S', 'X']).sum()
+                    elif 'description' in cell_data.columns:
+                        # Fallback: count non-ball descriptions as strikes
+                        desc = cell_data['description'].astype(str).str.lower()
+                        strikes = (~desc.isin(['ball', 'blocked_ball', 'intent_ball'])).sum()
+                    else:
+                        return None
+                    return strikes / total
+                calculate_metric = calculate_strike_rate
+            elif metric_upper in ['XWOBA', 'XWOBA_ALLOWED']:
+                metric_column = 'estimated_woba_using_speedangle'
+            elif metric_upper in ['XBA', 'XBA_ALLOWED']:
+                metric_column = 'estimated_ba_using_speedangle'
+            elif metric_upper in ['XSLG', 'XSLG_ALLOWED']:
+                metric_column = 'estimated_slg_using_speedangle'
+            else:
+                # Default to xwOBA for pitchers
+                metric_column = 'estimated_woba_using_speedangle'
+        else:
+            # Hitter-specific metrics
+            if metric_upper in ['SLG', 'SLUGGING']:
+                calculate_metric = calculate_slg
+            elif metric_upper in ['OBP', 'ON_BASE_PERCENTAGE']:
+                calculate_metric = calculate_obp
+            elif metric_upper in ['OPS', 'ON_BASE_PLUS_SLUGGING']:
+                # OPS = OBP + SLG
+                def calculate_ops(cell_data):
+                    obp = calculate_obp(cell_data)
+                    slg = calculate_slg(cell_data)
+                    if obp is None or slg is None:
+                        return None
+                    return obp + slg
+                calculate_metric = calculate_ops
+            elif metric_upper in ['HR', 'HOME_RUNS', 'HOME_RUN']:
+                calculate_metric = calculate_hr_rate
+            elif metric_upper in ['RBI', 'RUNS_BATTED_IN']:
+                calculate_metric = calculate_rbi_rate
+            elif metric_upper in ['WRC+', 'WRC', 'WRC_PLUS']:
+                # wRC+ is complex, but we can use wOBA as a proxy since it's closely related
+                # For a proper wRC+ calculation, we'd need league averages, park factors, etc.
+                # We'll use woba_value if available, otherwise estimated_woba
+                if 'woba_value' in statcast_df.columns:
+                    metric_column = 'woba_value'
+                else:
+                    metric_column = 'estimated_woba_using_speedangle'
+            elif metric_upper in ['WAR']:
+                # WAR cannot be calculated at the pitch level - it's a cumulative stat
+                return jsonify({
+                    "error": "WAR is a cumulative statistic and cannot be visualized as a location-based heatmap. Please select a different metric.",
+                    "metric": metric,
+                    "data": [],
+                    "grid": []
+                }), 200
+            else:
+                # Direct column mappings for hitters
+                metric_map = {
+                    'XWOBA': 'estimated_woba_using_speedangle',
+                    'XBA': 'estimated_ba_using_speedangle',
+                    'XSLG': 'estimated_slg_using_speedangle',
+                    'WOBA': 'woba_value',
+                    'BA': 'hit',
+                    'AVG': 'hit',
+                    'AVERAGE': 'hit',
+                }
+                
+                metric_column = metric_map.get(metric_upper, 'estimated_woba_using_speedangle')
+        
+        # If using direct column, verify it exists
+        if calculate_metric is None:
+            if metric_column not in statcast_df.columns:
+                # Try alternative columns
+                for alt_col in ['estimated_woba_using_speedangle', 'woba_value', 'launch_speed', 'launch_angle']:
+                    if alt_col in statcast_df.columns:
+                        metric_column = alt_col
+                        break
+                else:
+                    return jsonify({
+                        "error": f"Metric '{metric}' cannot be calculated from available statcast data",
+                        "metric": metric,
+                        "data": [],
+                        "grid": []
+                    }), 200
+        
+        # Create grid for strike zone (10x10 grid)
+        # Strike zone: x from -1.5 to 1.5 feet, z from 1.5 to 3.5 feet
+        grid_size = 12
+        x_min, x_max = -2.0, 2.0
+        z_min, z_max = 0.5, 4.5
+        
+        x_bins = np.linspace(x_min, x_max, grid_size + 1)
+        z_bins = np.linspace(z_min, z_max, grid_size + 1)
+        
+        # Bin the data
+        statcast_df['x_bin'] = pd.cut(statcast_df['plate_x'], bins=x_bins, labels=False)
+        statcast_df['z_bin'] = pd.cut(statcast_df['plate_z'], bins=z_bins, labels=False)
+        
+        # Calculate average metric for each grid cell
+        grid_data = []
+        for x_idx in range(grid_size):
+            for z_idx in range(grid_size):
+                cell_data = statcast_df[
+                    (statcast_df['x_bin'] == x_idx) & 
+                    (statcast_df['z_bin'] == z_idx)
+                ]
+                
+                pitch_count = len(cell_data)
+                
+                if not cell_data.empty:
+                    # Use calculation function if available, otherwise use direct column
+                    if calculate_metric is not None:
+                        # Calculate metric from events/outcomes
+                        avg_value = calculate_metric(cell_data)
+                        if avg_value is not None:
+                            avg_value = float(avg_value)
+                        else:
+                            avg_value = None
+                    elif metric_column in cell_data.columns:
+                        # Calculate average from direct column
+                        values = cell_data[metric_column].dropna()
+                        if len(values) > 0:
+                            avg_value = float(values.mean())
+                        else:
+                            avg_value = None
+                    else:
+                        avg_value = None
+                else:
+                    avg_value = None
+                
+                # Calculate center coordinates of the cell
+                x_center = (x_bins[x_idx] + x_bins[x_idx + 1]) / 2
+                z_center = (z_bins[z_idx] + z_bins[z_idx + 1]) / 2
+                
+                grid_data.append({
+                    'x': x_idx,
+                    'y': grid_size - 1 - z_idx,  # Flip y-axis for display
+                    'x_center': float(x_center),
+                    'z_center': float(z_center),
+                    'value': avg_value,
+                    'count': pitch_count
+                })
+        
+        # Filter out cells with no data
+        grid_data = [cell for cell in grid_data if cell['value'] is not None and cell['count'] > 0]
+        
+        if not grid_data:
+            return jsonify({
+                "error": f"No {metric} data available for the selected filters",
+                "metric": metric,
+                "data": [],
+                "grid": []
+            }), 200
+        
+        # Calculate summary statistics
+        values = [cell['value'] for cell in grid_data if cell['value'] is not None]
+        
+        # Determine batter handedness from statcast data
+        batter_hand = 'R'  # Default to right-handed
+        if 'stand' in statcast_df.columns:
+            stand_values = statcast_df['stand'].dropna()
+            if len(stand_values) > 0:
+                # Use the most common value
+                batter_hand = str(stand_values.mode().iloc[0]) if len(stand_values.mode()) > 0 else 'R'
+        
+        heatmap_data = {
+            'player': actual_player_name,
+            'metric': metric,
+            'batter_hand': batter_hand,  # 'R' or 'L'
+            'filters': {
+                'season': season,
+                'team': team,
+                'position': position,
+                'count': count,
+                'pitcher_hand': pitcher_hand,
+                'pitch_type': pitch_type
+            },
+            'grid': grid_data,
+            'grid_size': grid_size,
+            'x_range': [float(x_min), float(x_max)],
+            'z_range': [float(z_min), float(z_max)],
+            'summary': {
+                'total_cells': len(grid_data),
+                'min_value': float(min(values)) if values else 0,
+                'max_value': float(max(values)) if values else 0,
+                'avg_value': float(np.mean(values)) if values else 0,
+                'total_pitches': sum(cell['count'] for cell in grid_data)
+            }
+        }
+        
+        return jsonify(heatmap_data)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+
+# api_visuals_heatmap_player_info
+@app.route('/api/visuals/heatmap/player-info', methods=['GET'])
+def api_visuals_heatmap_player_info():
+    """Get player type and available metrics"""
+    if not csv_loader:
+        return jsonify({"error": "CSV data loader not available"}), 500
+    
+    try:
+        player_name = request.args.get('player', '').strip()
+        if not player_name:
+            return jsonify({"error": "Player name is required"}), 400
+        
+        players = csv_loader.get_all_players_summary()
+        player_name_normalized = player_name.strip().lower()
+        
+        selected_player_data = None
+        for player in players:
+            if player.get('name', '').strip().lower() == player_name_normalized:
+                selected_player_data = player
+                break
+        
+        if not selected_player_data:
+            return jsonify({"error": "Player not found"}), 404
+        
+        player_position = selected_player_data.get('position', '').upper()
+        is_pitcher = 'P' in player_position or 'PITCHER' in player_position
+        
+        # Define sorted metrics
+        hitter_metrics = [
+            {'value': 'xwOBA', 'label': 'xwOBA'},
+            {'value': 'xSLG', 'label': 'xSLG'},
+            {'value': 'xBA', 'label': 'xBA'},
+            {'value': 'wRC+', 'label': 'wRC+'},
+            {'value': 'OPS', 'label': 'OPS'},
+            {'value': 'SLG', 'label': 'SLG'},
+            {'value': 'OBP', 'label': 'OBP'},
+            {'value': 'AVG', 'label': 'Batting Average'},
+            {'value': 'HR', 'label': 'Home Runs'},
+            {'value': 'RBI', 'label': 'RBI'},
+        ]
+        
+        pitcher_metrics = [
+            {'value': 'xwOBA', 'label': 'xwOBA Allowed'},
+            {'value': 'xBA', 'label': 'xBA Allowed'},
+            {'value': 'xSLG', 'label': 'xSLG Allowed'},
+            {'value': 'Whiff Rate', 'label': 'Whiff Rate'},
+            {'value': 'Strike Rate', 'label': 'Strike Rate'},
+        ]
+        
+        return jsonify({
+            'is_pitcher': is_pitcher,
+            'metrics': pitcher_metrics if is_pitcher else hitter_metrics
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+
+# api_visuals_spraychart
+@app.route('/api/visuals/spraychart', methods=['GET'])
+def api_visuals_spraychart():
+    """Get spray chart data for visualization - returns batted ball locations"""
+    if not csv_loader:
+        return jsonify({"error": "CSV data loader not available"}), 500
+    
+    try:
+        player_name = request.args.get('player', '').strip()
+        if not player_name:
+            return jsonify({"error": "Player name is required"}), 400
+        
+        season = request.args.get('season', '').strip() or None
+        if season:
+            try:
+                season = int(season)
+            except ValueError:
+                season = None
+        
+        # Filter options
+        event_type = request.args.get('event_type', '').strip() or None  # e.g., 'single', 'double', 'home_run'
+        min_launch_speed = request.args.get('min_launch_speed', type=float)
+        max_launch_speed = request.args.get('max_launch_speed', type=float)
+        min_launch_angle = request.args.get('min_launch_angle', type=float)
+        max_launch_angle = request.args.get('max_launch_angle', type=float)
+        
+        # Import statcast functions
+        sys.path.insert(0, str(ROOT_DIR / "src"))
+        from scrape_savant import fetch_batter_statcast, fetch_pitcher_statcast, lookup_batter_id
+        from datetime import datetime
+        import pandas as pd
+        import numpy as np
+        
+        # Get player data
+        try:
+            players = csv_loader.get_all_players_summary()
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": f"Error loading player data: {str(e)}"}), 500
+        
+        if not players:
+            return jsonify({"error": "No players found in database"}), 404
+        
+        # Find the selected player
+        selected_player_data = None
+        player_name_normalized = player_name.strip().lower()
+        for player in players:
+            player_name_from_data = player.get('name', '').strip().lower()
+            if player_name_from_data == player_name_normalized:
+                selected_player_data = player
+                break
+        
+        if not selected_player_data:
+            for player in players:
+                player_name_from_data = player.get('name', '').strip().lower()
+                if player_name_normalized in player_name_from_data or player_name_from_data in player_name_normalized:
+                    selected_player_data = player
+                    break
+        
+        if not selected_player_data:
+            similar_names = [p['name'] for p in players if player_name_normalized[:3] in p['name'].lower()][:5]
+            error_msg = f"Player '{player_name}' not found"
+            if similar_names:
+                error_msg += f". Similar names: {', '.join(similar_names)}"
+            return jsonify({"error": error_msg}), 404
+        
+        actual_player_name = selected_player_data.get('name')
+        
+        # Get player ID (works for both batters and pitchers)
+        try:
+            player_id = lookup_batter_id(actual_player_name)
+        except Exception as e:
+            return jsonify({"error": f"Could not find player ID for '{actual_player_name}': {str(e)}"}), 404
+        
+        # Calculate date range
+        if season:
+            start_date = f"{season}-03-01"
+            end_date = f"{season}-11-30"
+            filter_by_season = True
+        else:
+            current_year = datetime.now().year
+            start_date = "2008-03-01"
+            end_date = f"{current_year}-11-30"
+            filter_by_season = False
+        
+        # Try to fetch statcast data - try pitcher first (for spray chart, we want batted balls hit OFF of pitchers)
+        # Then try batter if pitcher fails (for batters, we want batted balls they hit)
+        statcast_df = None
+        player_type = None
+        
+        # First, try as pitcher (batted balls hit off of them)
+        try:
+            pitcher_df = fetch_pitcher_statcast(player_id, start_date, end_date)
+            if pitcher_df is not None and not pitcher_df.empty:
+                # Check if there are any batted balls in the pitcher data
+                if 'events' in pitcher_df.columns:
+                    batted_balls = pitcher_df[pitcher_df['events'].notna()]
+                    if not batted_balls.empty:
+                        statcast_df = pitcher_df
+                        player_type = 'pitcher'
+        except Exception as e:
+            pass  # Try batter below
+        
+        # If pitcher lookup failed or returned no batted ball data, try as batter
+        if statcast_df is None or (statcast_df is not None and statcast_df.empty):
+            try:
+                batter_df = fetch_batter_statcast(player_id, start_date, end_date)
+                if batter_df is not None and not batter_df.empty:
+                    # Check if there are any batted balls in the batter data
+                    if 'events' in batter_df.columns:
+                        batted_balls = batter_df[batter_df['events'].notna()]
+                        if not batted_balls.empty:
+                            statcast_df = batter_df
+                            player_type = 'batter'
+            except Exception as e:
+                pass  # Will return error below
+        
+        if statcast_df is None or (statcast_df is not None and statcast_df.empty):
+            return jsonify({
+                "error": f"No statcast data found for {actual_player_name}",
+                "data": [],
+                "summary": {}
+            }), 200
+        
+        # Filter by season if specified
+        if filter_by_season:
+            year_column = None
+            for col_name in ['game_year', 'year', 'Year', 'season']:
+                if col_name in statcast_df.columns:
+                    year_column = col_name
+                    break
+            
+            if year_column:
+                if not pd.api.types.is_integer_dtype(statcast_df[year_column]):
+                    statcast_df[year_column] = pd.to_numeric(statcast_df[year_column], errors='coerce')
+                statcast_df = statcast_df[
+                    (statcast_df[year_column].notna()) & 
+                    (statcast_df[year_column] == int(season))
+                ]
+            else:
+                date_column = None
+                for col_name in ['game_date', 'gameDate', 'date', 'Date', 'game_day']:
+                    if col_name in statcast_df.columns:
+                        date_column = col_name
+                        break
+                
+                if date_column:
+                    if not pd.api.types.is_datetime64_any_dtype(statcast_df[date_column]):
+                        statcast_df[date_column] = pd.to_datetime(statcast_df[date_column], errors='coerce')
+                    
+                    season_start = pd.to_datetime(f"{season}-03-01")
+                    season_end = pd.to_datetime(f"{season}-11-30")
+                    
+                    statcast_df = statcast_df[statcast_df[date_column].notna()]
+                    statcast_df = statcast_df[
+                        (statcast_df[date_column] >= season_start) & 
+                        (statcast_df[date_column] <= season_end)
+                    ]
+            
+            if statcast_df.empty:
+                return jsonify({
+                    "error": f"No statcast data found for {actual_player_name} for season {season}",
+                    "data": [],
+                    "summary": {}
+                }), 200
+        
+        # Filter to only regular season games (exclude postseason, spring training, etc.)
+        if 'game_type' in statcast_df.columns:
+            statcast_df = statcast_df[statcast_df['game_type'] == 'R']
+        
+        # Filter to only events that are batted balls (have events)
+        statcast_df = statcast_df[statcast_df['events'].notna()]
+        
+        # Filter by event type if specified (normalize to lowercase for matching)
+        if event_type:
+            statcast_df = statcast_df[statcast_df['events'].str.lower() == event_type.lower()]
+        
+        # Filter by launch speed if specified
+        if min_launch_speed is not None and 'launch_speed' in statcast_df.columns:
+            statcast_df = statcast_df[
+                (statcast_df['launch_speed'].notna()) & 
+                (statcast_df['launch_speed'] >= min_launch_speed)
+            ]
+        
+        if max_launch_speed is not None and 'launch_speed' in statcast_df.columns:
+            statcast_df = statcast_df[
+                (statcast_df['launch_speed'].notna()) & 
+                (statcast_df['launch_speed'] <= max_launch_speed)
+            ]
+        
+        # Filter by launch angle if specified
+        if min_launch_angle is not None and 'launch_angle' in statcast_df.columns:
+            statcast_df = statcast_df[
+                (statcast_df['launch_angle'].notna()) & 
+                (statcast_df['launch_angle'] >= min_launch_angle)
+            ]
+        
+        if max_launch_angle is not None and 'launch_angle' in statcast_df.columns:
+            statcast_df = statcast_df[
+                (statcast_df['launch_angle'].notna()) & 
+                (statcast_df['launch_angle'] <= max_launch_angle)
+            ]
+        
+        if statcast_df.empty:
+            return jsonify({
+                "error": "No batted ball data available for the selected filters",
+                "data": [],
+                "summary": {}
+            }), 200
+        
+        # Count all events (including those without coordinates) for accurate statistics
+        event_counts_all = {}
+        for _, row in statcast_df.iterrows():
+            event_name = str(row['events']).lower() if pd.notna(row['events']) else 'unknown'
+            event_counts_all[event_name] = event_counts_all.get(event_name, 0) + 1
+        
+        # Now filter to only batted balls with hit coordinates for visualization
+        statcast_df_with_coords = statcast_df[
+            statcast_df['hc_x'].notna() & 
+            statcast_df['hc_y'].notna()
+        ]
+        
+        # Prepare spray chart data (only for entries with coordinates)
+        spray_data = []
+        for _, row in statcast_df_with_coords.iterrows():
+            # Normalize event name to lowercase for consistent counting
+            event_name = str(row['events']).lower() if pd.notna(row['events']) else 'unknown'
+            
+            spray_data.append({
+                'x': float(row['hc_x']) if pd.notna(row['hc_x']) else None,
+                'y': float(row['hc_y']) if pd.notna(row['hc_y']) else None,
+                'event': event_name,
+                'launch_speed': float(row['launch_speed']) if 'launch_speed' in row and pd.notna(row['launch_speed']) else None,
+                'launch_angle': float(row['launch_angle']) if 'launch_angle' in row and pd.notna(row['launch_angle']) else None,
+                'hit_distance': float(row['hit_distance_sc']) if 'hit_distance_sc' in row and pd.notna(row['hit_distance_sc']) else None,
+                'is_barrel': bool(row['barrel']) if 'barrel' in row and pd.notna(row['barrel']) else None,
+            })
+        
+        # Filter out entries without valid coordinates (shouldn't happen, but just in case)
+        spray_data = [d for d in spray_data if d['x'] is not None and d['y'] is not None]
+        
+        # Calculate summary statistics from all data (not just those with coordinates)
+        launch_speeds_all = statcast_df['launch_speed'].dropna().tolist() if 'launch_speed' in statcast_df.columns else []
+        launch_angles_all = statcast_df['launch_angle'].dropna().tolist() if 'launch_angle' in statcast_df.columns else []
+        
+        # Use event counts from all data (accurate counts)
+        event_counts = event_counts_all
+        
+        summary = {
+            'total_batted_balls': len(statcast_df),  # Count all batted balls, not just those with coordinates
+            'total_visualized': len(spray_data),  # Count of those with coordinates for visualization
+            'avg_launch_speed': float(np.mean(launch_speeds_all)) if launch_speeds_all else None,
+            'avg_launch_angle': float(np.mean(launch_angles_all)) if launch_angles_all else None,
+            'min_launch_speed': float(min(launch_speeds_all)) if launch_speeds_all else None,
+            'max_launch_speed': float(max(launch_speeds_all)) if launch_speeds_all else None,
+            'min_launch_angle': float(min(launch_angles_all)) if launch_angles_all else None,
+            'max_launch_angle': float(max(launch_angles_all)) if launch_angles_all else None,
+            'event_counts': event_counts
+        }
+        
+        return jsonify({
+            'player': actual_player_name,
+            'filters': {
+                'season': season,
+                'event_type': event_type,
+                'min_launch_speed': min_launch_speed,
+                'max_launch_speed': max_launch_speed,
+                'min_launch_angle': min_launch_angle,
+                'max_launch_angle': max_launch_angle
+            },
+            'data': spray_data,
+            'summary': summary
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+

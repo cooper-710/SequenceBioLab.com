@@ -6,6 +6,7 @@ Loads and searches data from fangraphs.csv, Positions.csv, and statscast.csv
 import pandas as pd
 import numpy as np
 import os
+import unicodedata
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
@@ -24,10 +25,10 @@ class CSVDataLoader:
         else:
             base_path = Path(base_path)
         
-        self.fangraphs_path = base_path / "fangraphs.csv"
-        self.fangraphs_pitchers_path = base_path / "fangraphs_pitchers.csv"
-        self.positions_path = base_path / "Positions.csv"
-        self.statscast_path = base_path / "statscast.csv"
+        self.fangraphs_path = base_path / "data" / "fangraphs.csv"
+        self.fangraphs_pitchers_path = base_path / "data" / "fangraphs_pitchers.csv"
+        self.positions_path = base_path / "data" / "Positions.csv"
+        self.statscast_path = base_path / "data" / "statscast.csv"
         
         self._fangraphs_df = None
         self._fangraphs_pitchers_df = None
@@ -61,9 +62,38 @@ class CSVDataLoader:
             self._statscast_df.columns = [col.strip('"') for col in self._statscast_df.columns]
         return self._statscast_df
     
+    def _normalize_name(self, name: str) -> str:
+        """Normalize a player name by removing accents and converting to lowercase"""
+        if not name:
+            return ''
+        # Convert to string and strip whitespace
+        name = str(name).strip()
+        # Normalize unicode (NFD = Normalization Form Decomposed)
+        # This separates base characters from their diacritical marks
+        normalized = unicodedata.normalize('NFD', name)
+        # Remove diacritical marks (accents)
+        normalized = ''.join(c for c in normalized if unicodedata.category(c) != 'Mn')
+        # Convert to lowercase
+        return normalized.lower()
+    
+    def _format_name_first_last(self, name: str) -> str:
+        """Convert name from 'Last, First' format to 'First Last' format"""
+        if not name:
+            return name
+        name = str(name).strip()
+        # Check if it's in "Last, First" format
+        if ',' in name:
+            parts = [p.strip() for p in name.split(',', 1)]
+            if len(parts) == 2:
+                # Convert "Last, First" to "First Last"
+                return f"{parts[1]} {parts[0]}"
+        return name
+    
     def search_players(self, search_term: str) -> List[Dict[str, Any]]:
         """
         Search for players by name across all CSV files
+        Normalizes both search term and database names for accent-insensitive matching
+        Deduplicates players with the same normalized name, preferring the version with accents
         
         Args:
             search_term: Player name to search for
@@ -74,48 +104,69 @@ class CSVDataLoader:
         if not search_term or len(search_term.strip()) < 2:
             return []
         
-        search_term = search_term.strip().lower()
+        # Normalize the search term (remove accents)
+        search_term_normalized = self._normalize_name(search_term)
+        # Use normalized name as key to deduplicate, store best name (prefer accented)
         players = {}
+        
+        def add_player(name: str, season=None):
+            """Add a player, preferring the version with accents if duplicate"""
+            # Convert to "First Last" format first, then normalize for key
+            formatted_name = self._format_name_first_last(name)
+            normalized_key = self._normalize_name(formatted_name)
+            
+            if normalized_key not in players:
+                players[normalized_key] = {
+                    'name': formatted_name,
+                    'seasons': set()
+                }
+            else:
+                # If we already have this player, prefer the version with accents
+                # (accented version is usually the original/correct one)
+                current_name = players[normalized_key]['name']
+                # Prefer the name that has accents (contains non-ASCII characters)
+                if any(ord(c) > 127 for c in formatted_name) and not any(ord(c) > 127 for c in current_name):
+                    players[normalized_key]['name'] = formatted_name
+            
+            if season is not None:
+                players[normalized_key]['seasons'].add(season)
         
         # Search in fangraphs
         fg_df = self._load_fangraphs()
         if fg_df is not None and 'Name' in fg_df.columns:
-            matches = fg_df[fg_df['Name'].str.lower().str.contains(search_term, na=False)]
+            # Create normalized name column for comparison
+            fg_df['_normalized_name'] = fg_df['Name'].astype(str).apply(self._normalize_name)
+            matches = fg_df[fg_df['_normalized_name'].str.contains(search_term_normalized, na=False, regex=False)]
             for _, row in matches.iterrows():
                 name = row['Name']
-                if name not in players:
-                    players[name] = {
-                        'name': name,
-                        'seasons': []
-                    }
-                if 'Season' in row:
-                    players[name]['seasons'].append(row['Season'])
+                season = row.get('Season') if 'Season' in row else None
+                add_player(name, season)
+            # Clean up temporary column
+            if '_normalized_name' in fg_df.columns:
+                fg_df.drop('_normalized_name', axis=1, inplace=True)
         
         # Search in positions
         pos_df = self._load_positions()
         if pos_df is not None and 'player_name' in pos_df.columns:
-            matches = pos_df[pos_df['player_name'].str.lower().str.contains(search_term, na=False)]
+            pos_df['_normalized_name'] = pos_df['player_name'].astype(str).apply(self._normalize_name)
+            matches = pos_df[pos_df['_normalized_name'].str.contains(search_term_normalized, na=False, regex=False)]
             for _, row in matches.iterrows():
                 name = row['player_name']
-                if name not in players:
-                    players[name] = {
-                        'name': name,
-                        'seasons': []
-                    }
+                add_player(name)
+            if '_normalized_name' in pos_df.columns:
+                pos_df.drop('_normalized_name', axis=1, inplace=True)
         
         # Search in fangraphs_pitchers
         fg_pitchers_df = self._load_fangraphs_pitchers()
         if fg_pitchers_df is not None and 'Name' in fg_pitchers_df.columns:
-            matches = fg_pitchers_df[fg_pitchers_df['Name'].str.lower().str.contains(search_term, na=False)]
+            fg_pitchers_df['_normalized_name'] = fg_pitchers_df['Name'].astype(str).apply(self._normalize_name)
+            matches = fg_pitchers_df[fg_pitchers_df['_normalized_name'].str.contains(search_term_normalized, na=False, regex=False)]
             for _, row in matches.iterrows():
                 name = row['Name']
-                if name not in players:
-                    players[name] = {
-                        'name': name,
-                        'seasons': []
-                    }
-                if 'Season' in row:
-                    players[name]['seasons'].append(row['Season'])
+                season = row.get('Season') if 'Season' in row else None
+                add_player(name, season)
+            if '_normalized_name' in fg_pitchers_df.columns:
+                fg_pitchers_df.drop('_normalized_name', axis=1, inplace=True)
         
         # Search in statscast
         sc_df = self._load_statscast()
@@ -131,26 +182,36 @@ class CSVDataLoader:
             if name_col:
                 # Handle cases where name might be in "Last, First" format
                 try:
-                    matches = sc_df[sc_df[name_col].astype(str).str.lower().str.contains(search_term, na=False)]
+                    sc_df['_normalized_name'] = sc_df[name_col].astype(str).apply(self._normalize_name)
+                    matches = sc_df[sc_df['_normalized_name'].str.contains(search_term_normalized, na=False, regex=False)]
                     for _, row in matches.iterrows():
                         name = str(row[name_col])
-                        if name not in players:
-                            players[name] = {
-                                'name': name,
-                                'seasons': []
-                            }
+                        # Convert "Last, First" format to "First Last" format
+                        name = self._format_name_first_last(name)
+                        add_player(name)
+                    if '_normalized_name' in sc_df.columns:
+                        sc_df.drop('_normalized_name', axis=1, inplace=True)
                 except Exception as e:
                     # If search fails, continue without this data source
                     pass
         
-        return list(players.values())
+        # Convert sets to sorted lists for JSON serialization
+        result = []
+        for player_data in players.values():
+            result.append({
+                'name': player_data['name'],
+                'seasons': sorted(list(player_data['seasons'])) if player_data['seasons'] else []
+            })
+        
+        return result
     
     def get_player_data(self, player_name: str) -> Dict[str, Any]:
         """
         Get all data for a specific player from all CSV files
+        Uses normalized matching to handle accented characters
         
         Args:
-            player_name: Exact player name
+            player_name: Player name (can be normalized or original)
             
         Returns:
             Dictionary with all player data from all sources
@@ -162,34 +223,46 @@ class CSVDataLoader:
             'statscast': []
         }
         
+        # Normalize the search name (remove accents)
+        player_name_normalized = self._normalize_name(player_name)
+        
         # Get fangraphs data
         fg_df = self._load_fangraphs()
         if fg_df is not None and 'Name' in fg_df.columns:
-            # Normalize names for comparison (strip whitespace, handle case)
-            player_name_normalized = player_name.strip().lower()
-            # Use contains first for partial matches, then exact match
-            fg_data = fg_df[fg_df['Name'].astype(str).str.strip().str.lower() == player_name_normalized]
+            # Create normalized name column for comparison
+            fg_df['_normalized_name'] = fg_df['Name'].astype(str).apply(self._normalize_name)
+            # Try exact match first
+            fg_data = fg_df[fg_df['_normalized_name'] == player_name_normalized]
             if fg_data.empty:
                 # Try partial match as fallback
-                fg_data = fg_df[fg_df['Name'].astype(str).str.strip().str.lower().str.contains(player_name_normalized, na=False, regex=False)]
+                fg_data = fg_df[fg_df['_normalized_name'].str.contains(player_name_normalized, na=False, regex=False)]
             if not fg_data.empty:
                 # Convert to list of dictionaries, handling NaN values
                 for _, row in fg_data.iterrows():
                     row_dict = row.to_dict()
+                    # Remove temporary column from result
+                    if '_normalized_name' in row_dict:
+                        del row_dict['_normalized_name']
                     # Convert NaN to None for JSON serialization
                     for key, value in row_dict.items():
                         if pd.isna(value):
                             row_dict[key] = None
                     result['fangraphs'].append(row_dict)
+                    # Update result name with actual name from database (preserves accents)
+                    if not result['name'] or result['name'] != row['Name']:
+                        result['name'] = row['Name']
+            # Clean up temporary column
+            if '_normalized_name' in fg_df.columns:
+                fg_df.drop('_normalized_name', axis=1, inplace=True)
         
         # Get fangraphs_pitchers data
         fg_pitchers_df = self._load_fangraphs_pitchers()
         if fg_pitchers_df is not None and 'Name' in fg_pitchers_df.columns:
-            player_name_normalized = player_name.strip().lower()
-            fg_pitchers_data = fg_pitchers_df[fg_pitchers_df['Name'].astype(str).str.strip().str.lower() == player_name_normalized]
+            fg_pitchers_df['_normalized_name'] = fg_pitchers_df['Name'].astype(str).apply(self._normalize_name)
+            fg_pitchers_data = fg_pitchers_df[fg_pitchers_df['_normalized_name'] == player_name_normalized]
             if fg_pitchers_data.empty:
                 # Try partial match as fallback
-                fg_pitchers_data = fg_pitchers_df[fg_pitchers_df['Name'].astype(str).str.strip().str.lower().str.contains(player_name_normalized, na=False, regex=False)]
+                fg_pitchers_data = fg_pitchers_df[fg_pitchers_df['_normalized_name'].str.contains(player_name_normalized, na=False, regex=False)]
             if not fg_pitchers_data.empty:
                 # Sort by season descending to get most recent data first
                 if 'Season' in fg_pitchers_data.columns:
@@ -205,9 +278,20 @@ class CSVDataLoader:
                     if pd.isna(most_recent_team):
                         most_recent_team = None
                 
+                # Get actual player name from first row (preserves accents)
+                actual_player_name = result['name']
+                if len(fg_pitchers_data) > 0:
+                    first_row_name = fg_pitchers_data.iloc[0]['Name']
+                    if first_row_name:
+                        actual_player_name = first_row_name
+                        result['name'] = actual_player_name
+                
                 # Convert to list of dictionaries, handling NaN values
                 for _, row in fg_pitchers_data.iterrows():
                     row_dict = row.to_dict()
+                    # Remove temporary column from result
+                    if '_normalized_name' in row_dict:
+                        del row_dict['_normalized_name']
                     # Convert NaN to None for JSON serialization
                     for key, value in row_dict.items():
                         if pd.isna(value):
@@ -223,10 +307,10 @@ class CSVDataLoader:
                         first_row_dict = fg_pitchers_data.iloc[0].to_dict()
                         team = first_row_dict.get('fg_Team') or first_row_dict.get('Team')
                     
-                    # Create a positions entry
+                    # Create a positions entry using actual player name
                     position_entry = {
-                        'player_name': player_name,
-                        'Player Name': player_name,
+                        'player_name': actual_player_name,
+                        'Player Name': actual_player_name,
                         'team_name': team,
                         'Team Name': team,
                         'Team': team,
@@ -236,18 +320,30 @@ class CSVDataLoader:
                         'Pos': 'P'
                     }
                     result['positions'].append(position_entry)
+            # Clean up temporary column
+            if '_normalized_name' in fg_pitchers_df.columns:
+                fg_pitchers_df.drop('_normalized_name', axis=1, inplace=True)
         
         # Get positions data
         pos_df = self._load_positions()
         if pos_df is not None and 'player_name' in pos_df.columns:
-            pos_data = pos_df[pos_df['player_name'].str.lower() == player_name.lower()]
+            pos_df['_normalized_name'] = pos_df['player_name'].astype(str).apply(self._normalize_name)
+            pos_data = pos_df[pos_df['_normalized_name'] == player_name_normalized]
             if not pos_data.empty:
                 for _, row in pos_data.iterrows():
                     row_dict = row.to_dict()
+                    # Remove temporary column from result
+                    if '_normalized_name' in row_dict:
+                        del row_dict['_normalized_name']
                     for key, value in row_dict.items():
                         if pd.isna(value):
                             row_dict[key] = None
                     result['positions'].append(row_dict)
+                    # Update result name with actual name from database
+                    if row['player_name'] and row['player_name'] != result['name']:
+                        result['name'] = row['player_name']
+            if '_normalized_name' in pos_df.columns:
+                pos_df.drop('_normalized_name', axis=1, inplace=True)
         
         # Get statscast data
         sc_df = self._load_statscast()
@@ -262,15 +358,21 @@ class CSVDataLoader:
             
             if name_col:
                 try:
-                    # Try to match the player name - handle "Last, First" format
-                    sc_data = sc_df[sc_df[name_col].astype(str).str.lower().str.contains(player_name.lower(), na=False)]
+                    # Normalize names for comparison
+                    sc_df['_normalized_name'] = sc_df[name_col].astype(str).apply(self._normalize_name)
+                    sc_data = sc_df[sc_df['_normalized_name'].str.contains(player_name_normalized, na=False, regex=False)]
                     if not sc_data.empty:
                         for _, row in sc_data.iterrows():
                             row_dict = row.to_dict()
+                            # Remove temporary column from result
+                            if '_normalized_name' in row_dict:
+                                del row_dict['_normalized_name']
                             for key, value in row_dict.items():
                                 if pd.isna(value):
                                     row_dict[key] = None
                             result['statscast'].append(row_dict)
+                    if '_normalized_name' in sc_df.columns:
+                        sc_df.drop('_normalized_name', axis=1, inplace=True)
                 except Exception as e:
                     # If matching fails, continue without this data source
                     pass

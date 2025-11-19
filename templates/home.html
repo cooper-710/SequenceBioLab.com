@@ -27,16 +27,20 @@
         </div>
         {% if session.get('is_admin') and admin_user_options %}
         <div class="hero-actions">
-            <form class="gameday-user-picker" method="get" action="{{ url_for('home') }}" id="player-schedule-form">
-                <label class="gameday-user-picker-label" for="home-user-select">View player schedule</label>
-                <select id="home-user-select" name="user_id" aria-label="Select player to view schedule">
-                    {% for option in admin_user_options %}
-                    <option value="{{ option.id }}" {% if option.id == selected_user_id %}selected{% endif %}>{{ option.label }}</option>
-                    {% endfor %}
-                </select>
-                <noscript>
-                    <button type="submit">Apply</button>
-                </noscript>
+            <form class="gameday-user-picker" method="get" action="{{ url_for('pages.home') }}" id="player-schedule-form">
+                <label class="gameday-user-picker-label" for="home-user-search">View player schedule</label>
+                <div class="player-search-wrapper" style="position: relative;">
+                    <input 
+                        type="text" 
+                        id="home-user-search" 
+                        class="gameday-user-search-input" 
+                        placeholder="Search for a player..."
+                        autocomplete="off"
+                        value="{% if selected_user_id %}{% for option in admin_user_options %}{% if option.id == selected_user_id %}{{ option.label }}{% endif %}{% endfor %}{% endif %}"
+                    >
+                    <input type="hidden" id="home-user-id" name="user_id" value="{{ selected_user_id or '' }}">
+                    <div id="home-user-dropdown" class="player-search-dropdown" style="display: none;"></div>
+                </div>
             </form>
         </div>
         {% endif %}
@@ -49,21 +53,39 @@
             <div class="info-card-top">
                 <div class="info-card-icon">
                     {% if next_series.opponent_id %}
-                        <img src="https://www.mlbstatic.com/team-logos/{{ next_series.opponent_id }}.svg" 
-                             alt="{{ next_series.opponent_name }} logo" 
-                             class="info-card-logo"
-                             loading="lazy">
+                        <span class="team-abbr-badge" style="background-color: {{ get_team_color_global(team_id=next_series.opponent_id) }}; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 16px; display: inline-block;">
+                            {{ next_series.opponent_abbr or (next_series.opponent_id|team_abbr_from_id) or 'OPP' }}
+                        </span>
                     {% else %}
                         <i class="fas fa-baseball"></i>
                     {% endif %}
                 </div>
                 <div class="info-card-content">
                     <span class="info-card-label">Next Opponent</span>
-                    <h3>{{ next_series.opponent_name }}</h3>
-                    <p>{{ next_series.start_date }} – {{ next_series.end_date }}</p>
+                    <div class="opponent-header-row">
+                        <h3>{{ next_series.opponent_name }}</h3>
+                    </div>
+                    <p class="next-game-date">{% if next_series.start_date == next_series.end_date %}{{ next_series.start_date }}{% else %}{{ next_series.start_date }} – {{ next_series.end_date }}{% endif %}</p>
+                    {% if next_series.first_game_datetime_iso %}
+                    <div class="countdown-clock" id="game-countdown">
+                        <div class="countdown-display">
+                            <span class="countdown-label">GAME STARTS IN:</span>
+                            <div class="countdown-time" id="countdown-time">
+                                <span class="countdown-value" id="countdown-days">--</span>
+                                <span class="countdown-unit">d</span>
+                                <span class="countdown-separator">:</span>
+                                <span class="countdown-value" id="countdown-hours">--</span>
+                                <span class="countdown-unit">h</span>
+                                <span class="countdown-separator">:</span>
+                                <span class="countdown-value" id="countdown-minutes">--</span>
+                                <span class="countdown-unit">m</span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
-            <a href="{{ url_for('gameday') }}" class="info-card-cta">
+            <a href="{{ url_for('pages.gameday') }}" class="info-card-cta">
                 <span>View Gameday Prep</span>
                 <i class="fas fa-arrow-right"></i>
             </a>
@@ -75,10 +97,18 @@
             <article class="info-card info-card-calendar">
                 <header class="panel-header">
                     <h2>Schedule</h2>
-                    <a href="{{ url_for('schedule') }}" class="panel-link">View full</a>
+                    <a href="{{ url_for('pages.schedule') }}" class="panel-link">View full</a>
                 </header>
                 <div class="calendar-widget">
-                    <div class="calendar-month-header" id="calendar-month-header"></div>
+                    <div class="calendar-month-header" id="calendar-month-header">
+                        <button class="calendar-nav-btn calendar-nav-prev" id="calendar-prev-month" aria-label="Previous month" type="button">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <span class="calendar-month-text" id="calendar-month-text"></span>
+                        <button class="calendar-nav-btn calendar-nav-next" id="calendar-next-month" aria-label="Next month" type="button">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
                     <div class="calendar-weekdays">
                         <div class="calendar-weekday">Sun</div>
                         <div class="calendar-weekday">Mon</div>
@@ -140,7 +170,7 @@
             {% else %}
                 <div class="empty-state">
                     <i class="fas fa-folder-open"></i>
-                    <p>New reports will appear here</p>
+                    <p>Nothing has been uploaded yet</p>
                 </div>
             {% endif %}
         </article>
@@ -159,21 +189,9 @@
                             <img src="{{ news.image }}" alt="{{ news.title }}" class="news-image-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
                         {% endif %}
                         <div class="news-image-fallback" {% if news.image %}style="display: none;"{% endif %}>
-                            {% if news.type == 'player' and player_headshot_url %}
-                                <img src="{{ player_headshot_url }}" alt="Player headshot" class="news-image-fallback-img" onerror="this.onerror=null; this.style.display='none'; this.nextElementSibling.style.display='grid';">
-                                <div class="news-image-fallback-icon" style="display: none;">
-                                    <i class="fas fa-baseball-ball"></i>
-                                </div>
-                            {% elif news.type == 'league' and mlb_logo_url %}
-                                <img src="{{ mlb_logo_url }}" alt="MLB" class="news-image-fallback-img news-image-fallback-logo" onerror="this.onerror=null; this.style.display='none'; this.nextElementSibling.style.display='grid';">
-                                <div class="news-image-fallback-icon" style="display: none;">
-                                    <i class="fas fa-baseball-ball"></i>
-                                </div>
-                            {% else %}
-                                <div class="news-image-fallback-icon">
-                                    <i class="fas fa-baseball-ball"></i>
-                                </div>
-                            {% endif %}
+                            <div class="news-image-fallback-icon">
+                                <i class="fas fa-baseball-ball"></i>
+                            </div>
                         </div>
                     </div>
                     <div class="news-content">
@@ -193,6 +211,22 @@
 
     </section>
 </div>
+
+<!-- Footer -->
+<footer class="home-footer">
+    <div class="home-footer-content">
+        <a href="https://www.instagram.com/sequencebiolab/" target="_blank" rel="noopener noreferrer" class="home-footer-link">
+            <i class="fab fa-instagram"></i>
+            <span>@sequencebiolab</span>
+        </a>
+        <span class="home-footer-separator">•</span>
+        <a href="{{ url_for('pages.contact_us') }}" class="home-footer-link">Contact Us</a>
+        <span class="home-footer-separator">•</span>
+        <a href="{{ url_for('pages.terms_of_service') }}" class="home-footer-link">Terms of Service</a>
+        <span class="home-footer-separator">•</span>
+        <a href="{{ url_for('pages.privacy_policy') }}" class="home-footer-link">Privacy Policy</a>
+    </div>
+</footer>
 {% endblock %}
 
 {% block scripts %}
@@ -378,14 +412,81 @@
     overflow: visible;
 }
 
+.player-search-wrapper {
+    position: relative;
+    width: 100%;
+    min-width: 250px;
+    max-width: 350px;
+    z-index: 99998;
+}
+
+.gameday-user-search-input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--color-layer-border);
+    border-radius: 8px;
+    background: var(--color-layer-card);
+    color: var(--color-text-primary);
+    font-size: 0.95rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    min-height: 44px;
+    box-sizing: border-box;
+}
+
+.gameday-user-search-input:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px rgba(255, 127, 0, 0.1);
+}
+
+.player-search-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--color-layer-card);
+    border: 1px solid var(--color-layer-border);
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 99999;
+    margin-top: 2px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.player-search-dropdown-item {
+    padding: 12px 14px;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    transition: background 0.2s ease;
+    border-bottom: 1px solid var(--color-layer-border);
+    font-size: 0.95rem;
+}
+
+.player-search-dropdown-item:hover {
+    background: rgba(255, 127, 0, 0.1);
+    color: var(--color-accent);
+}
+
+.player-search-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.player-search-dropdown-item.selected {
+    background: rgba(255, 127, 0, 0.15);
+    color: var(--color-accent);
+    font-weight: 600;
+}
+
 .hero-section .gameday-user-picker {
     background: var(--color-layer);
     border: 1px solid var(--color-layer-border);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.hero-section .gameday-user-picker {
     position: relative;
+    z-index: 99997;
+    overflow: visible;
 }
 
 .hero-section .gameday-user-picker .custom-select-wrapper {
@@ -531,6 +632,8 @@
     background: linear-gradient(135deg, rgba(255, 127, 0, 0.05), transparent);
     opacity: 0;
     transition: opacity 0.3s ease;
+    pointer-events: none;
+    z-index: 0;
 }
 
 .info-card:hover {
@@ -598,18 +701,87 @@
     color: var(--color-text-subtle);
 }
 
+.opponent-header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
 .info-card-content h3 {
     margin: 0;
     font-size: 1.4rem;
     font-weight: 700;
     color: var(--color-text-primary);
     line-height: 1.2;
+    flex: 1;
+    min-width: 0;
+}
+
+.next-game-date {
+    margin: 8px 0 12px 0;
+    font-size: 0.95rem;
+    color: var(--color-text-secondary);
+    font-weight: 500;
 }
 
 .info-card-content p {
     margin: 0;
     color: var(--color-text-secondary);
     font-size: 0.95rem;
+}
+
+/* Countdown Clock */
+.countdown-clock {
+    flex-shrink: 0;
+}
+
+.countdown-display {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.countdown-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-subtle);
+    white-space: nowrap;
+}
+
+.countdown-time {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.countdown-value {
+    font-size: 1.5rem;
+    color: var(--color-accent);
+    line-height: 1;
+    min-width: 28px;
+    text-align: center;
+    font-weight: 700;
+}
+
+.countdown-unit {
+    font-size: 0.85rem;
+    color: var(--color-text-subtle);
+    font-weight: 600;
+    margin-left: 2px;
+}
+
+.countdown-separator {
+    font-size: 1.2rem;
+    color: var(--color-text-tertiary);
+    margin: 0 2px;
+    font-weight: 400;
 }
 
 .info-card-badge {
@@ -668,6 +840,8 @@
     cursor: pointer;
     position: relative;
     z-index: 10;
+    pointer-events: auto;
+    -webkit-tap-highlight-color: rgba(255, 127, 0, 0.3);
 }
 
 .info-card-cta:hover {
@@ -678,6 +852,7 @@
 .info-card-cta i {
     font-size: 0.9rem;
     transition: transform 0.3s ease;
+    pointer-events: none;
 }
 
 .info-card-cta:hover i {
@@ -934,6 +1109,25 @@
     flex-direction: column;
 }
 
+.info-card-calendar:hover {
+    border-color: var(--color-layer-border);
+    transform: none;
+    box-shadow: none;
+}
+
+.info-card-calendar:hover::before {
+    opacity: 0;
+}
+
+.info-card-calendar .panel-header,
+.info-card-upcoming .panel-header,
+.content-panel .panel-header {
+    border-bottom: 2px solid var(--color-accent);
+    padding-bottom: 12px;
+    margin-bottom: 0;
+    width: 100%;
+}
+
 .calendar-widget {
     margin-top: 20px;
     width: 100%;
@@ -942,12 +1136,57 @@
 }
 
 .calendar-month-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.calendar-month-text {
     font-size: 1.1rem;
     font-weight: 700;
     color: var(--color-text-primary);
-    margin-bottom: 16px;
     text-align: center;
+    flex: 1;
 }
+
+.calendar-nav-btn {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-layer-border);
+    border-radius: 8px;
+    background: var(--color-layer-soft);
+    color: var(--color-text-primary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    padding: 0;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 10;
+    pointer-events: auto;
+    -webkit-tap-highlight-color: rgba(255, 127, 0, 0.3);
+}
+
+.calendar-nav-btn:hover {
+    background: var(--color-layer);
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    transform: translateY(-1px);
+}
+
+.calendar-nav-btn:active {
+    transform: translateY(0);
+}
+
+.calendar-nav-btn i {
+    font-size: 0.85rem;
+    pointer-events: none;
+}
+
 
 .calendar-weekdays {
     display: grid;
@@ -978,14 +1217,15 @@
     flex-direction: column;
     align-items: center;
     justify-content: space-between;
-    padding: 3px 3px 3px 3px;
+    padding: 4px;
     border-radius: 8px;
     background: var(--color-layer-soft);
     border: 1px solid var(--color-layer-border);
     position: relative;
     transition: all 0.2s ease;
     min-height: 48px;
-    overflow: hidden;
+    overflow: visible;
+    box-sizing: border-box;
 }
 
 .calendar-day.other-month {
@@ -1065,10 +1305,10 @@
 }
 
 .calendar-team-logo {
-    width: 36px;
-    height: 36px;
-    max-width: 36px;
-    max-height: 36px;
+    width: 44px;
+    height: 44px;
+    max-width: 44px;
+    max-height: 44px;
     object-fit: contain;
     z-index: 2;
     opacity: 1;
@@ -1076,6 +1316,7 @@
     align-self: center;
     margin-top: auto;
     flex-shrink: 0;
+    flex-grow: 0;
 }
 
 .calendar-game-indicator {
@@ -1145,36 +1386,51 @@
 .info-card-upcoming {
     width: 100%;
     height: fit-content;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    gap: 24px;
+    padding: 32px;
     position: sticky;
     top: 24px;
-    max-height: calc(100vh - 200px);
+    max-height: none;
+}
+
+.info-card-upcoming:hover {
+    border-color: var(--color-layer-border);
+    transform: none;
+    box-shadow: none;
+}
+
+.info-card-upcoming:hover::before {
+    opacity: 0;
 }
 
 .upcoming-games-list {
     display: grid;
-    gap: 16px;
-    margin-top: 20px;
+    gap: 20px;
     overflow-y: auto;
-    max-height: calc(100vh - 350px);
+    max-height: none;
+    padding-bottom: 0;
 }
 
 .upcoming-game-item {
     display: flex;
-    gap: 12px;
+    gap: 16px;
     padding: 16px;
-    border-radius: 12px;
+    border-radius: 16px;
     background: var(--color-layer-soft);
     border: 1px solid var(--color-layer-border);
     transition: all 0.3s ease;
     cursor: pointer;
     text-decoration: none;
     color: inherit;
+    height: 112px;
+    box-sizing: border-box;
+    align-items: center;
+    flex-shrink: 0;
 }
 
 .upcoming-game-item:hover {
-    border-color: rgba(255, 127, 0, 0.4);
+    border-color: var(--color-layer-border);
     transform: translateX(4px);
     background: var(--color-layer-soft);
 }
@@ -1183,11 +1439,14 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    min-width: 50px;
+    justify-content: center;
+    width: 80px;
+    height: 80px;
     padding: 8px;
-    border-radius: 8px;
+    border-radius: 12px;
     background: var(--color-layer);
     border: 1px solid var(--color-layer-border);
+    flex-shrink: 0;
 }
 
 .upcoming-game-day {
@@ -1209,13 +1468,16 @@
 .upcoming-game-details {
     flex: 1;
     display: grid;
-    gap: 6px;
+    gap: 8px;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .upcoming-game-matchup {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap;
 }
 
 .upcoming-game-vs {
@@ -1240,6 +1502,9 @@
     font-size: 1rem;
     font-weight: 600;
     color: var(--color-text-primary);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.3;
 }
 
 .upcoming-game-venue {
@@ -1248,6 +1513,9 @@
     display: flex;
     align-items: center;
     gap: 6px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    line-height: 1.4;
 }
 
 .upcoming-game-venue i {
@@ -1274,6 +1542,13 @@
     .info-card-upcoming {
         position: static;
     }
+
+    .calendar-team-logo {
+        width: 36px;
+        height: 36px;
+        max-width: 36px;
+        max-height: 36px;
+    }
 }
 
 @media (max-width: 768px) {
@@ -1295,6 +1570,25 @@
 
     .hero-avatar-wrapper {
         margin: 0 auto;
+    }
+
+    .hero-text {
+        align-items: center;
+        text-align: center;
+    }
+
+    .hero-badge {
+        margin: 0 auto;
+    }
+
+    .opponent-header-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .countdown-display {
+        width: 100%;
     }
 
     .hero-action {
@@ -1321,6 +1615,35 @@
     .content-panel {
         padding: 24px;
     }
+
+    .info-card-cta {
+        width: 100%;
+        justify-content: center;
+        min-height: 48px;
+        -webkit-tap-highlight-color: rgba(255, 127, 0, 0.3);
+    }
+
+    .calendar-days-grid {
+        gap: 6px;
+    }
+
+    .calendar-day {
+        min-height: 52px;
+        padding: 5px;
+        overflow: visible;
+    }
+
+    .calendar-team-logo {
+        width: 28px;
+        height: 28px;
+        max-width: 28px;
+        max-height: 28px;
+    }
+
+    .calendar-day-number {
+        font-size: 0.7rem;
+        padding-left: 3px;
+    }
 }
 
 @media (max-width: 480px) {
@@ -1339,6 +1662,122 @@
     .content-panel {
         padding: 20px;
     }
+
+    .info-card-cta {
+        padding: 16px 20px;
+        font-size: 0.9rem;
+        min-height: 48px;
+    }
+
+    .calendar-days-grid {
+        gap: 4px;
+    }
+
+    .calendar-day {
+        min-height: 50px;
+        padding: 4px;
+    }
+
+    .calendar-team-logo {
+        width: 24px;
+        height: 24px;
+        max-width: 24px;
+        max-height: 24px;
+    }
+
+    .calendar-day-number {
+        font-size: 0.65rem;
+    }
+
+    .calendar-weekday {
+        font-size: 0.7rem;
+        padding: 6px 2px;
+    }
+}
+
+/* Home Footer Styles */
+.home-footer {
+    max-width: 1400px;
+    margin: 60px auto 0;
+    padding: 32px;
+    border-top: 1px solid var(--color-layer-border);
+}
+
+.home-footer-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px 16px;
+    color: var(--color-text-subtle);
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.home-footer-link {
+    color: var(--color-text-subtle);
+    text-decoration: none;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-weight: 500;
+}
+
+.home-footer-link:hover {
+    color: var(--color-accent);
+    background: var(--color-accent-soft);
+    transform: translateY(-1px);
+}
+
+.home-footer-link i {
+    font-size: 0.9rem;
+}
+
+.home-footer-separator {
+    color: var(--color-text-tertiary);
+    user-select: none;
+}
+
+/* Responsive Footer */
+@media (max-width: 768px) {
+    .home-footer {
+        margin-top: 40px;
+        padding: 24px 20px;
+    }
+    
+    .home-footer-content {
+        font-size: 0.8125rem;
+        gap: 10px 12px;
+    }
+    
+    .home-footer-link {
+        padding: 6px 10px;
+    }
+}
+
+@media (max-width: 480px) {
+    .home-footer {
+        padding: 20px 16px;
+    }
+    
+    .home-footer-content {
+        font-size: 0.75rem;
+        gap: 8px;
+        flex-direction: column;
+    }
+    
+    .home-footer-separator {
+        display: none;
+    }
+    
+    .home-footer-link {
+        padding: 8px 12px;
+        width: 100%;
+        justify-content: center;
+    }
 }
 </style>
 <script>
@@ -1352,6 +1791,33 @@
         "PIT": 134, "SD": 135, "SF": 137, "SEA": 136, "STL": 138, "TB": 139, "TEX": 140,
         "TOR": 141, "WSH": 120, "WSN": 120, "WAS": 120
     };
+    
+    const TEAM_COLORS = {
+        109: "#A71930", 144: "#CE1141", 110: "#DF4601", 111: "#BD3039",
+        112: "#0E3386", 145: "#27251F", 113: "#C6011F", 114: "#E31937",
+        115: "#33006F", 116: "#0C2340", 117: "#002D62", 118: "#004687",
+        108: "#BA0021", 119: "#005A9C", 146: "#00A3E0", 158: "#0A2351",
+        142: "#002B5C", 121: "#002D72", 147: "#132448", 133: "#003831",
+        143: "#E81828", 134: "#FDB827", 135: "#2F241D", 137: "#FD5A1E",
+        136: "#0C2C56", 138: "#C41E3A", 139: "#092C5C", 140: "#003278",
+        141: "#134A8E", 120: "#AB0003"
+    };
+    
+    const TEAM_ID_TO_ABBR = {
+        109: "ARI", 144: "ATL", 110: "BAL", 111: "BOS", 112: "CHC", 145: "CWS", 113: "CIN",
+        114: "CLE", 115: "COL", 116: "DET", 117: "HOU", 118: "KC", 108: "LAA", 119: "LAD",
+        146: "MIA", 158: "MIL", 142: "MIN", 121: "NYM", 147: "NYY", 133: "OAK", 143: "PHI",
+        134: "PIT", 135: "SD", 137: "SF", 136: "SEA", 138: "STL", 139: "TB", 140: "TEX",
+        141: "TOR", 120: "WSH"
+    };
+    
+    function getTeamColor(teamId) {
+        return TEAM_COLORS[teamId] || '#666666';
+    }
+    
+    function getTeamAbbrFromId(teamId) {
+        return TEAM_ID_TO_ABBR[teamId] || 'OPP';
+    }
     
     // Use real schedule data from backend
     const scheduleCalendar = {{ schedule_calendar|tojson|safe }} || [];
@@ -1376,108 +1842,141 @@
     let currentYear = today.getFullYear();
     const currentDate = today.getDate();
     
-    // Set month header
+    // Month names
     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
                        'July', 'August', 'September', 'October', 'November', 'December'];
-    const monthHeader = document.getElementById('calendar-month-header');
-    if (monthHeader) {
-        monthHeader.textContent = `${monthNames[currentMonth]} ${currentYear}`;
-    }
     
-    // Get first day of month and number of days
-    const firstDay = new Date(currentYear, currentMonth, 1);
-    const lastDay = new Date(currentYear, currentMonth + 1, 0);
-    const daysInMonth = lastDay.getDate();
-    const startingDayOfWeek = firstDay.getDay();
-    
-    // Render calendar
-    const container = document.getElementById('calendar-days-grid');
-    if (!container) return;
-    
-    container.innerHTML = '';
-    
-    // Add empty cells for days before month starts
-    for (let i = 0; i < startingDayOfWeek; i++) {
-        const emptyDiv = document.createElement('div');
-        emptyDiv.className = 'calendar-day other-month';
-        container.appendChild(emptyDiv);
-    }
-    
-    // Add days of the month
-    for (let day = 1; day <= daysInMonth; day++) {
-        const date = new Date(currentYear, currentMonth, day);
-        // Format date as YYYY-MM-DD to match game dates
-        const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        const game = gamesByDate[dateStr];
-        const isToday = day === currentDate && currentMonth === today.getMonth() && currentYear === today.getFullYear();
-        
-        // Debug: log game matching
-        if (game) {
-            console.log('Found game for date:', dateStr, game);
+    // Calendar rendering function
+    function renderCalendar(month, year) {
+        // Update month header text
+        const monthText = document.getElementById('calendar-month-text');
+        if (monthText) {
+            monthText.textContent = `${monthNames[month]} ${year}`;
         }
         
-        // Debug: log if game found but no logo
-        if (game && !game.opponent_id && !game.opponent_abbr) {
-            console.warn('Game found but missing team ID/abbr:', dateStr, game);
-        }
+        // Get first day of month and number of days
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+        const daysInMonth = lastDay.getDate();
+        const startingDayOfWeek = firstDay.getDay();
         
-        const dayDiv = document.createElement('div');
-        let classes = 'calendar-day';
-        if (isToday) classes += ' today';
-        if (game) {
-            classes += ' has-game';
-            if (game.is_home) {
-                classes += ' game-home';
-            } else {
-                classes += ' game-away';
-            }
-        }
+        // Render calendar
+        const container = document.getElementById('calendar-days-grid');
+        if (!container) return;
         
-        dayDiv.className = classes;
+        container.innerHTML = '';
         
-        // Make clickable if there's a game
-        if (game) {
-            dayDiv.style.cursor = 'pointer';
-            dayDiv.addEventListener('click', function() {
-                window.location.href = `{{ url_for('gameday') }}?date=${dateStr}`;
-            });
-        }
-        
-        // Get team ID for logo
-        let logoHtml = '';
-        if (game) {
-            const teamId = game.opponent_id || (game.opponent_abbr && TEAM_ABBR_TO_ID[game.opponent_abbr.toUpperCase()]);
-            if (teamId) {
-                const logoUrl = `https://www.mlbstatic.com/team-logos/${teamId}.svg`;
-                logoHtml = `<img src="${logoUrl}" 
-                                 alt="${game.opponent}" 
-                                 class="calendar-team-logo"
-                                 title="${game.is_home ? 'vs' : '@'} ${game.opponent}"
-                                 loading="lazy"
-                                 onerror="this.onerror=null; this.style.display='none'; const fallback = this.parentElement.querySelector('.calendar-game-indicator-fallback'); if (fallback) fallback.style.display='flex';">
-                                 <div class="calendar-game-indicator calendar-game-indicator-fallback" style="display:none;" title="${game.is_home ? 'vs' : '@'} ${game.opponent}"><i class="fas fa-baseball"></i></div>`;
-            } else {
-                logoHtml = `<div class="calendar-game-indicator" title="${game.is_home ? 'vs' : '@'} ${game.opponent}"><i class="fas fa-baseball"></i></div>`;
-            }
-        }
-        
-        dayDiv.innerHTML = `
-            <div class="calendar-day-number">${day}</div>
-            ${logoHtml}
-        `;
-        
-        container.appendChild(dayDiv);
-    }
-    
-    // Fill remaining cells to complete the grid (next month's days)
-    const totalCells = startingDayOfWeek + daysInMonth;
-    const remainingCells = 7 - (totalCells % 7);
-    if (remainingCells < 7) {
-        for (let i = 0; i < remainingCells; i++) {
+        // Add empty cells for days before month starts
+        for (let i = 0; i < startingDayOfWeek; i++) {
             const emptyDiv = document.createElement('div');
             emptyDiv.className = 'calendar-day other-month';
             container.appendChild(emptyDiv);
         }
+        
+        // Add days of the month
+        for (let day = 1; day <= daysInMonth; day++) {
+            const date = new Date(year, month, day);
+            // Format date as YYYY-MM-DD to match game dates
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const game = gamesByDate[dateStr];
+            const isToday = day === currentDate && month === today.getMonth() && year === today.getFullYear();
+            
+            // Debug: log game matching
+            if (game) {
+                console.log('Found game for date:', dateStr, game);
+            }
+            
+            // Debug: log if game found but no logo
+            if (game && !game.opponent_id && !game.opponent_abbr) {
+                console.warn('Game found but missing team ID/abbr:', dateStr, game);
+            }
+            
+            const dayDiv = document.createElement('div');
+            let classes = 'calendar-day';
+            if (isToday) classes += ' today';
+            if (game) {
+                classes += ' has-game';
+                if (game.is_home) {
+                    classes += ' game-home';
+                } else {
+                    classes += ' game-away';
+                }
+            }
+            
+            dayDiv.className = classes;
+            
+            // Make clickable if there's a game
+            if (game) {
+                dayDiv.style.cursor = 'pointer';
+                dayDiv.addEventListener('click', function() {
+                    window.location.href = `{{ url_for('pages.gameday') }}?date=${dateStr}`;
+                });
+            }
+            
+            // Get team ID for badge
+            let logoHtml = '';
+            if (game) {
+                const teamId = game.opponent_id || (game.opponent_abbr && TEAM_ABBR_TO_ID[game.opponent_abbr.toUpperCase()]);
+                const teamAbbr = game.opponent_abbr || (teamId && getTeamAbbrFromId(teamId)) || 'OPP';
+                const teamColor = teamId ? getTeamColor(teamId) : '#666666';
+                if (teamId || teamAbbr) {
+                    logoHtml = `<span class="calendar-team-badge" style="background-color: ${teamColor}; color: white; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px; display: inline-block; min-width: 32px; text-align: center;" title="${game.is_home ? 'vs' : '@'} ${game.opponent}">${teamAbbr}</span>`;
+                } else {
+                    logoHtml = `<div class="calendar-game-indicator" title="${game.is_home ? 'vs' : '@'} ${game.opponent}"><i class="fas fa-baseball"></i></div>`;
+                }
+            }
+            
+            dayDiv.innerHTML = `
+                <div class="calendar-day-number">${day}</div>
+                ${logoHtml}
+            `;
+            
+            container.appendChild(dayDiv);
+        }
+        
+        // Fill remaining cells to complete the grid (next month's days)
+        const totalCells = startingDayOfWeek + daysInMonth;
+        const remainingCells = 7 - (totalCells % 7);
+        if (remainingCells < 7) {
+            for (let i = 0; i < remainingCells; i++) {
+                const emptyDiv = document.createElement('div');
+                emptyDiv.className = 'calendar-day other-month';
+                container.appendChild(emptyDiv);
+            }
+        }
+    }
+    
+    // Initial calendar render
+    renderCalendar(currentMonth, currentYear);
+    
+    // Month navigation event listeners
+    const prevBtn = document.getElementById('calendar-prev-month');
+    const nextBtn = document.getElementById('calendar-next-month');
+    
+    if (prevBtn) {
+        prevBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            currentMonth--;
+            if (currentMonth < 0) {
+                currentMonth = 11;
+                currentYear--;
+            }
+            renderCalendar(currentMonth, currentYear);
+        });
+    }
+    
+    if (nextBtn) {
+        nextBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            currentMonth++;
+            if (currentMonth > 11) {
+                currentMonth = 0;
+                currentYear++;
+            }
+            renderCalendar(currentMonth, currentYear);
+        });
     }
     
     // Populate upcoming games sidebar
@@ -1487,7 +1986,7 @@
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         
-        // Filter and sort upcoming games (next 7 days)
+        // Filter and sort upcoming games (up to 365 days ahead)
         const upcomingGames = scheduleCalendar
             .filter(game => {
                 if (!game || !game.date) return false;
@@ -1500,7 +1999,7 @@
                 const dateB = new Date(b.date + 'T00:00:00');
                 return dateA - dateB;
             })
-            .slice(0, 5); // Show next 5 games
+            .slice(0, 4); // Show next 4 games
         
         if (upcomingGames.length === 0) {
             upcomingGamesList.innerHTML = '<div class="upcoming-game-empty">No upcoming games scheduled</div>';
@@ -1515,7 +2014,7 @@
                 
                 const gameItem = document.createElement('a');
                 gameItem.className = 'upcoming-game-item';
-                gameItem.href = `{{ url_for('gameday') }}?date=${game.date}`;
+                gameItem.href = `{{ url_for('pages.gameday') }}?date=${game.date}`;
                 
                 const vsClass = game.is_home ? 'home' : 'away';
                 const vsText = game.is_home ? 'VS' : '@';
@@ -1581,70 +2080,128 @@
     }
 })();
 
-// Handle player schedule form submission and ensure dropdown works
+// Handle player schedule search functionality
 document.addEventListener('DOMContentLoaded', function() {
-    const playerSelect = document.getElementById('home-user-select');
+    const searchInput = document.getElementById('home-user-search');
+    const hiddenInput = document.getElementById('home-user-id');
+    const dropdown = document.getElementById('home-user-dropdown');
     const playerForm = document.getElementById('player-schedule-form');
     
-    if (playerSelect && playerForm) {
-        // Wait for custom select to be enhanced, then add change handler
-        setTimeout(function() {
-            playerSelect.addEventListener('change', function() {
+    if (!searchInput || !hiddenInput || !dropdown || !playerForm) {
+        return;
+    }
+    
+    // Get user options from the page (we'll need to pass them from backend)
+    const userOptions = [
+        {% for option in admin_user_options %}
+        {id: {{ option.id }}, label: "{{ option.label|e }}"}{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ];
+    
+    let selectedUserId = {{ selected_user_id or 'null' }};
+    let filteredOptions = [];
+    
+    function filterOptions(query) {
+        if (!query || query.trim() === '') {
+            return userOptions;
+        }
+        const lowerQuery = query.toLowerCase();
+        return userOptions.filter(option => 
+            option.label.toLowerCase().includes(lowerQuery)
+        );
+    }
+    
+    function renderDropdown(options) {
+        if (options.length === 0) {
+            dropdown.innerHTML = '<div class="player-search-dropdown-item">No players found</div>';
+            dropdown.style.display = 'block';
+            return;
+        }
+        
+        dropdown.innerHTML = options.map(option => {
+            const isSelected = option.id === selectedUserId;
+            return `<div class="player-search-dropdown-item ${isSelected ? 'selected' : ''}" 
+                        data-id="${option.id}" 
+                        data-label="${option.label}">
+                    ${option.label}
+                </div>`;
+        }).join('');
+        
+        dropdown.style.display = 'block';
+        
+        // Add click handlers
+        dropdown.querySelectorAll('.player-search-dropdown-item').forEach(item => {
+            item.addEventListener('click', function() {
+                const id = parseInt(this.dataset.id);
+                const label = this.dataset.label;
+                selectedUserId = id;
+                hiddenInput.value = id;
+                searchInput.value = label;
+                dropdown.style.display = 'none';
                 playerForm.submit();
             });
-            
-            // Ensure dropdown shows all options and is scrollable
-            const wrapper = playerSelect.closest('.custom-select-wrapper');
-            if (wrapper) {
-                const dropdown = wrapper.querySelector('.custom-select-dropdown');
-                const customSelect = wrapper.querySelector('.custom-select');
-                
-                if (dropdown) {
-                    // Ensure dropdown can escape overflow constraints
-                    dropdown.style.position = 'absolute';
-                    dropdown.style.zIndex = '10001';
-                    dropdown.style.maxHeight = '300px';
-                    dropdown.style.overflowY = 'auto';
-                    dropdown.style.overflowX = 'hidden';
-                    
-                    // Make wrapper allow overflow for dropdown
-                    wrapper.style.overflow = 'visible';
-                    wrapper.style.zIndex = '10000';
-                    
-                    // Ensure all options are visible and not clipped
-                    const ensureOptionsVisible = function() {
-                    const options = dropdown.querySelectorAll('.custom-select-option');
-                    options.forEach(function(option) {
-                        option.style.display = 'flex';
-                        option.style.visibility = 'visible';
-                        option.style.opacity = '1';
-                            option.style.flexShrink = '0';
-                            option.style.minHeight = '44px';
-                    });
-                    };
-                    
-                    // Check when dropdown opens
-                    const observer = new MutationObserver(function(mutations) {
-                        mutations.forEach(function(mutation) {
-                            if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-                                if (dropdown.classList.contains('open')) {
-                                    ensureOptionsVisible();
-                                    // Scroll selected option into view
-                                    const selected = dropdown.querySelector('.custom-select-option.selected');
-                                    if (selected) {
-                                        selected.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-                                    }
-                                }
-                            }
-                        });
-                    });
-                    
-                    observer.observe(dropdown, { attributes: true });
-                    ensureOptionsVisible();
-                }
-            }
-        }, 300);
+        });
     }
+    
+    // Handle input changes
+    searchInput.addEventListener('input', function() {
+        const query = this.value;
+        filteredOptions = filterOptions(query);
+        renderDropdown(filteredOptions);
+    });
+    
+    // Handle focus
+    searchInput.addEventListener('focus', function() {
+        if (this.value.trim() === '') {
+            filteredOptions = userOptions;
+        } else {
+            filteredOptions = filterOptions(this.value);
+        }
+        renderDropdown(filteredOptions);
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+        const wrapper = searchInput.closest('.player-search-wrapper');
+        if (wrapper && !wrapper.contains(e.target)) {
+            dropdown.style.display = 'none';
+        }
+    });
+    
+    // Handle keyboard navigation
+    searchInput.addEventListener('keydown', function(e) {
+        const items = dropdown.querySelectorAll('.player-search-dropdown-item');
+        const currentIndex = Array.from(items).findIndex(item => item.classList.contains('selected'));
+        
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            const nextIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
+            items.forEach(item => item.classList.remove('selected'));
+            if (items[nextIndex]) {
+                items[nextIndex].classList.add('selected');
+                items[nextIndex].scrollIntoView({ block: 'nearest' });
+            }
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            const prevIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
+            items.forEach(item => item.classList.remove('selected'));
+            if (items[prevIndex]) {
+                items[prevIndex].classList.add('selected');
+                items[prevIndex].scrollIntoView({ block: 'nearest' });
+            }
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            const selectedItem = dropdown.querySelector('.player-search-dropdown-item.selected');
+            if (selectedItem) {
+                selectedItem.click();
+            } else if (items.length > 0) {
+                items[0].click();
+            }
+        } else if (e.key === 'Escape') {
+            dropdown.style.display = 'none';
+        }
+    });
+    
 });
 
 document.addEventListener('click', async (event) => {
@@ -1671,6 +2228,60 @@ document.addEventListener('click', async (event) => {
         button.disabled = false;
     }
 });
+
+// Countdown clock for next game
+(function() {
+    const countdownContainer = document.getElementById('game-countdown');
+    if (!countdownContainer) return;
+
+    const gameDateTimeIso = '{{ next_series.first_game_datetime_iso|default("")|safe }}';
+    if (!gameDateTimeIso || gameDateTimeIso === 'None' || gameDateTimeIso === '') return;
+
+    const countdownDays = document.getElementById('countdown-days');
+    const countdownHours = document.getElementById('countdown-hours');
+    const countdownMinutes = document.getElementById('countdown-minutes');
+    
+    if (!countdownDays || !countdownHours || !countdownMinutes) return;
+
+    function updateCountdown() {
+        try {
+            const gameDate = new Date(gameDateTimeIso);
+            const now = new Date();
+            
+            // Check if date is valid
+            if (isNaN(gameDate.getTime())) {
+                console.error('Invalid game date:', gameDateTimeIso);
+                return;
+            }
+            
+            const diff = gameDate - now;
+
+            if (diff <= 0) {
+                // Game has started or passed
+                countdownDays.textContent = '00';
+                countdownHours.textContent = '00';
+                countdownMinutes.textContent = '00';
+                return;
+            }
+
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+            countdownDays.textContent = String(days).padStart(2, '0');
+            countdownHours.textContent = String(hours).padStart(2, '0');
+            countdownMinutes.textContent = String(minutes).padStart(2, '0');
+        } catch (e) {
+            console.error('Error updating countdown:', e);
+        }
+    }
+
+    // Update immediately
+    updateCountdown();
+    
+    // Update every minute (60000ms) for smooth countdown
+    setInterval(updateCountdown, 60000);
+})();
 </script>
 {% endblock %}
 

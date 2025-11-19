@@ -16,6 +16,7 @@ from typing import Any, Dict
 ROOT_DIR = Path(__file__).resolve().parent
 SETTINGS_DIR = ROOT_DIR / "config"
 SETTINGS_PATH = SETTINGS_DIR / "settings.json"
+BACKUP_DIR = SETTINGS_DIR / "backups"
 
 DEFAULT_SETTINGS: Dict[str, Any] = {
     "general": {
@@ -40,7 +41,6 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
         "allow_unverified_sources": False,
     },
     "integrations": {
-        "sportradar_api_key": "",
         "statcast_cookie": "",
         "fangraphs_username": "",
         "fangraphs_password": "",
@@ -51,6 +51,20 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
         "email_address": "",
         "notify_on_completion": True,
         "notify_on_failure": True,
+    },
+    "smtp": {
+        "host": "",
+        "port": 587,
+        "username": "",
+        "password": "",
+        "use_tls": True,
+        "from_email": "",
+        "from_name": ""
+    },
+    "data_refresh": {
+        "scheduled_enabled": False,
+        "scheduled_hour": 6,
+        "scheduled_minute": 0,
     },
 }
 
@@ -89,7 +103,10 @@ def load_settings() -> Dict[str, Any]:
                 stored = json.load(fh)
         except (json.JSONDecodeError, OSError):
             # If file is corrupt, back it up and start fresh
-            backup_path = SETTINGS_PATH.with_suffix(".backup.json")
+            BACKUP_DIR.mkdir(exist_ok=True)
+            from datetime import datetime
+            backup_filename = f"settings_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            backup_path = BACKUP_DIR / backup_filename
             try:
                 SETTINGS_PATH.replace(backup_path)
             except OSError:

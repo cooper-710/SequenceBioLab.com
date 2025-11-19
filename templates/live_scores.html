@@ -1,0 +1,817 @@
+{% extends "base.html" %}
+
+{% block title %}Live Scores - Sequence BioLab Analytics{% endblock %}
+
+{% block content %}
+<div class="page-container live-scores-page">
+    <header class="section-hero">
+        <div class="section-hero-heading">
+            <h1 class="hero-content">Live Scores</h1>
+            {% if live_games_count > 0 %}
+            <div class="live-indicator">
+                <span class="live-dot"></span>
+                <span class="live-text">{{ live_games_count }} {{ 'game' if live_games_count == 1 else 'games' }} live</span>
+            </div>
+            {% endif %}
+        </div>
+        <div class="section-hero-actions">
+            <button id="refreshScores" class="refresh-btn" title="Refresh scores">
+                <i class="fas fa-sync-alt"></i>
+                <span>Refresh</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Date Navigation -->
+    <div class="date-navigation">
+        <a href="{{ url_for('pages.live_scores', date=prev_date_str) }}" class="date-nav-btn">
+            <i class="fas fa-chevron-left"></i>
+            <span>{{ prev_date_display }}</span>
+        </a>
+        
+        <div class="date-selector">
+            <div class="date-display">
+                {% if is_today %}
+                <span class="date-label">Today</span>
+                {% else %}
+                <span class="date-label">{{ date_display }}</span>
+                {% endif %}
+            </div>
+            {% if not is_today %}
+            <a href="{{ url_for('pages.live_scores') }}" class="today-btn">
+                <i class="fas fa-calendar-day"></i>
+                <span>Today</span>
+            </a>
+            {% endif %}
+        </div>
+        
+        <a href="{{ url_for('pages.live_scores', date=next_date_str) }}" class="date-nav-btn">
+            <span>{{ next_date_display }}</span>
+            <i class="fas fa-chevron-right"></i>
+        </a>
+    </div>
+
+    <div class="live-scores-content">
+        {% if has_games %}
+        <section class="gameday-card scores-card">
+            <div class="card-header">
+                <h2><i class="fas fa-baseball-ball"></i> {% if is_today %}Today's Games{% else %}Games{% endif %}</h2>
+            </div>
+            
+            <div class="scores-list" id="scoresList">
+                {% for game in games %}
+                <a href="{{ url_for('pages.box_score', game_pk=game.game_pk) }}" class="score-card-link">
+                <div class="score-card {% if game.is_live %}score-card-live{% endif %}" data-game-pk="{{ game.game_pk }}">
+                    {% if game.is_live %}
+                    <div class="live-badge">
+                        <span class="live-dot-pulse"></span>
+                        <span>LIVE</span>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="score-header">
+                        <div class="score-status">
+                            <span class="status-label {{ game.status|lower|replace(' ', '-') }}">{{ game.status }}</span>
+                            {% if game.inning_label %}
+                            <span class="inning-label">{{ game.inning_label }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="score-time">
+                            <i class="fas fa-clock"></i>
+                            <span>{{ game.game_time }}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="score-teams">
+                        <div class="team-row {% if game.is_live and game.inning_state == 'top' %}team-row-active{% endif %}">
+                            <div class="team-info">
+                                <div class="team-header">
+                                    {% if game.away_id %}
+                                    <div class="team-logo">
+                                        <span class="team-abbr-badge" style="background-color: {{ get_team_color_global(team_id=game.away_id) }}; color: white; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 14px; display: inline-block; min-width: 40px; text-align: center;">
+                                            {{ game.away_abbr or (game.away_id|team_abbr_from_id) or 'AWY' }}
+                                        </span>
+                                    </div>
+                                    {% endif %}
+                                    <div class="team-details">
+                                        <div class="team-name">{{ game.away_team }}</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="team-score">
+                                {% if game.away_score is not none %}
+                                    <span class="score-value">{{ game.away_score }}</span>
+                                {% else %}
+                                    <span class="score-value">-</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <div class="score-divider">
+                            <div class="divider-line"></div>
+                        </div>
+                        
+                        <div class="team-row {% if game.is_live and game.inning_state == 'bottom' %}team-row-active{% endif %}">
+                            <div class="team-info">
+                                <div class="team-header">
+                                    {% if game.home_id %}
+                                    <div class="team-logo">
+                                        <span class="team-abbr-badge" style="background-color: {{ get_team_color_global(team_id=game.home_id) }}; color: white; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 14px; display: inline-block; min-width: 40px; text-align: center;">
+                                            {{ game.home_abbr or (game.home_id|team_abbr_from_id) or 'HME' }}
+                                        </span>
+                                    </div>
+                                    {% endif %}
+                                    <div class="team-details">
+                                        <div class="team-name">{{ game.home_team }}</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="team-score">
+                                {% if game.home_score is not none %}
+                                    <span class="score-value">{{ game.home_score }}</span>
+                                {% else %}
+                                    <span class="score-value">-</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="score-footer">
+                        <div class="venue-info">
+                            <i class="fas fa-map-marker-alt"></i>
+                            <span>{{ game.venue }}</span>
+                        </div>
+                        <div class="view-boxscore">
+                            <i class="fas fa-chart-bar"></i>
+                            <span>View Box Score</span>
+                        </div>
+                    </div>
+                </div>
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+        {% else %}
+        <section class="gameday-card">
+            <div class="card-header">
+                <h2><i class="fas fa-baseball-ball"></i> {% if is_today %}Today's Games{% else %}Games{% endif %}</h2>
+            </div>
+            <div class="empty-state">
+                <div class="empty-state-icon">
+                    <i class="fas fa-calendar-times"></i>
+                </div>
+                <h3 class="empty-state-title">No games scheduled</h3>
+                <p class="empty-state-description">
+                    There are no MLB games scheduled for {{ date_display }}. Check another date!
+                </p>
+            </div>
+        </section>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+.live-scores-page .section-hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.live-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.live-dot {
+    width: 8px;
+    height: 8px;
+    background: #ff3b30;
+    border-radius: 50%;
+    animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+    0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.5;
+        transform: scale(1.2);
+    }
+}
+
+.live-text {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    font-weight: 500;
+}
+
+.section-hero-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.refresh-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: var(--color-layer-soft);
+    border: 1px solid var(--color-layer-border);
+    border-radius: 8px;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.875rem;
+}
+
+.refresh-btn:hover {
+    background: var(--color-layer-hover);
+    border-color: var(--color-accent);
+}
+
+.refresh-btn i {
+    transition: transform 0.3s ease;
+}
+
+.refresh-btn.refreshing i {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.date-navigation {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 0;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--color-layer-border);
+}
+
+.date-nav-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: var(--color-layer-soft);
+    border: 1px solid var(--color-layer-border);
+    border-radius: 8px;
+    color: var(--color-text-primary);
+    text-decoration: none;
+    transition: all 0.2s ease;
+    font-size: 0.875rem;
+    white-space: nowrap;
+}
+
+.date-nav-btn:hover {
+    background: var(--color-layer-hover);
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+}
+
+.date-selector {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+    justify-content: center;
+}
+
+.date-display {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.date-label {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+.today-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--color-accent);
+    border: 1px solid var(--color-accent);
+    border-radius: 6px;
+    color: var(--color-text-inverse);
+    text-decoration: none;
+    font-size: 0.75rem;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.today-btn:hover {
+    background: var(--color-accent-bright);
+    border-color: var(--color-accent-bright);
+    transform: translateY(-1px);
+}
+
+
+.scores-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.score-card-link {
+    text-decoration: none;
+    color: inherit;
+    display: block;
+    transition: transform 0.2s ease;
+}
+
+.score-card-link:hover {
+    transform: none;
+}
+
+.score-card-link:active {
+    transform: scale(0.98);
+}
+
+.score-card {
+    background: var(--color-layer-soft);
+    border: 2px solid var(--color-layer-border);
+    border-radius: 16px;
+    padding: 24px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    cursor: pointer;
+}
+
+.score-card-link:hover .score-card {
+    border-color: var(--color-accent);
+    box-shadow: 0 6px 20px rgba(255, 127, 0, 0.15);
+    transform: translateY(-2px);
+}
+
+.score-card-live {
+    border-color: #ff3b30;
+    border-width: 2px;
+    box-shadow: 0 0 0 3px rgba(255, 59, 48, 0.1), 0 4px 16px rgba(255, 59, 48, 0.2);
+    background: linear-gradient(to bottom, var(--color-layer-soft), rgba(255, 59, 48, 0.02));
+}
+
+.live-badge {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    background: rgba(255, 59, 48, 0.1);
+    border: 1px solid #ff3b30;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #ff3b30;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.live-dot-pulse {
+    width: 6px;
+    height: 6px;
+    background: #ff3b30;
+    border-radius: 50%;
+    animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+.score-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--color-layer-border);
+}
+
+.score-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.status-label {
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: inline-block;
+}
+
+.status-label.live,
+.status-label.in-progress {
+    background: rgba(255, 59, 48, 0.1);
+    color: #ff3b30;
+}
+
+.status-label.final,
+.status-label.game-over {
+    background: rgba(128, 128, 128, 0.1);
+    color: var(--color-text-secondary);
+}
+
+.status-label.delayed {
+    background: rgba(255, 149, 0, 0.1);
+    color: #ff9500;
+}
+
+.status-label.scheduled,
+.status-label.warmup {
+    background: rgba(52, 199, 89, 0.1);
+    color: #34c759;
+}
+
+.inning-label {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    font-weight: 500;
+}
+
+.score-time {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+}
+
+.score-teams {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.team-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    border-radius: 10px;
+    transition: all 0.2s ease;
+}
+
+.team-row-active {
+    background: rgba(255, 127, 0, 0.08);
+    border: 2px solid rgba(255, 127, 0, 0.3);
+    box-shadow: 0 0 12px rgba(255, 127, 0, 0.15);
+}
+
+.team-info {
+    flex: 1;
+    display: flex;
+    align-items: center;
+}
+
+.team-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+}
+
+.team-logo {
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    padding: 6px;
+    transition: all 0.2s ease;
+}
+
+.team-row-active .team-logo {
+    background: rgba(255, 127, 0, 0.1);
+    transform: scale(1.05);
+}
+
+.team-logo img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+.team-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.team-name {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin-bottom: 4px;
+    line-height: 1.3;
+}
+
+.team-pitcher {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+}
+
+.team-pitcher i {
+    font-size: 0.625rem;
+}
+
+.team-score {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    min-width: 50px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.team-row-active .team-score {
+    color: var(--color-accent);
+    transform: scale(1.1);
+}
+
+.score-value {
+    display: inline-block;
+}
+
+.score-divider {
+    display: flex;
+    align-items: center;
+    margin: 4px 0;
+}
+
+.divider-line {
+    width: 100%;
+    height: 1px;
+    background: var(--color-layer-border);
+}
+
+.score-footer {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--color-layer-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.venue-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+}
+
+.view-boxscore {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.875rem;
+    color: var(--color-accent);
+    font-weight: 600;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.score-card-link:hover .view-boxscore {
+    opacity: 1;
+}
+
+.view-boxscore i {
+    font-size: 0.75rem;
+}
+
+.empty-state {
+    padding: 60px 20px;
+    text-align: center;
+}
+
+.empty-state-icon {
+    font-size: 64px;
+    color: var(--color-text-subtle);
+    margin-bottom: 24px;
+}
+
+.empty-state-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin: 0 0 12px 0;
+}
+
+.empty-state-description {
+    font-size: 1rem;
+    color: var(--color-text-secondary);
+    margin: 0;
+    max-width: 500px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+@media (max-width: 768px) {
+    .live-scores-page .section-hero {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .section-hero-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+    
+    .date-navigation {
+        flex-direction: row;
+        gap: 8px;
+        padding: 12px 0;
+    }
+    
+    .date-nav-btn {
+        padding: 8px 12px;
+        font-size: 0.75rem;
+        min-width: auto;
+        flex-shrink: 0;
+    }
+    
+    .date-nav-btn span {
+        display: none;
+    }
+    
+    .date-nav-btn i {
+        margin: 0;
+    }
+    
+    .date-selector {
+        flex: 1;
+        flex-direction: row;
+        gap: 8px;
+        justify-content: center;
+        min-width: 0;
+    }
+    
+    .date-display {
+        flex: 1;
+        min-width: 0;
+    }
+    
+    .date-label {
+        font-size: 0.875rem;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .today-btn {
+        padding: 6px 10px;
+        font-size: 0.7rem;
+        flex-shrink: 0;
+    }
+    
+    .today-btn span {
+        display: none;
+    }
+    
+    .score-card {
+        padding: 16px;
+    }
+    
+    .team-logo {
+        width: 40px;
+        height: 40px;
+    }
+    
+    .team-name {
+        font-size: 1rem;
+    }
+    
+    .team-score {
+        font-size: 1.75rem;
+    }
+    
+    .team-row {
+        padding: 12px;
+    }
+    
+    .score-footer {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .view-boxscore {
+        opacity: 1;
+        font-size: 0.8rem;
+    }
+}
+</style>
+
+{% block scripts %}
+<script>
+(function() {
+    const refreshBtn = document.getElementById('refreshScores');
+    const scoresList = document.getElementById('scoresList');
+    
+    function refreshScores() {
+        if (!refreshBtn || refreshBtn.classList.contains('refreshing')) {
+            return;
+        }
+        
+        refreshBtn.classList.add('refreshing');
+        
+        // Get current date from URL or use today
+        const urlParams = new URLSearchParams(window.location.search);
+        const currentDate = urlParams.get('date') || '';
+        
+        let refreshUrl = window.location.pathname;
+        if (currentDate) {
+            refreshUrl += '?date=' + currentDate;
+        }
+        
+        fetch(refreshUrl, {
+            method: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.text())
+        .then(html => {
+            // Parse the response and extract the scores list
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const newScoresList = doc.getElementById('scoresList');
+            const newLiveIndicator = doc.querySelector('.live-indicator');
+            
+            if (newScoresList && scoresList) {
+                // Smooth transition by fading out
+                scoresList.style.opacity = '0.5';
+                
+                setTimeout(() => {
+                    scoresList.innerHTML = newScoresList.innerHTML;
+                    scoresList.style.opacity = '1';
+                }, 200);
+            }
+            
+            // Update live indicator if it exists
+            if (newLiveIndicator) {
+                const currentLiveIndicator = document.querySelector('.live-indicator');
+                if (currentLiveIndicator) {
+                    currentLiveIndicator.outerHTML = newLiveIndicator.outerHTML;
+                } else if (newLiveIndicator.parentNode) {
+                    // Add it if it doesn't exist
+                    const heroHeading = document.querySelector('.section-hero-heading');
+                    if (heroHeading) {
+                        heroHeading.appendChild(newLiveIndicator);
+                    }
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error refreshing scores:', error);
+        })
+        .finally(() => {
+            setTimeout(() => {
+                if (refreshBtn) {
+                    refreshBtn.classList.remove('refreshing');
+                }
+            }, 500);
+        });
+    }
+    
+    // Manual refresh only
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', refreshScores);
+    }
+})();
+</script>
+
+{# Custom Jinja filter for date formatting #}
+<script>
+// Helper function for date formatting in JavaScript (fallback)
+</script>
+{% endblock %}
+{% endblock %}

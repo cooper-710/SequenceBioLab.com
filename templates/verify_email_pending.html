@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Verify Your Email - Sequence BioLab Analytics{% endblock %}
+
+{% block content %}
+<div class="page-container auth-page">
+    <div class="auth-card" style="max-width: 500px; text-align: center;">
+        <div class="auth-header">
+            <div style="font-size: 64px; color: var(--color-accent, #ff7f00); margin-bottom: 24px;">
+                <i class="fas fa-envelope"></i>
+            </div>
+            <h1>Check Your Email</h1>
+            <p style="color: var(--color-text-secondary, #666); margin-top: 16px;">
+                We've sent a verification link to <strong>{{ email }}</strong>
+            </p>
+        </div>
+        
+        <div style="background: color-mix(in srgb, var(--color-accent, #ff7f00) 10%, transparent); border: 1px solid color-mix(in srgb, var(--color-accent, #ff7f00) 30%, transparent); border-radius: 12px; padding: 20px; margin: 24px 0; text-align: left;">
+            <p style="margin: 0 0 12px 0; color: var(--color-text-primary, #000); line-height: 1.6;">
+                <strong>Next steps:</strong>
+            </p>
+            <ol style="margin: 0; padding-left: 20px; color: var(--color-text-primary, #000); line-height: 1.8;">
+                <li>Check your inbox for an email from Sequence BioLab</li>
+                <li>Click the verification link in the email</li>
+                <li>Return here to sign in</li>
+            </ol>
+            <p style="margin: 12px 0 0 0; color: var(--color-text-secondary, #666); font-size: 0.9rem;">
+                The verification link will expire in 24 hours.
+            </p>
+        </div>
+        
+        <form method="post" action="{{ url_for('auth.resend_verification') }}" style="margin-top: 24px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="email" value="{{ email }}">
+            <button type="submit" class="auth-submit" style="background: transparent; border: 1px solid var(--color-layer-border, #ddd); color: var(--color-text-secondary, #666);">
+                <span>Resend Verification Email</span>
+                <i class="fas fa-redo"></i>
+            </button>
+        </form>
+        
+        <div style="margin-top: 32px;">
+            <a href="{{ url_for('auth.login') }}" style="color: var(--color-text-secondary, #666); text-decoration: none;">
+                <i class="fas fa-arrow-left"></i> Back to Login
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

@@ -126,6 +126,44 @@
         </section>
     </div>
 
+    <section class="admin-card invite-codes-card">
+        <header>
+            <div>
+                <h2>Invite Codes</h2>
+                <p class="subtle">Create invite codes for players to register accounts.</p>
+            </div>
+            <button class="btn-primary" id="generateInviteCode">
+                <i class="fas fa-plus"></i>
+                Generate Code
+            </button>
+        </header>
+
+        <div class="filter-box" style="margin-bottom: 16px; margin-top: 16px;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="showUsedCodes"> 
+                <span>Show used codes</span>
+            </label>
+        </div>
+
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Code</th>
+                        <th>Created</th>
+                        <th>Used</th>
+                        <th>Used by</th>
+                        <th>Status</th>
+                        <th class="col-actions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="inviteCodesTableBody">
+                    <tr><td colspan="6" class="table-placeholder">Loading invite codes…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
     <section class="admin-card accounts-card">
         <header>
             <div>
@@ -146,10 +184,11 @@
                         <th>Name</th>
                         <th>Created</th>
                         <th>Updated</th>
+                        <th class="col-actions">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="accountsTableBody">
-                    <tr><td colspan="4" class="table-placeholder">Loading player accounts…</td></tr>
+                    <tr><td colspan="5" class="table-placeholder">Loading player accounts…</td></tr>
                 </tbody>
             </table>
         </div>
@@ -561,6 +600,36 @@
     border-color: var(--color-accent);
     color: var(--color-accent);
 }
+.badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+.badge.active {
+    background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+    color: var(--color-accent);
+}
+.badge.used {
+    background: color-mix(in srgb, var(--color-text-subtle) 20%, transparent);
+    color: var(--color-text-subtle);
+}
+.btn-sm {
+    padding: 6px 10px;
+    font-size: 13px;
+}
+.invite-codes-card {
+    margin-bottom: 28px;
+}
+.invite-codes-card header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 18px;
+    margin-bottom: 16px;
+}
 .player-search-results {
     position: absolute;
     inset: calc(100% + 6px) 0 auto 0;
@@ -846,17 +915,45 @@
 
     function renderAccountsTable(players) {
         if (!players.length) {
-            accountsTableBody.innerHTML = '<tr><td colspan="4" class="table-placeholder">No player accounts found.</td></tr>';
+            accountsTableBody.innerHTML = '<tr><td colspan="5" class="table-placeholder">No player accounts found.</td></tr>';
             return;
         }
-        accountsTableBody.innerHTML = players.map(player => `
-            <tr data-player-id="${player.id}">
+        accountsTableBody.innerHTML = players.map(player => {
+            const isActive = player.is_active !== false; // Default to true if not set
+            const isAdmin = player.is_admin === true;
+            
+            // Don't show deactivate/activate/delete buttons for admin accounts
+            let actionButtons = '';
+            if (!isAdmin) {
+                const activateDeactivateBtn = isActive 
+                    ? `<button class="btn-secondary btn-sm deactivate-user" data-user-id="${player.id}" title="Deactivate account">
+                        <i class="fas fa-ban"></i> Deactivate
+                       </button>`
+                    : `<button class="btn-secondary btn-sm activate-user" data-user-id="${player.id}" title="Activate account">
+                        <i class="fas fa-check"></i> Activate
+                       </button>`;
+                
+                const deleteBtn = `<button class="btn-secondary btn-sm delete-user" data-user-id="${player.id}" title="Delete account" style="color: #ef4444; border-color: #ef4444;">
+                        <i class="fas fa-trash"></i> Delete
+                       </button>`;
+                
+                actionButtons = `<div style="display: flex; gap: 8px; align-items: center;">${activateDeactivateBtn}${deleteBtn}</div>`;
+            } else {
+                actionButtons = '<span class="subtle" style="font-size: 0.85rem;">Admin</span>';
+            }
+            
+            return `
+            <tr data-player-id="${player.id}" ${!isActive && !isAdmin ? 'style="opacity: 0.6;"' : ''}>
                 <td>${player.email}</td>
                 <td>${(player.first_name || '') + ' ' + (player.last_name || '')}</td>
                 <td>${player.created_at ? new Date(player.created_at).toLocaleString() : '—'}</td>
                 <td>${player.updated_at ? new Date(player.updated_at).toLocaleString() : '—'}</td>
+                <td>
+                    ${actionButtons}
+                </td>
             </tr>
-        `).join('');
+        `;
+        }).join('');
     }
 
     function renderSearchResults(matches) {
@@ -868,7 +965,6 @@
         playerSearchResults.innerHTML = matches.map(player => `
             <div class="result-item" data-player-id="${player.id}">
                 <strong>${(player.first_name || '') + ' ' + (player.last_name || '')}</strong>
-                <span>${player.email}</span>
             </div>
         `).join('');
         playerSearchResults.style.display = 'block';
@@ -1167,7 +1263,74 @@
         });
     });
 
-    accountsTableBody.addEventListener('click', (event) => {
+    accountsTableBody.addEventListener('click', async (event) => {
+        // Handle delete button
+        const deleteBtn = event.target.closest('.delete-user');
+        if (deleteBtn) {
+            event.stopPropagation();
+            const userId = parseInt(deleteBtn.dataset.userId);
+            const player = allPlayers.find(p => p.id === userId);
+            const playerName = player ? `${player.first_name || ''} ${player.last_name || ''}`.trim() || player.email : 'this account';
+            if (confirm(`Are you sure you want to permanently delete ${playerName}? This action cannot be undone and will delete all associated data (documents, journal entries, etc.).`)) {
+                try {
+                    deleteBtn.disabled = true;
+                    deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Deleting...';
+                    await fetchJSON(`/api/admin/users/${userId}`, {
+                        method: 'DELETE'
+                    });
+                    await loadPlayers();
+                } catch (err) {
+                    alert(`Error deleting account: ${err.message}`);
+                    deleteBtn.disabled = false;
+                    deleteBtn.innerHTML = '<i class="fas fa-trash"></i> Delete';
+                }
+            }
+            return;
+        }
+        
+        // Handle deactivate button
+        const deactivateBtn = event.target.closest('.deactivate-user');
+        if (deactivateBtn) {
+            event.stopPropagation();
+            const userId = parseInt(deactivateBtn.dataset.userId);
+            if (confirm('Are you sure you want to deactivate this account?')) {
+                try {
+                    deactivateBtn.disabled = true;
+                    await fetchJSON(`/api/admin/users/${userId}/active`, {
+                        method: 'POST',
+                        body: JSON.stringify({ is_active: false })
+                    });
+                    await loadPlayers();
+                } catch (err) {
+                    alert(`Error deactivating account: ${err.message}`);
+                    deactivateBtn.disabled = false;
+                }
+            }
+            return;
+        }
+        
+        // Handle activate button
+        const activateBtn = event.target.closest('.activate-user');
+        if (activateBtn) {
+            event.stopPropagation();
+            const userId = parseInt(activateBtn.dataset.userId);
+            if (confirm('Are you sure you want to activate this account?')) {
+                try {
+                    activateBtn.disabled = true;
+                    await fetchJSON(`/api/admin/users/${userId}/active`, {
+                        method: 'POST',
+                        body: JSON.stringify({ is_active: true })
+                    });
+                    await loadPlayers();
+                } catch (err) {
+                    alert(`Error activating account: ${err.message}`);
+                    activateBtn.disabled = false;
+                }
+            }
+            return;
+        }
+        
+        // Handle row click (only if not clicking on a button)
         const row = event.target.closest('tr[data-player-id]');
         if (!row) return;
         const playerId = Number(row.dataset.playerId);
@@ -1193,6 +1356,191 @@
 
     resetSeriesSelection();
     loadPlayers();
+
+    // Invite codes management
+    const inviteCodesTableBody = document.getElementById('inviteCodesTableBody');
+    const generateInviteCodeBtn = document.getElementById('generateInviteCode');
+    const showUsedCodesCheckbox = document.getElementById('showUsedCodes');
+    let allInviteCodes = [];
+    let showUsedCodes = false;
+
+    async function loadInviteCodes() {
+        try {
+            const url = `/api/admin/invite-codes${showUsedCodes ? '?include_used=true' : ''}`;
+            const payload = await fetchJSON(url);
+            allInviteCodes = payload.invite_codes || [];
+            renderInviteCodesTable(allInviteCodes);
+        } catch (err) {
+            allInviteCodes = [];
+            inviteCodesTableBody.innerHTML = `<tr><td colspan="6" class="table-placeholder">Error loading invite codes: ${err.message}</td></tr>`;
+        }
+    }
+
+    function renderInviteCodesTable(codes) {
+        if (!codes.length) {
+            inviteCodesTableBody.innerHTML = '<tr><td colspan="6" class="table-placeholder">No invite codes found. Click "Generate Code" to create one.</td></tr>';
+            return;
+        }
+        inviteCodesTableBody.innerHTML = codes.map(code => {
+            const createdDate = code.created_at ? new Date(code.created_at).toLocaleString() : '—';
+            const usedDate = code.used_at ? new Date(code.used_at).toLocaleString() : '—';
+            const statusClass = code.is_used ? 'used' : 'active';
+            const statusText = code.is_used ? 'Used' : 'Active';
+            const usedByName = code.used_by_name ? escapeHtml(code.used_by_name) : '—';
+            
+            return `
+                <tr data-code-id="${code.id}">
+                    <td><strong style="font-family: monospace; font-size: 16px; letter-spacing: 2px;">${escapeHtml(code.code)}</strong></td>
+                    <td>${createdDate}</td>
+                    <td>${usedDate}</td>
+                    <td>${usedByName}</td>
+                    <td><span class="badge ${statusClass}">${statusText}</span></td>
+                    <td>
+                        ${!code.is_used ? `
+                            <button class="btn-secondary btn-sm delete-invite-code" data-code-id="${code.id}" title="Delete code">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        ` : ''}
+                        <button class="btn-secondary btn-sm copy-invite-code" data-code="${escapeHtml(code.code)}" title="Copy code">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+        
+        // Attach event listeners
+        document.querySelectorAll('.delete-invite-code').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const codeId = parseInt(e.currentTarget.dataset.codeId);
+                if (confirm('Are you sure you want to delete this invite code?')) {
+                    try {
+                        await fetchJSON(`/api/admin/invite-codes/${codeId}`, { method: 'DELETE' });
+                        await loadInviteCodes();
+                    } catch (err) {
+                        alert(`Error deleting invite code: ${err.message}`);
+                    }
+                }
+            });
+        });
+        
+        document.querySelectorAll('.copy-invite-code').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const code = e.currentTarget.dataset.code;
+                try {
+                    await navigator.clipboard.writeText(code);
+                    alert(`Invite code "${code}" copied to clipboard!`);
+                } catch (err) {
+                    // Fallback for older browsers
+                    const textArea = document.createElement('textarea');
+                    textArea.value = code;
+                    textArea.style.position = 'fixed';
+                    textArea.style.opacity = '0';
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    try {
+                        document.execCommand('copy');
+                        alert(`Invite code "${code}" copied to clipboard!`);
+                    } catch (e) {
+                        alert(`Failed to copy. Code: ${code}`);
+                    }
+                    document.body.removeChild(textArea);
+                }
+            });
+        });
+    }
+
+    if (generateInviteCodeBtn) {
+        generateInviteCodeBtn.addEventListener('click', async () => {
+            // Create a simple modal for custom code input
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center;';
+            
+            const modalContent = document.createElement('div');
+            modalContent.style.cssText = 'background: var(--color-layer-card, #fff); padding: 24px; border-radius: 12px; max-width: 400px; width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.3);';
+            
+            modalContent.innerHTML = `
+                <h3 style="margin: 0 0 16px 0; color: var(--color-text-primary, #000);">Generate Invite Code</h3>
+                <p style="margin: 0 0 12px 0; color: var(--color-text-secondary, #666); font-size: 14px;">
+                    Leave blank to generate a random 8-character code, or enter a custom code (min 6 characters).
+                </p>
+                <input type="text" id="customCodeInput" placeholder="Enter custom code or leave blank" 
+                    style="width: 100%; padding: 10px; margin-bottom: 16px; border: 1px solid var(--color-layer-border, #ddd); border-radius: 6px; text-transform: uppercase;"
+                    maxlength="20">
+                <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                    <button id="cancelCodeBtn" style="padding: 8px 16px; border: 1px solid var(--color-layer-border, #ddd); background: transparent; border-radius: 6px; cursor: pointer;">Cancel</button>
+                    <button id="generateCodeBtn" style="padding: 8px 16px; background: var(--color-accent, #007bff); color: white; border: none; border-radius: 6px; cursor: pointer;">Generate</button>
+                </div>
+            `;
+            
+            modal.appendChild(modalContent);
+            document.body.appendChild(modal);
+            
+            const input = modalContent.querySelector('#customCodeInput');
+            const cancelBtn = modalContent.querySelector('#cancelCodeBtn');
+            const generateBtn = modalContent.querySelector('#generateCodeBtn');
+            
+            input.focus();
+            
+            const cleanup = () => {
+                document.body.removeChild(modal);
+            };
+            
+            cancelBtn.addEventListener('click', cleanup);
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) cleanup();
+            });
+            
+            const handleGenerate = async () => {
+                const customCode = input.value.trim().toUpperCase();
+                let code = customCode || null;
+                
+                if (customCode && customCode.length < 6) {
+                    alert('Custom code must be at least 6 characters.');
+                    return;
+                }
+                
+                if (customCode && !/^[A-Z0-9]+$/.test(code)) {
+                    alert('Custom code can only contain letters and numbers.');
+                    return;
+                }
+                
+                cleanup();
+                
+                try {
+                    const payload = await fetchJSON('/api/admin/invite-codes', {
+                        method: 'POST',
+                        body: JSON.stringify({ code: code || null })
+                    });
+                    alert(`Invite code created: ${payload.invite_code.code}`);
+                    await loadInviteCodes();
+                } catch (err) {
+                    alert(`Error creating invite code: ${err.message}`);
+                }
+            };
+            
+            generateBtn.addEventListener('click', handleGenerate);
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    handleGenerate();
+                } else if (e.key === 'Escape') {
+                    cleanup();
+                }
+            });
+        });
+    }
+
+    if (showUsedCodesCheckbox) {
+        showUsedCodesCheckbox.addEventListener('change', (e) => {
+            showUsedCodes = e.target.checked;
+            loadInviteCodes();
+        });
+    }
+
+    // Load invite codes on page load
+    if (inviteCodesTableBody) {
+        loadInviteCodes();
+    }
 })();
 </script>
 {% endblock %}

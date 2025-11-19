@@ -9,7 +9,7 @@
             <h1 class="hero-content">Gameday Hub</h1>
         </div>
         {% if session.get('is_admin') and admin_user_options %}
-        <form class="section-hero-actions gameday-user-picker" method="get" action="{{ url_for('gameday') }}">
+        <form class="section-hero-actions gameday-user-picker" method="get" action="{{ url_for('pages.gameday') }}">
             {% set standings_view = request.args.get('standings_view') %}
             {% set division_id = request.args.get('division_id') %}
             {% set league_id = request.args.get('league_id') %}
@@ -38,23 +38,29 @@
     <div class="gameday-layout">
         <div class="gameday-main">
             <div class="gameday-top-grid">
-                <section class="gameday-card schedule-card" data-schedule-state="current">
+                <section class="gameday-card schedule-card" data-schedule-state="{{ default_schedule_tab or 'current' }}">
                 <div class="schedule-tabs" role="tablist" aria-label="Series timeframe">
-                    <button class="schedule-tab" type="button" data-filter="past" role="tab" aria-selected="false">
+                    <button class="schedule-tab {% if default_schedule_tab == 'past' %}is-active{% endif %}" type="button" data-filter="past" role="tab" aria-selected="{% if default_schedule_tab == 'past' %}true{% else %}false{% endif %}">
                         Past Series
                     </button>
-                    <button class="schedule-tab is-active" type="button" data-filter="current" role="tab" aria-selected="true">
+                    <button class="schedule-tab {% if default_schedule_tab == 'current' or not default_schedule_tab %}is-active{% endif %}" type="button" data-filter="current" role="tab" aria-selected="{% if default_schedule_tab == 'current' or not default_schedule_tab %}true{% else %}false{% endif %}">
                         Current Series
                     </button>
-                    <button class="schedule-tab" type="button" data-filter="future" role="tab" aria-selected="false">
+                    <button class="schedule-tab {% if default_schedule_tab == 'future' %}is-active{% endif %}" type="button" data-filter="future" role="tab" aria-selected="{% if default_schedule_tab == 'future' %}true{% else %}false{% endif %}">
                         Upcoming Series
                     </button>
                 </div>
+                {% if show_date_redirect_note %}
+                <p class="schedule-redirect-note" style="padding: 12px 16px; margin: 12px 0; background: rgba(255, 127, 0, 0.1); border-left: 3px solid var(--color-accent); border-radius: 4px; color: var(--color-text-primary); font-size: 0.9rem;">
+                    <i class="fas fa-info-circle" style="margin-right: 8px;"></i>
+                    Showing the current series. The selected date is beyond the upcoming series.
+                </p>
+                {% endif %}
                 <p class="empty-note schedule-empty" hidden>No series in this view yet.</p>
                 {% if upcoming_games %}
                 <ul class="matchups-list">
                     {% for game in upcoming_games %}
-                    <li data-status="{{ game.status or '' }}" data-opponent="{{ (game.opponent_abbr or game.opponent)|lower }}">
+                    <li data-status="{{ game.status or '' }}" data-opponent="{{ (game.opponent_abbr or game.opponent)|lower }}" data-category="{{ game.category or 'future' }}">
                         <div class="matchup-head">
                             <span class="matchup-date">{{ game.date }}</span>
                             {% if game.series %}
@@ -65,11 +71,9 @@
                             <span class="matchup-opponent">
                                 <span class="matchup-badge">
                                     {% if game.opponent_id %}
-                                    <img src="https://www.mlbstatic.com/team-logos/{{ game.opponent_id }}.svg"
-                                         alt="{{ game.opponent }} logo"
-                                         loading="lazy"
-                                         width="36"
-                                         height="36">
+                                    <span class="team-abbr-badge" style="background-color: {{ get_team_color_global(team_id=game.opponent_id) }}; color: white; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; display: inline-block;">
+                                        {{ game.opponent_abbr or (game.opponent_id|team_abbr_from_id) or game.opponent }}
+                                    </span>
                                     {% else %}
                                     {{ game.opponent_abbr or game.opponent }}
                                     {% endif %}
@@ -243,11 +247,11 @@
                 <div class="standings-controls">
                     <div class="standings-tabs">
                         <a class="standings-tab {% if standings_view == 'division' %}active{% endif %}"
-                           href="{{ url_for('gameday', standings_view='division', division_id=selected_division_id) }}">
+                           href="{{ url_for('pages.gameday', standings_view='division', division_id=selected_division_id) }}">
                             Division
                         </a>
                         <a class="standings-tab {% if standings_view == 'wildcard' %}active{% endif %}"
-                           href="{{ url_for('gameday', standings_view='wildcard', league_id=selected_league_id) }}">
+                           href="{{ url_for('pages.gameday', standings_view='wildcard', league_id=selected_league_id) }}">
                             Wild Card
                         </a>
                     </div>
@@ -338,6 +342,8 @@
     box-shadow: var(--shadow-elevated);
     display: grid;
     gap: 18px;
+    width: 100%;
+    box-sizing: border-box;
 }
 .card-header h2 {
     margin: 0;
@@ -809,9 +815,534 @@
         justify-content: center;
     }
 }
+
+/* Mobile responsive styles */
+@media (max-width: 768px) {
+    /* Match home page padding exactly */
+    .gameday-page.page-container,
+    .page-container.gameday-page,
+    .gameday-page,
+    div.gameday-page.page-container {
+        padding: 0 20px 48px !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        margin: 0 auto !important;
+        overflow-x: hidden !important;
+    }
+    
+    /* Ensure main-content doesn't add extra padding */
+    .main-content {
+        overflow-x: hidden !important;
+    }
+    
+    /* Ensure all child elements respect container width */
+    .gameday-page .section-hero,
+    .gameday-page .gameday-layout,
+    .gameday-page .gameday-main,
+    .gameday-page .gameday-top-grid,
+    .gameday-page .gameday-card {
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    
+    /* Force all text and images to wrap */
+    .gameday-page img,
+    .gameday-page svg {
+        max-width: 100% !important;
+        height: auto !important;
+    }
+    
+    /* Prevent tables and other elements from overflowing */
+    .gameday-page table,
+    .gameday-page pre,
+    .gameday-page code {
+        max-width: 100% !important;
+        overflow-x: auto !important;
+        word-wrap: break-word !important;
+    }
+
+    .gameday-page .section-hero,
+    .gameday-page header.section-hero {
+        padding: 16px !important;
+        margin-bottom: 16px !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 12px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .section-hero-heading h1,
+    .gameday-page .section-hero-heading .hero-content {
+        font-size: 1.5rem !important;
+    }
+
+    .gameday-page .gameday-user-picker,
+    .gameday-page .section-hero-actions.gameday-user-picker {
+        width: 100% !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 8px !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .gameday-user-picker-label {
+        width: 100% !important;
+        display: block !important;
+    }
+
+    .gameday-page .gameday-user-picker-select,
+    .gameday-page select.gameday-user-picker-select {
+        width: 100% !important;
+        box-sizing: border-box !important;
+        min-width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    .gameday-page .gameday-layout {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    .gameday-page .gameday-main {
+        gap: 20px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    .gameday-page .gameday-top-grid {
+        grid-template-columns: 1fr !important;
+        gap: 20px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    .gameday-page .gameday-card,
+    .gameday-page .schedule-card,
+    .gameday-page .docs-card,
+    .gameday-page .standings-card {
+        padding: 20px 16px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        overflow-x: hidden !important;
+    }
+
+    .gameday-page .card-header h2 {
+        font-size: 1.25rem !important;
+    }
+
+    .gameday-page .schedule-tabs {
+        width: 100% !important;
+        justify-content: stretch !important;
+        gap: 8px !important;
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .schedule-tab {
+        flex: 1 1 0 !important;
+        min-width: 0 !important;
+        padding: 8px 12px !important;
+        font-size: 0.9rem !important;
+        text-align: center !important;
+        white-space: nowrap !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .matchups-list {
+        gap: 12px !important;
+    }
+
+    .gameday-page .matchups-list li {
+        padding: 16px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .matchup-head {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 8px !important;
+        width: 100% !important;
+    }
+
+    .gameday-page .matchup-row {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 8px !important;
+        width: 100% !important;
+    }
+
+    .gameday-page .matchup-opponent {
+        width: 100% !important;
+        max-width: 100% !important;
+        font-size: 1rem !important;
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+        align-items: center !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+    }
+
+    .gameday-page .matchup-badge {
+        width: 40px !important;
+        height: 40px !important;
+        flex-shrink: 0 !important;
+    }
+
+    .gameday-page .matchup-time {
+        width: 100% !important;
+        font-size: 0.95rem !important;
+    }
+
+    .gameday-page .matchup-meta {
+        flex-direction: column !important;
+        gap: 8px !important;
+        width: 100% !important;
+    }
+
+    .gameday-page .matchup-reports {
+        width: 100% !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+    }
+
+    .gameday-page .report-chip {
+        width: 100% !important;
+        justify-content: center !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .docs-header {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 12px !important;
+        width: 100% !important;
+    }
+
+    .gameday-page .player-docs-item {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 12px !important;
+        padding: 16px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .player-docs-info {
+        width: 100% !important;
+    }
+
+    .gameday-page .player-docs-titles h3 {
+        font-size: 0.95rem !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+    }
+
+    .gameday-page .player-docs-meta {
+        flex-direction: column !important;
+        gap: 6px !important;
+        width: 100% !important;
+    }
+
+    .gameday-page .player-docs-download {
+        width: 100% !important;
+        justify-content: center !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .leaders-columns {
+        gap: 20px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .leaders-group {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        min-width: 0 !important;
+    }
+
+    .gameday-page .leaders-group-heading {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 12px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .leaders-select-label {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .leaders-select {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .leaders-grid {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        min-width: 0 !important;
+    }
+
+    .gameday-page .leaders-card {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        min-width: 0 !important;
+        overflow-x: hidden !important;
+    }
+
+    .gameday-page .leaders-table {
+        font-size: 0.9rem !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        overflow-x: auto !important;
+        display: block !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .leaders-table th,
+    .gameday-page .leaders-table td {
+        padding: 8px 10px !important;
+        font-size: 0.85rem !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+    }
+
+    .gameday-page .standings-card {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        min-width: 0 !important;
+        overflow-x: hidden !important;
+    }
+
+    .gameday-page .standings-controls {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 12px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .standings-tabs {
+        width: 100% !important;
+        max-width: 100% !important;
+        justify-content: stretch !important;
+        display: flex !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .standings-tab {
+        flex: 1 1 0 !important;
+        min-width: 0 !important;
+        text-align: center !important;
+        padding: 8px 12px !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .standings-form {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .standings-select {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .standings-division {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+    }
+
+    .gameday-page .standings-table {
+        font-size: 0.9rem !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        overflow-x: auto !important;
+        display: block !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .standings-table th,
+    .gameday-page .standings-table td {
+        padding: 10px 12px !important;
+        font-size: 0.85rem !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Match home page padding exactly for smaller screens */
+    .gameday-page.page-container,
+    .page-container.gameday-page,
+    .gameday-page,
+    div.gameday-page.page-container {
+        padding: 0 16px 32px !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        margin: 0 auto !important;
+        overflow-x: hidden !important;
+    }
+
+    .gameday-page .section-hero,
+    .gameday-page header.section-hero {
+        padding: 12px !important;
+    }
+
+    .gameday-page .section-hero-heading h1,
+    .gameday-page .section-hero-heading .hero-content {
+        font-size: 1.25rem !important;
+    }
+
+    .gameday-page .gameday-card,
+    .gameday-page .schedule-card,
+    .gameday-page .docs-card,
+    .gameday-page .standings-card {
+        padding: 16px 12px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
+        overflow-x: hidden !important;
+    }
+
+    .gameday-page .card-header h2 {
+        font-size: 1.1rem !important;
+    }
+
+    .gameday-page .schedule-tab {
+        padding: 8px 10px !important;
+        font-size: 0.85rem !important;
+    }
+
+    .gameday-page .matchups-list li {
+        padding: 14px !important;
+    }
+
+    .gameday-page .matchup-opponent {
+        font-size: 0.95rem !important;
+    }
+
+    .gameday-page .matchup-badge {
+        width: 36px !important;
+        height: 36px !important;
+    }
+
+    .gameday-page .player-docs-item {
+        padding: 14px !important;
+    }
+
+    .gameday-page .player-docs-titles h3 {
+        font-size: 0.9rem !important;
+    }
+
+    .gameday-page .leaders-columns,
+    .gameday-page .leaders-group,
+    .gameday-page .leaders-grid,
+    .gameday-page .leaders-card {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        min-width: 0 !important;
+    }
+
+    .gameday-page .leaders-table {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .leaders-table th,
+    .gameday-page .leaders-table td {
+        padding: 6px 8px !important;
+        font-size: 0.8rem !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+    }
+
+    .gameday-page .standings-card {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        min-width: 0 !important;
+    }
+
+    .gameday-page .standings-table {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+    }
+
+    .gameday-page .standings-table th,
+    .gameday-page .standings-table td {
+        padding: 8px 10px !important;
+        font-size: 0.8rem !important;
+        word-break: break-word !important;
+        overflow-wrap: break-word !important;
+    }
+}
 </style>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    // Auto-hide redirect note after 5 seconds
+    var redirectNote = document.querySelector('.schedule-redirect-note');
+    if (redirectNote) {
+        setTimeout(function() {
+            redirectNote.style.transition = 'opacity 0.5s ease-out';
+            redirectNote.style.opacity = '0';
+            setTimeout(function() {
+                redirectNote.style.display = 'none';
+            }, 500);
+        }, 5000);
+    }
+    
     var leaderSelects = document.querySelectorAll('.leaders-select');
     var standingForms = document.querySelectorAll('.standings-form');
     var standingsSelects = document.querySelectorAll('.standings-select');
@@ -882,6 +1413,12 @@ document.addEventListener('DOMContentLoaded', function () {
             };
 
             var categorize = function (item) {
+                // Use category from data attribute if available (from backend)
+                var category = item.dataset.category;
+                if (category && ['past', 'current', 'future'].includes(category)) {
+                    return category;
+                }
+                // Fallback to status-based categorization
                 var status = (item.dataset.status || '').toLowerCase();
                 if (status.includes('final') || status.includes('game over')) {
                     return 'past';
@@ -916,11 +1453,22 @@ document.addEventListener('DOMContentLoaded', function () {
                     tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
                 });
 
-                var primaryOpponent = scheduleBucketPrimaryOpp[bucket] || '';
+                // Find all items in this bucket and show only the first (next) one
+                var itemsInBucket = [];
+                scheduleItems.forEach(function (item) {
+                    if (item.dataset.bucket === bucket) {
+                        itemsInBucket.push(item);
+                    }
+                });
+
+                // Show only the first series in each category
+                var firstItem = itemsInBucket.length > 0 ? itemsInBucket[0] : null;
+                var primaryOpponent = firstItem ? (firstItem.dataset.opponent || '') : '';
+
                 scheduleItems.forEach(function (item) {
                     var inBucket = item.dataset.bucket === bucket;
-                    var matchesOpponent = !primaryOpponent || item.dataset.opponent === primaryOpponent;
-                    var shouldShow = inBucket && matchesOpponent;
+                    // Only show the first item in the bucket
+                    var shouldShow = inBucket && item === firstItem;
                     item.hidden = !shouldShow;
                     item.style.display = shouldShow ? '' : 'none';
                     if (shouldShow) {
@@ -953,15 +1501,25 @@ document.addEventListener('DOMContentLoaded', function () {
             });
 
             if (scheduleItems.length > 0) {
-                var defaultBuckets = ['current', 'future', 'past'];
-                var applied = defaultBuckets.some(function (bucket) {
-                    applyScheduleFilter(bucket);
-                    return Array.prototype.some.call(scheduleItems, function (item) {
-                        return !item.hidden;
-                    });
+                // Use the default tab from the template if available
+                var defaultTab = scheduleCard.dataset.scheduleState || 'current';
+                applyScheduleFilter(defaultTab);
+                
+                // If no items are visible with the default tab, try other tabs
+                var hasVisibleItems = Array.prototype.some.call(scheduleItems, function (item) {
+                    return !item.hidden;
                 });
-                if (!applied) {
-                    applyScheduleFilter('future');
+                if (!hasVisibleItems) {
+                    var defaultBuckets = ['current', 'future', 'past'];
+                    var applied = defaultBuckets.some(function (bucket) {
+                        applyScheduleFilter(bucket);
+                        return Array.prototype.some.call(scheduleItems, function (item) {
+                            return !item.hidden;
+                        });
+                    });
+                    if (!applied) {
+                        applyScheduleFilter('future');
+                    }
                 }
             }
         } else {

@@ -9,7 +9,7 @@
             <h1 class="hero-content">Schedule</h1>
         </div>
         {% if session.get('is_admin') and admin_user_options %}
-        <form class="section-hero-actions gameday-user-picker" method="get" action="{{ url_for('schedule') }}" id="schedule-user-form">
+        <form class="section-hero-actions gameday-user-picker" method="get" action="{{ url_for('pages.schedule') }}" id="schedule-user-form">
             {% set month = request.args.get('month') %}
             {% set year = request.args.get('year') %}
             {% if month %}
@@ -34,9 +34,9 @@
     <!-- Month Navigation -->
     <div class="schedule-navigation">
         {% if selected_user_id %}
-            <a href="{{ url_for('schedule', month=prev_month, year=prev_year, user_id=selected_user_id) }}" class="schedule-nav-btn">
+            <a href="{{ url_for('pages.schedule', month=prev_month, year=prev_year, user_id=selected_user_id) }}" class="schedule-nav-btn">
         {% else %}
-        <a href="{{ url_for('schedule', month=prev_month, year=prev_year) }}" class="schedule-nav-btn">
+        <a href="{{ url_for('pages.schedule', month=prev_month, year=prev_year) }}" class="schedule-nav-btn">
         {% endif %}
             <i class="fas fa-chevron-left"></i>
             <span>{{ month_names[prev_month - 1] }} {{ prev_year }}</span>
@@ -47,9 +47,9 @@
         </div>
         
         {% if selected_user_id %}
-            <a href="{{ url_for('schedule', month=next_month, year=next_year, user_id=selected_user_id) }}" class="schedule-nav-btn">
+            <a href="{{ url_for('pages.schedule', month=next_month, year=next_year, user_id=selected_user_id) }}" class="schedule-nav-btn">
         {% else %}
-        <a href="{{ url_for('schedule', month=next_month, year=next_year) }}" class="schedule-nav-btn">
+        <a href="{{ url_for('pages.schedule', month=next_month, year=next_year) }}" class="schedule-nav-btn">
         {% endif %}
             <span>{{ month_names[next_month - 1] }} {{ next_year }}</span>
             <i class="fas fa-chevron-right"></i>
@@ -165,6 +165,33 @@
         "TOR": 141, "WSH": 120, "WSN": 120, "WAS": 120
     };
     
+    const TEAM_COLORS = {
+        109: "#A71930", 144: "#CE1141", 110: "#DF4601", 111: "#BD3039",
+        112: "#0E3386", 145: "#27251F", 113: "#C6011F", 114: "#E31937",
+        115: "#33006F", 116: "#0C2340", 117: "#002D62", 118: "#004687",
+        108: "#BA0021", 119: "#005A9C", 146: "#00A3E0", 158: "#0A2351",
+        142: "#002B5C", 121: "#002D72", 147: "#132448", 133: "#003831",
+        143: "#E81828", 134: "#FDB827", 135: "#2F241D", 137: "#FD5A1E",
+        136: "#0C2C56", 138: "#C41E3A", 139: "#092C5C", 140: "#003278",
+        141: "#134A8E", 120: "#AB0003"
+    };
+    
+    const TEAM_ID_TO_ABBR = {
+        109: "ARI", 144: "ATL", 110: "BAL", 111: "BOS", 112: "CHC", 145: "CWS", 113: "CIN",
+        114: "CLE", 115: "COL", 116: "DET", 117: "HOU", 118: "KC", 108: "LAA", 119: "LAD",
+        146: "MIA", 158: "MIL", 142: "MIN", 121: "NYM", 147: "NYY", 133: "OAK", 143: "PHI",
+        134: "PIT", 135: "SD", 137: "SF", 136: "SEA", 138: "STL", 139: "TB", 140: "TEX",
+        141: "TOR", 120: "WSH"
+    };
+    
+    function getTeamColor(teamId) {
+        return TEAM_COLORS[teamId] || '#666666';
+    }
+    
+    function getTeamAbbrFromId(teamId) {
+        return TEAM_ID_TO_ABBR[teamId] || 'OPP';
+    }
+    
     // Convert games_by_date from template to JavaScript format
     const gamesByDate = {};
     {% if games_by_date %}
@@ -238,23 +265,18 @@
         if (game) {
             dayDiv.style.cursor = 'pointer';
             dayDiv.addEventListener('click', function() {
-                window.location.href = `{{ url_for('gameday') }}?date=${dateStr}`;
+                window.location.href = `{{ url_for('pages.gameday') }}?date=${dateStr}`;
             });
         }
         
-        // Get team ID for logo
+        // Get team ID for badge
         let logoHtml = '';
         if (game) {
             const teamId = game.opponent_id || (game.opponent_abbr && TEAM_ABBR_TO_ID[game.opponent_abbr.toUpperCase()]);
-            if (teamId) {
-                const logoUrl = `https://www.mlbstatic.com/team-logos/${teamId}.svg`;
-                logoHtml = `<img src="${logoUrl}" 
-                                 alt="${game.opponent}" 
-                                 class="calendar-team-logo"
-                                 title="${game.is_home ? 'vs' : '@'} ${game.opponent}"
-                                 loading="lazy"
-                                 onerror="this.onerror=null; this.style.display='none'; const fallback = this.parentElement.querySelector('.calendar-game-indicator-fallback'); if (fallback) fallback.style.display='flex';">
-                                 <div class="calendar-game-indicator calendar-game-indicator-fallback" style="display:none;" title="${game.is_home ? 'vs' : '@'} ${game.opponent}"><i class="fas fa-baseball"></i></div>`;
+            const teamAbbr = game.opponent_abbr || (teamId && getTeamAbbrFromId(teamId)) || 'OPP';
+            const teamColor = teamId ? getTeamColor(teamId) : '#666666';
+            if (teamId || teamAbbr) {
+                logoHtml = `<span class="calendar-team-badge" style="background-color: ${teamColor}; color: white; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px; display: inline-block; min-width: 32px; text-align: center;" title="${game.is_home ? 'vs' : '@'} ${game.opponent}">${teamAbbr}</span>`;
             } else {
                 logoHtml = `<div class="calendar-game-indicator" title="${game.is_home ? 'vs' : '@'} ${game.opponent}"><i class="fas fa-baseball"></i></div>`;
             }
@@ -280,8 +302,19 @@
     }
 })();
 
-// Handle schedule user form submission and ensure dropdown works
+// Handle schedule navigation buttons
 document.addEventListener('DOMContentLoaded', function() {
+    // Ensure navigation buttons work properly - icons shouldn't block clicks
+    const navButtons = document.querySelectorAll('.schedule-nav-btn');
+    navButtons.forEach(function(btn) {
+        // Make sure icons don't block clicks (CSS already handles this, but ensure it)
+        const icons = btn.querySelectorAll('i');
+        icons.forEach(function(icon) {
+            icon.style.pointerEvents = 'none';
+        });
+    });
+    
+    // Handle schedule user form submission and ensure dropdown works
     const scheduleSelect = document.getElementById('schedule-user-select');
     const scheduleForm = document.getElementById('schedule-user-form');
     
@@ -378,12 +411,19 @@ document.addEventListener('DOMContentLoaded', function() {
     text-decoration: none;
     font-weight: 600;
     transition: all 0.3s ease;
+    cursor: pointer;
+    user-select: none;
+    pointer-events: auto;
 }
 
 .schedule-nav-btn:hover {
     background: rgba(255, 127, 0, 0.1);
     border-color: rgba(255, 127, 0, 0.3);
     color: var(--color-accent);
+}
+
+.schedule-nav-btn i {
+    pointer-events: none;
 }
 
 .schedule-month-selector {
@@ -689,12 +729,12 @@ body[data-theme='light'] .schedule-month-display {
     flex-shrink: 0;
 }
 
-/* Larger logos on schedule page */
+/* Match home page calendar logo sizing */
 .schedule-page .calendar-team-logo {
-    width: 48px;
-    height: 48px;
-    max-width: 48px;
-    max-height: 48px;
+    width: 44px;
+    height: 44px;
+    max-width: 44px;
+    max-height: 44px;
 }
 
 .calendar-game-indicator {
@@ -811,6 +851,252 @@ body[data-theme='light'] .schedule-page .panel-header h2 {
 
 .schedule-page .gameday-user-picker .custom-select-dropdown::-webkit-scrollbar-thumb:hover {
     background: var(--color-text-secondary) !important;
+}
+
+/* Responsive calendar logo sizing to match home page */
+@media (max-width: 1024px) {
+    .schedule-page .calendar-team-logo {
+        width: 36px;
+        height: 36px;
+        max-width: 36px;
+        max-height: 36px;
+    }
+}
+
+/* Mobile responsive styles */
+@media (max-width: 768px) {
+    /* Ensure main-content doesn't add extra padding */
+    .main-content {
+        overflow-x: hidden !important;
+    }
+
+    /* Match home page padding exactly */
+    .schedule-page.page-container,
+    .page-container.schedule-page,
+    .schedule-page {
+        padding: 0 20px 48px !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        margin: 0 auto !important;
+        overflow-x: hidden !important;
+    }
+
+    .schedule-page .section-hero,
+    .schedule-page header.section-hero {
+        padding: 16px !important;
+        margin-bottom: 16px !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 12px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .schedule-page .section-hero-heading h1,
+    .schedule-page .section-hero-heading .hero-content {
+        font-size: 1.5rem !important;
+    }
+
+    .schedule-page .gameday-user-picker,
+    .schedule-page .section-hero-actions.gameday-user-picker {
+        width: 100% !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 8px !important;
+        box-sizing: border-box !important;
+    }
+
+    .schedule-page .gameday-user-picker-label,
+    .schedule-page .gameday-user-picker-select {
+        width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .schedule-navigation {
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 12px !important;
+        margin-bottom: 24px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        padding: 16px !important;
+    }
+
+    .schedule-nav-btn {
+        flex: 0 0 auto !important;
+        width: auto !important;
+        min-width: 44px !important;
+        justify-content: center !important;
+        padding: 12px !important;
+        gap: 0 !important;
+    }
+
+    /* Hide the text span in nav buttons on mobile, keep only the icon */
+    .schedule-nav-btn span {
+        display: none !important;
+    }
+
+    .schedule-nav-btn i {
+        display: block !important;
+        font-size: 1.2rem !important;
+    }
+
+    .schedule-month-selector {
+        flex: 1 1 auto !important;
+        width: auto !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+    }
+
+    .schedule-month-display {
+        width: 100% !important;
+        box-sizing: border-box !important;
+        text-align: center !important;
+    }
+
+    .schedule-page .content-panel {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        padding: 20px 16px !important;
+    }
+
+    .schedule-page .panel-header {
+        padding-bottom: 12px !important;
+        margin-bottom: 16px !important;
+    }
+
+    .schedule-calendar-container {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        overflow-x: hidden !important;
+    }
+
+    .calendar-widget {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .calendar-weekdays {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .calendar-days-grid {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .schedule-page .calendar-team-logo {
+        width: 28px;
+        height: 28px;
+        max-width: 28px;
+        max-height: 28px;
+    }
+
+    .schedule-list {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        gap: 20px !important;
+    }
+
+    .schedule-date-group {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .schedule-games {
+        margin-left: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .schedule-game-item {
+        flex-direction: column !important;
+        gap: 12px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    .schedule-game-time {
+        min-width: auto !important;
+        width: 100% !important;
+    }
+
+    .schedule-game-details {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Match home page padding exactly for smaller screens */
+    .schedule-page.page-container,
+    .page-container.schedule-page,
+    .schedule-page {
+        padding: 0 16px 32px !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+        margin: 0 auto !important;
+        overflow-x: hidden !important;
+    }
+
+    .schedule-page .section-hero,
+    .schedule-page header.section-hero {
+        padding: 12px !important;
+    }
+
+    .schedule-page .section-hero-heading h1,
+    .schedule-page .section-hero-heading .hero-content {
+        font-size: 1.25rem !important;
+    }
+
+    .schedule-page .content-panel {
+        padding: 16px 12px !important;
+    }
+
+    .schedule-navigation {
+        padding: 12px !important;
+        gap: 8px !important;
+    }
+
+    .schedule-nav-btn {
+        padding: 10px !important;
+        min-width: 40px !important;
+    }
+
+    .schedule-nav-btn i {
+        font-size: 1.1rem !important;
+    }
+
+    .schedule-month-display {
+        padding: 10px 12px !important;
+        font-size: 0.9rem !important;
+    }
+
+    .schedule-page .calendar-team-logo {
+        width: 24px;
+        height: 24px;
+        max-width: 24px;
+        max-height: 24px;
+    }
+
+    .schedule-game-item {
+        padding: 12px !important;
+    }
 }
 </style>
 {% endblock %}

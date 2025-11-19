@@ -1,0 +1,735 @@
+{% extends "base.html" %}
+
+{% block title %}Data Refresh - Admin{% endblock %}
+
+{% block content %}
+<div class="page-container">
+    <header class="section-hero">
+        <div class="section-hero-heading">
+            <h1 class="hero-content">Data Refresh</h1>
+        </div>
+        <div class="section-hero-meta">
+            <span class="meta-pill">
+                <i class="fas fa-clock"></i>
+                <span id="lastRefreshTime">Never</span>
+            </span>
+            <span class="meta-pill" id="refreshStatusPill" style="display: none;">
+                <i class="fas fa-spinner fa-spin"></i>
+                <span id="refreshStatusText">Refreshing...</span>
+            </span>
+        </div>
+    </header>
+
+    <section class="admin-card">
+        <header>
+            <div>
+                <h2>Refresh Live Data</h2>
+                <p class="subtle">Manually trigger an update of all MLB statistics data sources.</p>
+            </div>
+            <button class="btn-primary" id="refreshDataBtn">
+                <i class="fas fa-sync-alt"></i>
+                Refresh Live Data
+            </button>
+        </header>
+        <div class="refresh-info">
+            <p><strong>What gets updated:</strong></p>
+            <ul>
+                <li>Fangraphs Hitters Data (fangraphs.csv)</li>
+                <li>Fangraphs Pitchers Data (fangraphs_pitchers.csv)</li>
+                <li>Player Positions (Positions.csv)</li>
+                <li>Statcast Data (statscast.csv)</li>
+            </ul>
+            <p class="subtle" style="margin-top: 12px;">
+                <i class="fas fa-info-circle"></i> This process may take several minutes. 
+                The log below will show real-time progress.
+            </p>
+        </div>
+    </section>
+
+    <section class="admin-card">
+        <header>
+            <div>
+                <h2>Scheduled Refresh</h2>
+                <p class="subtle">Optionally enable automatic daily data refresh at a specific time.</p>
+            </div>
+        </header>
+        <div class="schedule-settings">
+            <div class="schedule-toggle">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="scheduleEnabled">
+                    <span class="toggle-slider"></span>
+                </label>
+                <div class="toggle-content">
+                    <strong>Enable Scheduled Refresh</strong>
+                    <p class="subtle">Automatically refresh data at the specified time each day</p>
+                </div>
+            </div>
+            
+            <div class="schedule-time" id="scheduleTimeContainer" style="display: none;">
+                <div class="time-input-group">
+                    <label for="scheduleHour">Time:</label>
+                    <div class="time-inputs">
+                        <select id="scheduleHour">
+                            <option value="0">12</option>
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                            <option value="6" selected>6</option>
+                            <option value="7">7</option>
+                            <option value="8">8</option>
+                            <option value="9">9</option>
+                            <option value="10">10</option>
+                            <option value="11">11</option>
+                            <option value="12">12</option>
+                            <option value="13">1</option>
+                            <option value="14">2</option>
+                            <option value="15">3</option>
+                            <option value="16">4</option>
+                            <option value="17">5</option>
+                            <option value="18">6</option>
+                            <option value="19">7</option>
+                            <option value="20">8</option>
+                            <option value="21">9</option>
+                            <option value="22">10</option>
+                            <option value="23">11</option>
+                        </select>
+                        <span class="time-separator">:</span>
+                        <select id="scheduleMinute">
+                            <option value="0" selected>00</option>
+                            <option value="5">05</option>
+                            <option value="10">10</option>
+                            <option value="15">15</option>
+                            <option value="20">20</option>
+                            <option value="25">25</option>
+                            <option value="30">30</option>
+                            <option value="35">35</option>
+                            <option value="40">40</option>
+                            <option value="45">45</option>
+                            <option value="50">50</option>
+                            <option value="55">55</option>
+                        </select>
+                        <select id="scheduleAmPm">
+                            <option value="AM">AM</option>
+                            <option value="PM">PM</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="schedule-actions">
+                <button class="btn-primary" id="saveScheduleBtn">
+                    <i class="fas fa-save"></i>
+                    Save Schedule
+                </button>
+            </div>
+            
+            <div id="scheduleStatus" class="schedule-status" style="display: none;"></div>
+        </div>
+    </section>
+
+    <section class="admin-card">
+        <header>
+            <div>
+                <h2>Refresh Log</h2>
+                <p class="subtle">History of all data refresh operations.</p>
+            </div>
+            <button class="btn-secondary" id="refreshLogBtn">
+                <i class="fas fa-sync"></i>
+                Refresh Log
+            </button>
+        </header>
+        <div class="log-container" id="logContainer">
+            <div class="log-placeholder">Loading log entries...</div>
+        </div>
+    </section>
+</div>
+
+<style>
+.admin-card header h2 {
+    color: var(--color-text-primary);
+}
+body[data-theme='light'] .admin-card header h2 {
+    color: #000000;
+}
+.admin-card header .subtle {
+    color: var(--color-text-subtle);
+}
+body[data-theme='light'] .admin-card header .subtle {
+    color: #000000;
+}
+.refresh-info {
+    margin-top: 16px;
+    padding: 16px;
+    background: var(--color-layer-soft);
+    border-radius: var(--tile-radius);
+    color: var(--color-text-primary);
+}
+.refresh-info p {
+    color: var(--color-text-primary);
+    margin-bottom: 8px;
+}
+.refresh-info strong {
+    color: var(--color-text-primary);
+    font-weight: 600;
+}
+.refresh-info ul {
+    margin: 8px 0;
+    padding-left: 24px;
+    color: var(--color-text-secondary);
+}
+.refresh-info li {
+    margin: 4px 0;
+    color: var(--color-text-secondary);
+}
+.log-container {
+    margin-top: 16px;
+    max-height: 600px;
+    overflow-y: auto;
+    border: 1px solid var(--color-layer-border);
+    border-radius: var(--tile-radius);
+    background: var(--color-layer-card);
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    padding: 16px;
+    color: var(--color-text-primary);
+}
+.log-entry {
+    margin: 4px 0;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--color-layer-border);
+    color: var(--color-text-primary);
+}
+.log-entry:last-child {
+    border-bottom: none;
+}
+.log-message {
+    color: var(--color-text-primary);
+}
+.log-timestamp {
+    color: var(--color-text-subtle);
+    margin-right: 12px;
+}
+.log-level-INFO {
+    color: var(--color-text-secondary);
+    font-weight: 600;
+    margin-right: 8px;
+}
+.log-level-WARNING {
+    color: var(--color-warning-text, #f59e0b);
+    font-weight: 600;
+    margin-right: 8px;
+}
+.log-level-ERROR {
+    color: var(--color-danger);
+    font-weight: 600;
+    margin-right: 8px;
+}
+.log-placeholder {
+    text-align: center;
+    color: var(--color-text-subtle);
+    padding: 40px;
+}
+.btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+#refreshLogBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border-radius: var(--tile-radius);
+    border: 1px solid var(--color-layer-border);
+    background: var(--color-layer-card);
+    color: var(--color-text-secondary);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.9rem;
+}
+#refreshLogBtn:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    background: var(--color-accent-soft);
+    transform: translateY(-1px);
+}
+#refreshLogBtn:active {
+    transform: translateY(0);
+}
+#refreshLogBtn i {
+    font-size: 0.85rem;
+}
+.schedule-settings {
+    margin-top: 16px;
+    padding: 20px;
+    background: var(--color-layer-soft);
+    border-radius: var(--tile-radius);
+}
+.schedule-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 24px;
+}
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 52px;
+    height: 28px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--color-layer-border);
+    transition: 0.3s;
+    border-radius: 28px;
+}
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 22px;
+    width: 22px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+.toggle-switch input:checked + .toggle-slider {
+    background-color: var(--color-accent);
+}
+.toggle-switch input:checked + .toggle-slider:before {
+    transform: translateX(24px);
+}
+.toggle-content {
+    flex: 1;
+}
+.toggle-content strong {
+    display: block;
+    color: var(--color-text-primary);
+    font-size: 1rem;
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+body[data-theme='light'] .toggle-content strong {
+    color: #000000;
+}
+.schedule-time {
+    margin-top: 24px;
+    padding-top: 24px;
+    border-top: 1px solid var(--color-layer-border);
+    display: flex;
+    align-items: flex-end;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+.schedule-actions {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--color-layer-border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.time-input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1;
+    min-width: 200px;
+}
+.time-input-group label {
+    font-weight: 600;
+    color: var(--color-text-primary);
+    font-size: 0.9rem;
+}
+body[data-theme='light'] .time-input-group label {
+    color: #000000;
+}
+.time-inputs {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.time-inputs select {
+    padding: 10px 14px;
+    border-radius: var(--tile-radius);
+    border: 1px solid var(--color-layer-border);
+    background: var(--color-layer-card);
+    color: var(--color-text-primary);
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: all 0.2s ease;
+}
+.time-inputs select:hover {
+    border-color: var(--color-accent);
+}
+.time-inputs select:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+.time-separator {
+    color: var(--color-text-secondary);
+    font-weight: 600;
+    font-size: 1.1rem;
+    padding: 0 4px;
+}
+.schedule-status {
+    margin-top: 20px;
+    padding: 14px 16px;
+    border-radius: var(--tile-radius);
+    background: var(--color-success-soft);
+    border: 1px solid var(--color-success-border);
+    color: var(--color-success);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.schedule-status.error {
+    background: var(--color-danger-soft);
+    border-color: var(--color-danger);
+    color: var(--color-danger);
+}
+.schedule-status.warning {
+    background: var(--color-warning-soft, rgba(245, 158, 11, 0.1));
+    border-color: var(--color-warning-border, rgba(245, 158, 11, 0.4));
+    color: var(--color-warning-text, #f59e0b);
+}
+.schedule-status i {
+    font-size: 1rem;
+}
+</style>
+
+<script>
+(function() {
+    const refreshDataBtn = document.getElementById('refreshDataBtn');
+    const refreshLogBtn = document.getElementById('refreshLogBtn');
+    const logContainer = document.getElementById('logContainer');
+    const lastRefreshTime = document.getElementById('lastRefreshTime');
+    const refreshStatusPill = document.getElementById('refreshStatusPill');
+    const refreshStatusText = document.getElementById('refreshStatusText');
+
+    let refreshInProgress = false;
+    let logPollInterval = null;
+    let statusCheckInterval = null;
+
+    async function fetchJSON(url, options = {}) {
+        const response = await fetch(url, {
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            credentials: 'same-origin',
+            ...options
+        });
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.error || response.statusText || 'Request failed');
+        }
+        return response.json();
+    }
+
+    async function loadLogs() {
+        try {
+            const payload = await fetchJSON('/api/admin/data-refresh/logs');
+            renderLogs(payload.logs || []);
+            if (payload.last_refresh) {
+                const date = new Date(payload.last_refresh);
+                lastRefreshTime.textContent = date.toLocaleString('en-US', {
+                    month: 'numeric',
+                    day: 'numeric',
+                    year: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                });
+            } else {
+                lastRefreshTime.textContent = 'Never';
+            }
+        } catch (err) {
+            logContainer.innerHTML = `<div class="log-placeholder">Error loading logs: ${err.message}</div>`;
+        }
+    }
+
+    function renderLogs(logs) {
+        if (!logs || logs.length === 0) {
+            logContainer.innerHTML = '<div class="log-placeholder">No log entries found.</div>';
+            return;
+        }
+
+        logContainer.innerHTML = logs.map(log => {
+            const level = log.level || 'INFO';
+            const timestamp = log.timestamp || '';
+            const message = log.message || '';
+            return `
+                <div class="log-entry">
+                    <span class="log-timestamp">${timestamp}</span>
+                    <span class="log-level-${level}">[${level}]</span>
+                    <span class="log-message">${escapeHtml(message)}</span>
+                </div>
+            `;
+        }).join('');
+
+        // Auto-scroll to bottom
+        logContainer.scrollTop = logContainer.scrollHeight;
+    }
+
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    async function triggerRefresh() {
+        if (refreshInProgress) {
+            alert('A refresh is already in progress. Please wait for it to complete.');
+            return;
+        }
+
+        if (!confirm('This will update all MLB statistics data. This may take several minutes. Continue?')) {
+            return;
+        }
+
+        refreshInProgress = true;
+        refreshDataBtn.disabled = true;
+        refreshDataBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing...';
+        refreshStatusPill.style.display = 'inline-flex';
+        refreshStatusText.textContent = 'Refreshing...';
+
+        // Start polling for log updates
+        if (logPollInterval) {
+            clearInterval(logPollInterval);
+        }
+        logPollInterval = setInterval(loadLogs, 2000); // Poll every 2 seconds
+
+        try {
+            const payload = await fetchJSON('/api/admin/data-refresh/trigger', {
+                method: 'POST'
+            });
+
+            // Poll for completion
+            const checkStatus = async () => {
+                try {
+                    const status = await fetchJSON('/api/admin/data-refresh/status');
+                    if (status.status === 'completed' || status.status === 'failed') {
+                        clearInterval(logPollInterval);
+                        clearInterval(statusCheckInterval);
+                        refreshInProgress = false;
+                        refreshDataBtn.disabled = false;
+                        refreshDataBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh Live Data';
+                        refreshStatusPill.style.display = 'none';
+                        
+                        if (status.status === 'failed') {
+                            const errorMsg = status.error ? `Data refresh failed: ${status.error}` : 'Data refresh failed. Check the log for details.';
+                            alert(errorMsg);
+                            console.error('Data refresh failed:', status);
+                        } else {
+                            alert('Data refresh completed successfully!');
+                        }
+                        
+                        // Reload logs one final time
+                        await loadLogs();
+                    }
+                } catch (err) {
+                    console.error('Error checking status:', err);
+                }
+            };
+
+            // Check status every 3 seconds
+            statusCheckInterval = setInterval(checkStatus, 3000);
+            
+            // Also check immediately
+            setTimeout(checkStatus, 1000);
+
+        } catch (err) {
+            clearInterval(logPollInterval);
+            if (statusCheckInterval) {
+                clearInterval(statusCheckInterval);
+            }
+            refreshInProgress = false;
+            refreshDataBtn.disabled = false;
+            refreshDataBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh Live Data';
+            refreshStatusPill.style.display = 'none';
+            alert(`Failed to trigger refresh: ${err.message}`);
+        }
+    }
+
+    refreshDataBtn.addEventListener('click', triggerRefresh);
+    refreshLogBtn.addEventListener('click', loadLogs);
+
+    // Load logs on page load
+    loadLogs();
+
+    // Schedule management
+    const scheduleEnabled = document.getElementById('scheduleEnabled');
+    const scheduleTimeContainer = document.getElementById('scheduleTimeContainer');
+    const scheduleHour = document.getElementById('scheduleHour');
+    const scheduleMinute = document.getElementById('scheduleMinute');
+    const scheduleAmPm = document.getElementById('scheduleAmPm');
+    const saveScheduleBtn = document.getElementById('saveScheduleBtn');
+    const scheduleStatus = document.getElementById('scheduleStatus');
+
+    function hour24To12(hour24) {
+        if (hour24 === 0) return { hour: 12, ampm: 'AM' };
+        if (hour24 === 12) return { hour: 12, ampm: 'PM' };
+        if (hour24 > 12) return { hour: hour24 - 12, ampm: 'PM' };
+        return { hour: hour24, ampm: 'AM' };
+    }
+
+    function hour12To24(hour12, ampm) {
+        if (ampm === 'AM') {
+            return hour12 === 12 ? 0 : hour12;
+        } else {
+            return hour12 === 12 ? 12 : hour12 + 12;
+        }
+    }
+
+    function updateTimeDisplay() {
+        const hour24 = parseInt(scheduleHour.value);
+        const { hour: hour12, ampm } = hour24To12(hour24);
+        
+        // Find and select the correct hour option
+        const hourOptions = scheduleHour.options;
+        for (let i = 0; i < hourOptions.length; i++) {
+            if (parseInt(hourOptions[i].value) === hour24) {
+                scheduleHour.selectedIndex = i;
+                break;
+            }
+        }
+        scheduleAmPm.value = ampm;
+    }
+
+    scheduleEnabled.addEventListener('change', () => {
+        scheduleTimeContainer.style.display = scheduleEnabled.checked ? 'flex' : 'none';
+        // Always show save button - it's needed to save disabled state too
+        if (!scheduleEnabled.checked) {
+            scheduleStatus.style.display = 'none';
+        }
+    });
+
+    scheduleHour.addEventListener('change', () => {
+        const hour24 = parseInt(scheduleHour.value);
+        const { ampm } = hour24To12(hour24);
+        scheduleAmPm.value = ampm;
+    });
+
+    scheduleAmPm.addEventListener('change', () => {
+        const currentHour24 = parseInt(scheduleHour.value);
+        const { hour: currentHour12 } = hour24To12(currentHour24);
+        const newAmPm = scheduleAmPm.value;
+        const newHour24 = hour12To24(currentHour12, newAmPm);
+        
+        // Update hour dropdown to new 24-hour value
+        const hourOptions = scheduleHour.options;
+        for (let i = 0; i < hourOptions.length; i++) {
+            if (parseInt(hourOptions[i].value) === newHour24) {
+                scheduleHour.selectedIndex = i;
+                break;
+            }
+        }
+    });
+
+    async function loadSchedule() {
+        try {
+            const payload = await fetchJSON('/api/admin/data-refresh/schedule');
+            const wasEnabled = scheduleEnabled.checked;
+            scheduleEnabled.checked = payload.enabled || false;
+            scheduleTimeContainer.style.display = payload.enabled ? 'flex' : 'none';
+            
+            // Update time fields if they exist
+            if (payload.hour !== undefined) {
+                const hour24 = payload.hour;
+                const { hour: hour12, ampm } = hour24To12(hour24);
+                
+                // Set hour dropdown
+                const hourOptions = scheduleHour.options;
+                for (let i = 0; i < hourOptions.length; i++) {
+                    if (parseInt(hourOptions[i].value) === hour24) {
+                        scheduleHour.selectedIndex = i;
+                        break;
+                    }
+                }
+                scheduleAmPm.value = ampm;
+            }
+            
+            if (payload.minute !== undefined) {
+                scheduleMinute.value = payload.minute;
+            }
+            
+            // Show warning if there's a mismatch between settings and cron
+            if (payload.cron_mismatch) {
+                scheduleStatus.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Warning: Schedule is enabled but cron job not found. Click "Save Schedule" to recreate it.';
+                scheduleStatus.className = 'schedule-status warning';
+                scheduleStatus.style.display = 'flex';
+            } else if (!payload.enabled && wasEnabled) {
+                // Clear status when disabling
+                scheduleStatus.style.display = 'none';
+            }
+        } catch (err) {
+            console.error('Error loading schedule:', err);
+        }
+    }
+
+    saveScheduleBtn.addEventListener('click', async () => {
+        try {
+            const hour24 = parseInt(scheduleHour.value);
+            const minute = parseInt(scheduleMinute.value);
+            const enabled = scheduleEnabled.checked;
+            
+            saveScheduleBtn.disabled = true;
+            saveScheduleBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+            
+            const payload = await fetchJSON('/api/admin/data-refresh/schedule', {
+                method: 'POST',
+                body: JSON.stringify({
+                    enabled: enabled,
+                    hour: hour24,
+                    minute: minute
+                })
+            });
+            
+            scheduleStatus.innerHTML = `<i class="fas fa-check-circle"></i> ${payload.message || (enabled ? 'Schedule saved successfully' : 'Schedule disabled')}`;
+            scheduleStatus.className = 'schedule-status';
+            scheduleStatus.style.display = 'flex';
+            
+            // Reload schedule to update UI with saved values
+            await loadSchedule();
+            
+            setTimeout(() => {
+                scheduleStatus.style.display = 'none';
+            }, 5000);
+            
+        } catch (err) {
+            scheduleStatus.innerHTML = `<i class="fas fa-exclamation-circle"></i> Error: ${err.message}`;
+            scheduleStatus.className = 'schedule-status error';
+            scheduleStatus.style.display = 'flex';
+        } finally {
+            saveScheduleBtn.disabled = false;
+            saveScheduleBtn.innerHTML = '<i class="fas fa-save"></i> Save Schedule';
+        }
+    });
+
+    // Load schedule on page load
+    loadSchedule();
+})();
+</script>
+{% endblock %}
+

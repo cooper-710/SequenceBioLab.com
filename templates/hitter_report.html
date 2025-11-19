@@ -672,11 +672,6 @@
             </div>
             {% endif %}
           </div>
-          {% if player_headshot_url %}
-          <div class="header-right">
-            <img src="{{ player_headshot_url }}" alt="{{ player }}" class="header-headshot">
-          </div>
-          {% endif %}
         </div>
         <div class="header-meta">
           <div class="header-meta-item">
@@ -854,9 +849,7 @@
     {% set heat = (figures.oppo_heatmaps       | selectattr('name','equalto',name) | list) if figures and figures.oppo_heatmaps else [] %}
     {% set mix  = (figures.oppo_pitch_mix_by_count | selectattr('name','equalto',name) | list) if figures and figures.oppo_pitch_mix_by_count else [] %}
     {% set tabs = (figures.oppo_pitch_tables   | selectattr('name','equalto',name) | list) if figures and figures.oppo_pitch_tables else [] %}
-    {% set headshots = (figures.oppo_pitcher_headshots | selectattr('name','equalto',name) | list) if figures and figures.oppo_pitcher_headshots else [] %}
-    {% set pitcher_headshot_url = (headshots[0].headshot_url if headshots and headshots[0] else None) %}
-    {% set pitcher_stats = (headshots[0].stats if headshots and headshots[0] and headshots[0].stats else {}) %}
+    {% set pitcher_stats = (heat[0].stats if heat and heat[0] and heat[0].stats else {}) %}
     {% set want = 'RHH' if (hitter_stand or 'R') == 'R' else 'LHH' %}
     {% set table_path = (tabs[0][want] if (tabs and tabs[0] and tabs[0][want]) else (tabs[0]['LHH'] if (tabs and tabs[0] and tabs[0]['LHH']) else (tabs[0]['RHH'] if (tabs and tabs[0]) else None))) %}
     {% set labels = (heat and heat[0].labels) or [] %}
@@ -913,9 +906,6 @@
             </div>
             {% endif %}
           </div>
-          {% if pitcher_headshot_url %}
-          <img src="{{ pitcher_headshot_url }}" alt="{{ name }}" class="pitcher-headshot">
-          {% endif %}
         </div>
         <div class="div"></div>
 

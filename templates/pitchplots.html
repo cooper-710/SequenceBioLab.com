@@ -166,11 +166,13 @@
 {% block scripts %}
 <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
 <script>
-// Pitch type colors (Trackman-style)
+// Pitch type colors (matching PDF scouting report colors)
 const PITCH_COLORS = {
     "FF": "#FF0000", "FT": "#8B0000", "SI": "#FFA500", "FC": "#808080",
-    "SL": "var(--color-main-bg)0FF", "CU": "#800080", "CH": "#008000", "FS": "#00FFFF",
-    "KC": "#4B0082", "KN": "#D3D3D3", "ST": "#008080", "SV": "#4682B4"
+    "SL": "#0000FF", "CU": "#800080", "CH": "#008000", "FS": "#00FFFF",
+    "KC": "#4B0082", "KN": "#D3D3D3", "EP": "#FFC0CB", "SV": "#4682B4",
+    "ST": "#008080", "FO": "#00008B", "SC": "#FF00FF", "CS": "#800000",
+    "UN": "#B0C4DE", "PO": "#A52A2A", "IN": "#F0E68C"
 };
 
 let selectedPitcher = null;

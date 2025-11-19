@@ -122,7 +122,10 @@ body {
     background: var(--color-page-bg);
     min-height: 100vh;
     color: var(--color-text-primary);
-    overflow-x: hidden;
+    /* Allow horizontal overflow so full-width mobile layouts (like box score tables)
+       are not visually clipped on the sides. Individual sections (e.g. tables)
+       already manage their own overflow with scroll containers. */
+    overflow-x: auto;
 }
 
 /* App Container with Sidebar Layout */
@@ -155,7 +158,8 @@ body {
 .sidebar-toggle {
     position: absolute;
     top: 20px;
-    left: 20px;
+    right: 20px;
+    left: auto;
     width: 30px;
     height: 30px;
     background: var(--color-accent);
@@ -170,6 +174,20 @@ body {
     transition: all 0.3s ease;
     padding: 0;
     font-size: 0.9rem;
+}
+
+/* Ensure button is always accessible on smaller screens */
+@media (max-width: 1024px) {
+    .sidebar-toggle {
+        position: fixed !important;
+        top: 16px !important;
+        left: 16px !important;
+        z-index: 1002 !important;
+        width: 44px !important;
+        height: 44px !important;
+        transform: none !important;
+        margin: 0 !important;
+    }
 }
 
 .sidebar-toggle i {
@@ -208,11 +226,26 @@ body {
     padding: 24px 12px;
 }
 
-.sidebar.collapsed .sidebar-toggle {
-    position: relative;
-    top: auto;
-    left: auto;
-    margin: 0 auto;
+/* Desktop collapsed sidebar state */
+@media (min-width: 1025px) {
+    .sidebar.collapsed .sidebar-toggle {
+        position: relative;
+        top: auto;
+        right: auto;
+        left: auto;
+        margin: 0 auto;
+    }
+}
+
+/* Mobile - button stays fixed regardless of sidebar state */
+@media (max-width: 1024px) {
+    .sidebar.collapsed .sidebar-toggle,
+    .sidebar:not(.collapsed) .sidebar-toggle {
+        position: fixed !important;
+        top: 16px !important;
+        left: 16px !important;
+        margin: 0 !important;
+    }
 }
 
 .sidebar.collapsed .sidebar-nav {
@@ -226,7 +259,20 @@ body {
 }
 
 .sidebar.collapsed .nav-icon {
-    margin: 0 auto;
+    margin: 0;
+    justify-content: center;
+}
+
+/* Force left alignment when sidebar is NOT collapsed */
+.sidebar:not(.collapsed) .nav-icon {
+    justify-content: flex-start !important;
+    text-align: left !important;
+}
+
+.sidebar:not(.collapsed) .nav-icon i {
+    text-align: left !important;
+    margin-left: 0 !important;
+    margin-right: auto !important;
 }
 
 .sidebar.collapsed .nav-divider {
@@ -239,7 +285,7 @@ body {
 
 .sidebar-header {
     position: relative;
-    padding: 24px 20px;
+    padding: 24px 60px 24px 20px;
     border-bottom: 2px solid var(--color-border);
     text-align: center;
 }
@@ -248,11 +294,131 @@ body {
     margin-bottom: 12px;
 }
 
+
 .sidebar-header .logo {
     height: 50px;
     width: auto;
     max-width: 80px;
     filter: drop-shadow(0 0 10px rgba(255, 127, 0, 0.5));
+}
+
+/* Mobile view - add blank header space above sidebar-header */
+@media (max-width: 1024px) {
+    .sidebar .sidebar-header::before {
+        content: '';
+        display: block;
+        width: 100%;
+        height: 80px;
+        background: transparent;
+    }
+}
+
+/* Hide sidebar header logo on small mobile - mobile button logo serves this purpose */
+@media (max-width: 768px) {
+    .sidebar .sidebar-header .logo-container,
+    .sidebar.open .sidebar-header .logo-container,
+    .sidebar:not(.collapsed) .sidebar-header .logo-container {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        height: 0 !important;
+        width: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+    }
+    
+    .sidebar .sidebar-header .logo,
+    .sidebar.open .sidebar-header .logo,
+    .sidebar:not(.collapsed) .sidebar-header .logo {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        height: 0 !important;
+        width: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    
+    /* Adjust sidebar header padding on small mobile since logo is removed */
+    .sidebar .sidebar-header {
+        padding-top: 16px !important;
+        padding-bottom: 16px !important;
+    }
+}
+
+/* Tablet and mobile with logo visible - add extra padding to prevent overlap */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .sidebar .sidebar-header {
+        padding-top: 80px !important;
+    }
+    
+    /* Add extra margin to logo container to push content down */
+    .sidebar .sidebar-header .logo-container {
+        margin-bottom: 16px !important;
+    }
+    
+    /* Ensure nav has proper spacing */
+    .sidebar .sidebar-nav {
+        padding-top: 24px !important;
+    }
+}
+
+/* Left-align sidebar header and content on mobile/tablet */
+@media (max-width: 1024px) {
+    .sidebar-header {
+        text-align: left !important;
+        padding: 20px 16px !important;
+    }
+    
+    .sidebar-title {
+        text-align: left !important;
+        margin-left: 0 !important;
+    }
+    
+    .sidebar-greeting {
+        text-align: left !important;
+        margin-left: 0 !important;
+    }
+    
+    /* Ensure nav items are left-aligned */
+    .sidebar-nav {
+        text-align: left;
+    }
+    
+    .nav-item {
+        justify-content: flex-start !important;
+        text-align: left !important;
+    }
+    
+    .nav-item .nav-icon {
+        justify-content: flex-start !important;
+        text-align: left !important;
+    }
+    
+    .nav-item .nav-text {
+        text-align: left !important;
+    }
+    
+    /* Ensure user block items are left-aligned */
+    .nav-user-block {
+        text-align: left;
+    }
+    
+    .nav-item-static {
+        justify-content: flex-start !important;
+        text-align: left !important;
+    }
+    
+    .nav-logout-form {
+        justify-content: flex-start !important;
+        text-align: left !important;
+    }
+    
+    .nav-logout-form button {
+        justify-content: flex-start !important;
+        text-align: left !important;
+    }
 }
 
 .sidebar-header h2,
@@ -363,14 +529,39 @@ body {
 .nav-icon {
     font-size: 1.2rem;
     width: 24px;
-    text-align: center;
-    display: flex;
+    min-width: 24px;
+    max-width: 24px;
+    text-align: left !important;
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start !important;
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0;
+    position: relative;
 }
 
 .nav-icon i {
     font-size: 1.1rem;
+    width: auto;
+    text-align: left !important;
+    display: inline-block;
+    margin: 0;
+    padding: 0;
+    position: relative;
+    left: 0;
+    transform: none;
+}
+
+.nav-profile-picture {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+    display: inline-block;
+    margin: 0;
+    padding: 0;
+    vertical-align: middle;
 }
 
 .nav-text {
@@ -2216,32 +2407,9 @@ footer {
     box-shadow: 0 4px 12px rgba(255, 127, 0, 0.5);
 }
 
+/* Old mobile sidebar CSS removed - now using drawer/overlay pattern above (see @media max-width: 1024px) */
+
 @media (max-width: 768px) {
-    .sidebar {
-        width: 100%;
-        height: auto;
-        position: relative;
-        border-right: none;
-        border-bottom: 2px solid var(--color-border);
-    }
-    
-    .sidebar-nav {
-        display: flex;
-        flex-direction: row;
-        overflow-x: auto;
-        padding: 12px;
-    }
-    
-    .nav-item {
-        white-space: nowrap;
-        margin-bottom: 0;
-        margin-right: 8px;
-    }
-    
-    .main-content {
-        margin-left: 0;
-    }
-    
     .form-row {
         grid-template-columns: 1fr;
     }
@@ -3856,5 +4024,740 @@ body[data-theme='light'] .journal-timeline::-webkit-scrollbar-thumb {
 
     .profile-settings .form-actions .btn {
         width: 100%;
+    }
+}
+
+/* ========================================
+   ENHANCED MOBILE RESPONSIVENESS
+   ======================================== */
+
+/* Sidebar Overlay (always present, only visible on mobile) */
+.sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 999;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    display: none;
+}
+
+@media (max-width: 1024px) {
+    .sidebar-overlay {
+        display: block;
+    }
+    
+    .sidebar-overlay.active {
+        opacity: 1;
+        visibility: visible;
+    }
+    
+    /* Add padding to main content to account for mobile menu button */
+    .main-content {
+        padding-top: 80px !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+    
+    /* Ensure page containers also have top padding */
+    .page-container {
+        padding-top: 0 !important;
+    }
+}
+
+/* Mobile Menu Button - Floating Action Button Style */
+.mobile-menu-button {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    width: 56px;
+    height: 56px;
+    z-index: 1002;
+    background: linear-gradient(135deg, var(--color-accent), var(--color-accent-bright));
+    border: 3px solid var(--color-surface);
+    border-radius: 50%;
+    color: var(--color-text-inverse);
+    cursor: pointer;
+    display: none; /* Hidden by default, shown on mobile via JS */
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 6px 20px rgba(255, 127, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    padding: 0;
+    margin: 0;
+    font-size: 1.4rem;
+    transform-origin: center;
+}
+
+.mobile-menu-button:hover {
+    transform: scale(1.1);
+    box-shadow: 0 8px 24px rgba(255, 127, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.4);
+    background: linear-gradient(135deg, var(--color-accent-bright), var(--color-accent-glow));
+}
+
+.mobile-menu-button:active {
+    transform: scale(0.95);
+    box-shadow: 0 4px 12px rgba(255, 127, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.mobile-menu-button i {
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: 1.4rem;
+}
+
+.mobile-menu-button:hover i {
+    transform: rotate(90deg);
+}
+
+.mobile-menu-logo {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    padding: 2px;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    min-width: 48px;
+    min-height: 48px;
+}
+
+.mobile-menu-button:hover .mobile-menu-logo {
+    transform: scale(1.1);
+}
+
+/* Show mobile button only on mobile devices */
+@media (max-width: 1024px) {
+    .mobile-menu-button {
+        display: flex !important; /* Always visible on mobile - JS will handle state */
+    }
+}
+
+/* Hide on desktop */
+@media (min-width: 1025px) {
+    .mobile-menu-button {
+        display: none !important;
+    }
+}
+
+/* Ensure button is accessible on very small screens */
+@media (max-width: 480px) {
+    .mobile-menu-button {
+        width: 52px;
+        height: 52px;
+        top: 16px;
+        left: 16px;
+        font-size: 1.3rem;
+    }
+    
+    .mobile-menu-button i {
+        font-size: 1.3rem;
+    }
+    
+    .mobile-menu-logo {
+        padding: 2px;
+        min-width: 44px;
+        min-height: 44px;
+    }
+    
+    /* Adjust padding for smaller button on very small screens */
+    .main-content {
+        padding-top: 76px !important;
+    }
+}
+
+.mobile-menu-button.sidebar-open {
+    background: linear-gradient(135deg, var(--color-accent-bright), var(--color-accent-glow));
+    box-shadow: 0 8px 24px rgba(255, 127, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.mobile-menu-button.sidebar-open .mobile-menu-logo {
+    transform: scale(1.05);
+}
+
+/* Mobile Sidebar - Overlay/Drawer Style */
+@media (max-width: 1024px) {
+    /* Sidebar transforms - button will stay fixed via earlier rule */
+    .sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+        box-shadow: none;
+        will-change: transform; /* Optimize transform performance */
+    }
+    
+    .sidebar.open {
+        transform: translateX(0);
+        box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+    }
+    
+    .sidebar.collapsed {
+        width: 260px;
+        transform: translateX(-100%);
+    }
+    
+    .sidebar.collapsed.open {
+        transform: translateX(0);
+    }
+    
+    /* Ensure toggle button is always visible and not affected by parent transform */
+    .sidebar-toggle {
+        position: fixed !important;
+        top: 16px !important;
+        left: 16px !important;
+        z-index: 1002 !important;
+        width: 44px !important;
+        height: 44px !important;
+        background: var(--color-accent) !important;
+        border: 2px solid var(--color-surface) !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+        transform: none !important; /* Override any transforms from parent */
+        margin: 0 !important;
+    }
+    
+    .sidebar-toggle i {
+        font-size: 1.1rem;
+    }
+    
+    /* Button stays fixed in all sidebar states */
+    .sidebar:not(.open) .sidebar-toggle,
+    .sidebar.open .sidebar-toggle,
+    .sidebar.collapsed .sidebar-toggle,
+    .sidebar.collapsed.open .sidebar-toggle {
+        position: fixed !important;
+        top: 16px !important;
+        left: 16px !important;
+    }
+    
+    .main-content {
+        margin-left: 0 !important;
+    }
+    
+    .main-content.sidebar-collapsed {
+        margin-left: 0 !important;
+    }
+}
+
+/* Touch-friendly improvements */
+@media (max-width: 1024px) {
+    /* Minimum touch target size */
+    .nav-item,
+    .btn,
+    button,
+    a[role="button"] {
+        min-height: 44px;
+        min-width: 44px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    /* Increase padding for touch and make all nav items same size */
+    .nav-item,
+    .nav-logout-form {
+        padding: 14px 16px;
+        min-height: 48px;
+        height: 48px;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+    }
+    
+    .nav-logout-form button {
+        min-height: 48px;
+        height: 100%;
+    }
+    
+    .nav-item .nav-text,
+    .nav-logout-form .nav-text {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .nav-item .nav-icon,
+    .nav-logout-form .nav-icon {
+        flex-shrink: 0;
+        width: 24px;
+        min-width: 24px;
+        max-width: 24px;
+        justify-content: flex-start !important;
+        text-align: left !important;
+    }
+    
+    .nav-item .nav-icon i,
+    .nav-logout-form .nav-icon i {
+        text-align: left !important;
+        margin-left: 0 !important;
+        margin-right: auto !important;
+        left: 0 !important;
+    }
+    
+    .nav-profile-picture {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+    
+    .btn,
+    .auth-submit,
+    .settings-btn {
+        padding: 14px 20px;
+    }
+    
+    /* Better input sizes */
+    input,
+    textarea,
+    select {
+        min-height: 44px;
+        font-size: 16px; /* Prevents zoom on iOS */
+    }
+    
+    /* Form spacing */
+    .auth-field,
+    .form-group,
+    .input-field {
+        margin-bottom: 20px;
+    }
+}
+
+/* Table responsiveness */
+@media (max-width: 768px) {
+    /* Wrap all tables for horizontal scrolling */
+    .stats-table-wrapper,
+    .table-wrapper,
+    .standings-table-wrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin: 0 -16px;
+        padding: 0 16px;
+    }
+    
+    .standings-table,
+    .leaders-table,
+    .pitch-type-table,
+    .stats-table-wrapper table,
+    table {
+        width: 100%;
+        min-width: 600px; /* Ensure table doesn't shrink too much */
+    }
+    
+    /* Make table cells readable */
+    .standings-table th,
+    .standings-table td,
+    .leaders-table th,
+    .leaders-table td,
+    .pitch-type-table th,
+    .pitch-type-table td {
+        min-width: 80px;
+        padding: 10px 8px;
+        font-size: 0.85rem;
+        white-space: nowrap;
+    }
+    
+    /* Special handling for leaders table */
+    .leaders-table {
+        font-size: 0.9rem;
+    }
+    
+    .leaders-table .leader-rank {
+        min-width: 40px;
+    }
+    
+    .leaders-table .leaders-value-col {
+        min-width: 70px;
+    }
+}
+
+/* Improved grid responsiveness */
+@media (max-width: 768px) {
+    .info-grid,
+    .content-grid,
+    .features-grid,
+    .placeholder-features,
+    .leaders-columns,
+    .leaders-grid,
+    .gameday-grid {
+        grid-template-columns: 1fr !important;
+        gap: 20px;
+    }
+    
+    .calendar-with-sidebar {
+        grid-template-columns: 1fr !important;
+    }
+    
+    .two-column,
+    .form-row {
+        flex-direction: column !important;
+    }
+    
+    .two-column .auth-field,
+    .form-row > * {
+        width: 100%;
+        min-width: 100%;
+    }
+}
+
+/* Typography adjustments */
+@media (max-width: 768px) {
+    .page-header h1 {
+        font-size: 1.75rem !important;
+    }
+    
+    .hero-content,
+    .page-header h1.hero-content {
+        font-size: clamp(1.75rem, 5vw, 2.5rem) !important;
+    }
+    
+    .section-hero-heading h1,
+    .section-hero-heading h2 {
+        font-size: 1.5rem !important;
+    }
+    
+    .info-card-content h3,
+    .panel-header h2 {
+        font-size: 1.25rem !important;
+    }
+}
+
+/* Spacing improvements */
+@media (max-width: 768px) {
+    .page-container {
+        padding: 24px 16px !important;
+    }
+    
+    .content-wrapper,
+    .settings-page .content-wrapper {
+        padding: 24px 16px !important;
+    }
+    
+    .section-hero {
+        padding: 20px 16px !important;
+        flex-direction: column;
+        align-items: stretch !important;
+    }
+    
+    .section-hero-actions,
+    .section-hero-meta {
+        width: 100%;
+        justify-content: flex-start !important;
+    }
+    
+    .info-card,
+    .content-panel,
+    .journal-card {
+        padding: 20px 16px !important;
+    }
+}
+
+/* Flash messages on mobile */
+@media (max-width: 768px) {
+    .flash-container {
+        padding: 16px 16px 0 !important;
+    }
+    
+    .flash-message {
+        padding: 14px 16px !important;
+        font-size: 0.9rem;
+    }
+}
+
+/* Calendar widget mobile */
+@media (max-width: 640px) {
+    .calendar-day {
+        min-height: 40px;
+        padding: 4px 2px;
+    }
+    
+    .calendar-team-logo {
+        width: 28px;
+        height: 28px;
+    }
+    
+    .calendar-day-number {
+        font-size: 0.7rem;
+    }
+}
+
+/* Profile settings mobile */
+@media (max-width: 720px) {
+    .profile-layout {
+        grid-template-columns: 1fr !important;
+    }
+    
+    .profile-side-column {
+        flex-direction: column !important;
+    }
+}
+
+/* Journal mobile improvements */
+@media (max-width: 640px) {
+    .journal-page {
+        padding: 24px 16px 48px !important;
+    }
+    
+    .journal-layout {
+        grid-template-columns: 1fr !important;
+    }
+    
+    .journal-card--timeline {
+        position: static !important;
+        max-height: none !important;
+    }
+}
+
+/* Home page specific */
+@media (max-width: 768px) {
+    .hero-section {
+        padding: 32px 20px !important;
+    }
+    
+    .hero-content {
+        grid-template-columns: 1fr !important;
+        text-align: center;
+    }
+    
+    .hero-actions {
+        justify-content: center;
+    }
+}
+
+/* Very small screens */
+@media (max-width: 480px) {
+    .player-home {
+        padding: 0 12px 32px !important;
+    }
+    
+    .page-container {
+        padding: 20px 12px !important;
+    }
+    
+    .info-card,
+    .content-panel {
+        padding: 16px 12px !important;
+    }
+    
+    .btn-primary,
+    .auth-submit {
+        width: 100%;
+        padding: 16px 20px;
+    }
+    
+    /* Stack all action buttons */
+    .section-hero-actions {
+        flex-direction: column;
+    }
+    
+    .section-hero-actions > * {
+        width: 100%;
+    }
+}
+
+/* Landscape orientation on mobile */
+@media (max-width: 1024px) and (orientation: landscape) {
+    .sidebar {
+        width: 280px;
+    }
+}
+
+/* iPad Mini portrait and tablet specific adjustments */
+@media (min-width: 768px) and (max-width: 1024px) {
+    .content-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .info-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .info-card-featured {
+        grid-column: 1 / -1;
+    }
+    
+    /* Fix gameday cards getting cut off on tablet */
+    .gameday-card {
+        overflow: visible !important;
+        max-height: none !important;
+        min-height: auto !important;
+    }
+    
+    /* Ensure League Leaders card content is fully visible */
+    .gameday-card .leaders-columns {
+        overflow: visible !important;
+        max-height: none !important;
+    }
+    
+    .gameday-card .leaders-group {
+        overflow: visible !important;
+        max-height: none !important;
+    }
+    
+    .gameday-card .leaders-grid {
+        overflow: visible !important;
+        max-height: none !important;
+    }
+    
+    /* Ensure standings card content is fully visible */
+    .standings-card {
+        overflow: visible !important;
+        max-height: none !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    
+    .standings-card .standings-controls {
+        flex-wrap: wrap;
+        gap: 12px;
+        width: 100% !important;
+    }
+    
+    /* Make tables scrollable horizontally if needed but allow full height */
+    .standings-table-wrapper {
+        overflow-x: auto;
+        overflow-y: visible;
+        max-height: none !important;
+        -webkit-overflow-scrolling: touch;
+        width: 100% !important;
+    }
+    
+    /* Ensure leaders table is fully visible */
+    .leaders-table {
+        overflow: visible !important;
+    }
+    
+    /* Allow card content to expand naturally */
+    .gameday-card > * {
+        overflow: visible !important;
+        max-height: none !important;
+    }
+    
+    /* Fix column widths to fill area on tablet portrait (iPad Mini) */
+    .gameday-card .leaders-table,
+    .standings-card .standings-table {
+        width: 100% !important;
+        max-width: 100% !important;
+        table-layout: fixed !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+    }
+    
+    /* Ensure table cells fill available space properly */
+    .gameday-card .leaders-table th,
+    .gameday-card .leaders-table td {
+        min-width: 0 !important;
+        padding: 10px 8px;
+    }
+    
+    /* Make specific columns fill appropriately for leaders table */
+    .gameday-card .leaders-table th:nth-child(1),
+    .gameday-card .leaders-table td:nth-child(1),
+    .gameday-card .leaders-table td.leader-rank {
+        width: 8% !important;
+        min-width: 40px;
+    }
+    
+    .gameday-card .leaders-table th:nth-child(2),
+    .gameday-card .leaders-table td:nth-child(2) {
+        width: 45% !important;
+        min-width: 120px;
+    }
+    
+    .gameday-card .leaders-table th:nth-child(3),
+    .gameday-card .leaders-table td:nth-child(3),
+    .gameday-card .leaders-table td.leader-team {
+        width: 25% !important;
+        min-width: 80px;
+    }
+    
+    .gameday-card .leaders-table th.leaders-value-col,
+    .gameday-card .leaders-table td.leader-value {
+        width: 22% !important;
+        min-width: 70px;
+        text-align: right;
+    }
+    
+    /* Standings table column widths - ensure full width - AGGRESSIVE FIX */
+    section.standings-card,
+    .gameday-card.standings-card,
+    section#standings.standings-card {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        min-width: 100% !important;
+    }
+    
+    section.standings-card > *,
+    .gameday-card.standings-card > *,
+    section#standings.standings-card > * {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    
+    .standings-card .standings-division,
+    section.standings-card .standings-division,
+    section#standings .standings-division {
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+    }
+    
+    .standings-card .standings-table,
+    section.standings-card .standings-table,
+    .gameday-card.standings-card .standings-table,
+    section#standings .standings-table {
+        display: table !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 100% !important;
+        table-layout: fixed !important;
+        box-sizing: border-box !important;
+        margin: 0 !important;
+    }
+    
+    .standings-card .standings-table th,
+    .standings-card .standings-table td,
+    section.standings-card .standings-table th,
+    section.standings-card .standings-table td {
+        min-width: 0 !important;
+        padding: 10px 8px !important;
+        box-sizing: border-box !important;
+    }
+    
+    .standings-card .standings-table th:nth-child(1),
+    .standings-card .standings-table td:nth-child(1),
+    section.standings-card .standings-table th:nth-child(1),
+    section.standings-card .standings-table td:nth-child(1) {
+        width: 55% !important;
+        min-width: 0 !important;
+        max-width: 55% !important;
+    }
+    
+    .standings-card .standings-table th:nth-child(2),
+    .standings-card .standings-table td:nth-child(2),
+    section.standings-card .standings-table th:nth-child(2),
+    section.standings-card .standings-table td:nth-child(2) {
+        width: 15% !important;
+        min-width: 0 !important;
+        max-width: 15% !important;
+        text-align: center !important;
+    }
+    
+    .standings-card .standings-table th:nth-child(3),
+    .standings-card .standings-table td:nth-child(3),
+    section.standings-card .standings-table th:nth-child(3),
+    section.standings-card .standings-table td:nth-child(3) {
+        width: 15% !important;
+        min-width: 0 !important;
+        max-width: 15% !important;
+        text-align: center !important;
+    }
+    
+    .standings-card .standings-table th:nth-child(4),
+    .standings-card .standings-table td:nth-child(4),
+    section.standings-card .standings-table th:nth-child(4),
+    section.standings-card .standings-table td:nth-child(4) {
+        width: 15% !important;
+        min-width: 0 !important;
+        max-width: 15% !important;
+        text-align: center !important;
     }
 }

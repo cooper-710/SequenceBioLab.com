@@ -1,91 +1,139 @@
 # src/database.py
 """
-Player Database - SQLite schema and operations
+Player Database - PostgreSQL/SQLite compatible operations
 """
+import os
 import sqlite3
 import json
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 from datetime import datetime
 
+# Try to import PostgreSQL driver
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor, execute_values
+    HAS_POSTGRES = True
+except ImportError:
+    HAS_POSTGRES = False
+
+
 class PlayerDB:
-    """Database operations for player data"""
+    """Database operations for player data - supports PostgreSQL and SQLite"""
     
-    def __init__(self, db_path: str = "build/database/players.db"):
+    def __init__(self, db_path: str = "build/database/players.db", database_url: Optional[str] = None):
         """
         Initialize database connection.
         
         Args:
-            db_path: Path to SQLite database file
+            db_path: Path to SQLite database file (used if DATABASE_URL not set)
+            database_url: PostgreSQL connection URL (takes precedence if set)
         """
+        self.database_url = database_url or os.environ.get('DATABASE_URL')
+        self.is_postgres = bool(self.database_url and HAS_POSTGRES)
         self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(str(self.db_path))
-        self.conn.row_factory = sqlite3.Row  # Enable dict-like row access
+        
+        if self.is_postgres:
+            # PostgreSQL connection
+            self.conn = psycopg2.connect(self.database_url, cursor_factory=RealDictCursor)
+            self.param_style = '%s'  # PostgreSQL uses %s
+        else:
+            # SQLite connection (fallback)
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            self.conn = sqlite3.connect(str(self.db_path))
+            self.conn.row_factory = sqlite3.Row
+            self.param_style = '?'  # SQLite uses ?
+        
         self._init_schema()
+    
+    def _param(self, *args):
+        """Convert parameters to appropriate style for current database"""
+        if self.is_postgres:
+            return args
+        return args
+    
+    def _execute(self, cursor, query: str, params: tuple = None):
+        """Execute query with proper parameter style"""
+        if self.is_postgres:
+            # Convert ? to %s for PostgreSQL
+            query = query.replace('?', '%s')
+        if params:
+            cursor.execute(query, params)
+        else:
+            cursor.execute(query)
     
     def _init_schema(self):
         """Initialize database schema"""
         cursor = self.conn.cursor()
         
+        # Determine auto-increment syntax
+        if self.is_postgres:
+            auto_inc = "SERIAL PRIMARY KEY"
+            real_type = "DOUBLE PRECISION"
+            text_type = "TEXT"
+        else:
+            auto_inc = "INTEGER PRIMARY KEY AUTOINCREMENT"
+            real_type = "REAL"
+            text_type = "TEXT"
+        
         # Teams table
-        cursor.execute("""
+        self._execute(cursor, f"""
             CREATE TABLE IF NOT EXISTS teams (
-                team_id TEXT PRIMARY KEY,
-                abbreviation TEXT,
-                name TEXT,
-                city TEXT,
-                league TEXT,
-                division TEXT,
-                updated_at REAL
+                team_id {text_type} PRIMARY KEY,
+                abbreviation {text_type},
+                name {text_type},
+                city {text_type},
+                league {text_type},
+                division {text_type},
+                updated_at {real_type}
             )
         """)
         
         # Players table
-        cursor.execute("""
+        self._execute(cursor, f"""
             CREATE TABLE IF NOT EXISTS players (
-                sportradar_id TEXT PRIMARY KEY,
-                mlbam_id TEXT,
-                name TEXT NOT NULL,
-                first_name TEXT,
-                last_name TEXT,
-                position TEXT,
-                primary_position TEXT,
-                team_id TEXT,
-                team_abbr TEXT,
-                jersey_number TEXT,
-                handedness TEXT,
-                height TEXT,
+                player_id {text_type} PRIMARY KEY,
+                mlbam_id {text_type},
+                name {text_type} NOT NULL,
+                first_name {text_type},
+                last_name {text_type},
+                position {text_type},
+                primary_position {text_type},
+                team_id {text_type},
+                team_abbr {text_type},
+                jersey_number {text_type},
+                handedness {text_type},
+                height {text_type},
                 weight INTEGER,
-                birth_date TEXT,
-                birth_place TEXT,
-                debut_date TEXT,
-                updated_at REAL,
+                birth_date {text_type},
+                birth_place {text_type},
+                debut_date {text_type},
+                updated_at {real_type},
                 FOREIGN KEY (team_id) REFERENCES teams(team_id)
             )
         """)
         
         # Player stats (time-series)
-        cursor.execute("""
+        self._execute(cursor, f"""
             CREATE TABLE IF NOT EXISTS player_stats (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sportradar_id TEXT NOT NULL,
-                season TEXT,
-                stat_type TEXT,
-                category TEXT,
-                value REAL,
-                updated_at REAL,
-                FOREIGN KEY (sportradar_id) REFERENCES players(sportradar_id),
-                UNIQUE(sportradar_id, season, stat_type, category)
+                id {auto_inc},
+                player_id {text_type} NOT NULL,
+                season {text_type},
+                stat_type {text_type},
+                category {text_type},
+                value {real_type},
+                updated_at {real_type},
+                FOREIGN KEY (player_id) REFERENCES players(player_id),
+                UNIQUE(player_id, season, stat_type, category)
             )
         """)
         
-        # Player seasons (season-level aggregated stats)
-        cursor.execute("""
+        # Player seasons
+        self._execute(cursor, f"""
             CREATE TABLE IF NOT EXISTS player_seasons (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sportradar_id TEXT NOT NULL,
-                season TEXT NOT NULL,
+                id {auto_inc},
+                player_id {text_type} NOT NULL,
+                season {text_type} NOT NULL,
                 games INTEGER,
                 at_bats INTEGER,
                 hits INTEGER,
@@ -97,176 +145,238 @@ class PlayerDB:
                 stolen_bases INTEGER,
                 walks INTEGER,
                 strikeouts INTEGER,
-                avg REAL,
-                obp REAL,
-                slg REAL,
-                ops REAL,
-                updated_at REAL,
-                FOREIGN KEY (sportradar_id) REFERENCES players(sportradar_id),
-                UNIQUE(sportradar_id, season)
+                avg {real_type},
+                obp {real_type},
+                slg {real_type},
+                ops {real_type},
+                updated_at {real_type},
+                FOREIGN KEY (player_id) REFERENCES players(player_id),
+                UNIQUE(player_id, season)
             )
         """)
         
-        # Player history (transactions, team changes)
-        cursor.execute("""
+        # Player history
+        self._execute(cursor, f"""
             CREATE TABLE IF NOT EXISTS player_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                sportradar_id TEXT NOT NULL,
-                date TEXT NOT NULL,
-                event_type TEXT,
-                from_team TEXT,
-                to_team TEXT,
-                details TEXT,
-                updated_at REAL,
-                FOREIGN KEY (sportradar_id) REFERENCES players(sportradar_id)
+                id {auto_inc},
+                player_id {text_type} NOT NULL,
+                date {text_type} NOT NULL,
+                event_type {text_type},
+                from_team {text_type},
+                to_team {text_type},
+                details {text_type},
+                updated_at {real_type},
+                FOREIGN KEY (player_id) REFERENCES players(player_id)
             )
         """)
         
-        # Create indexes for common queries
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_players_name ON players(name)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_players_team ON players(team_abbr)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_players_position ON players(position)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_player_seasons_player_season ON player_seasons(sportradar_id, season)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_player_stats_player_season ON player_stats(sportradar_id, season)")
+        # Create indexes
+        for idx_query in [
+            f"CREATE INDEX IF NOT EXISTS idx_players_name ON players(name)",
+            f"CREATE INDEX IF NOT EXISTS idx_players_team ON players(team_abbr)",
+            f"CREATE INDEX IF NOT EXISTS idx_players_position ON players(position)",
+            f"CREATE INDEX IF NOT EXISTS idx_player_seasons_player_season ON player_seasons(player_id, season)",
+            f"CREATE INDEX IF NOT EXISTS idx_player_stats_player_season ON player_stats(player_id, season)",
+        ]:
+            try:
+                self._execute(cursor, idx_query)
+            except Exception:
+                pass  # Index might already exist
         
-        # Users table for authentication
-        cursor.execute("""
+        # Users table
+        self._execute(cursor, f"""
             CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                email TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                first_name TEXT NOT NULL,
-                last_name TEXT NOT NULL,
-                created_at REAL NOT NULL,
-                updated_at REAL NOT NULL,
+                id {auto_inc},
+                email {text_type} UNIQUE NOT NULL,
+                password_hash {text_type} NOT NULL,
+                first_name {text_type} NOT NULL,
+                last_name {text_type} NOT NULL,
+                created_at {real_type} NOT NULL,
+                updated_at {real_type} NOT NULL,
                 is_admin INTEGER NOT NULL DEFAULT 0
             )
         """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
-
-        # Ensure legacy databases gain the is_admin column
-        cursor.execute("PRAGMA table_info(users)")
-        user_columns = {row[1] for row in cursor.fetchall()}
-        if "updated_at" not in user_columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN updated_at REAL NOT NULL DEFAULT 0")
-        if "is_admin" not in user_columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
-        if "theme_preference" not in user_columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN theme_preference TEXT DEFAULT 'dark'")
-        if "profile_image_path" not in user_columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN profile_image_path TEXT")
-        if "bio" not in user_columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN bio TEXT")
-        if "job_title" not in user_columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN job_title TEXT")
-        if "pronouns" not in user_columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN pronouns TEXT")
-        if "phone" not in user_columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN phone TEXT")
-        if "timezone" not in user_columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN timezone TEXT")
-        if "notification_preferences" not in user_columns:
-            cursor.execute("ALTER TABLE users ADD COLUMN notification_preferences TEXT")
-
+        self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
+        
+        # Invite codes table
+        self._execute(cursor, f"""
+            CREATE TABLE IF NOT EXISTS invite_codes (
+                id {auto_inc},
+                code {text_type} UNIQUE NOT NULL,
+                created_by INTEGER,
+                created_at {real_type} NOT NULL,
+                used_at {real_type},
+                used_by INTEGER,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                FOREIGN KEY (created_by) REFERENCES users(id),
+                FOREIGN KEY (used_by) REFERENCES users(id)
+            )
+        """)
+        self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_invite_codes_code ON invite_codes(code)")
+        self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_invite_codes_active ON invite_codes(is_active)")
+        
+        # Email verification tokens table
+        self._execute(cursor, f"""
+            CREATE TABLE IF NOT EXISTS email_verification_tokens (
+                id {auto_inc},
+                user_id INTEGER NOT NULL,
+                token {text_type} UNIQUE NOT NULL,
+                created_at {real_type} NOT NULL,
+                expires_at {real_type} NOT NULL,
+                used_at {real_type},
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+        self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_verification_tokens_token ON email_verification_tokens(token)")
+        self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_verification_tokens_user ON email_verification_tokens(user_id)")
+        
+        # Ensure legacy columns exist (invite_codes table)
+        self._ensure_columns_exist('invite_codes', {
+            'used_at': real_type,
+            'used_by': 'INTEGER',
+            'is_active': 'INTEGER',
+        })
+        
+        # Ensure legacy columns exist (users table)
+        self._ensure_columns_exist('users', {
+            'updated_at': real_type,
+            'is_admin': 'INTEGER',
+            'is_active': 'INTEGER',
+            'email_verified': 'INTEGER',
+            'theme_preference': text_type,
+            'profile_image_path': text_type,
+            'bio': text_type,
+            'job_title': text_type,
+            'pronouns': text_type,
+            'phone': text_type,
+            'timezone': text_type,
+            'notification_preferences': text_type,
+        })
+        
         # Player documents table
-        cursor.execute("""
+        self._execute(cursor, f"""
             CREATE TABLE IF NOT EXISTS player_documents (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {auto_inc},
                 player_id INTEGER NOT NULL,
-                filename TEXT NOT NULL,
-                path TEXT NOT NULL,
+                filename {text_type} NOT NULL,
+                path {text_type} NOT NULL,
                 uploaded_by INTEGER,
-                uploaded_at REAL NOT NULL,
-                category TEXT,
-                series_opponent TEXT,
-                series_label TEXT,
-                series_start REAL,
-                series_end REAL,
+                uploaded_at {real_type} NOT NULL,
+                category {text_type},
+                series_opponent {text_type},
+                series_label {text_type},
+                series_start {real_type},
+                series_end {real_type},
                 FOREIGN KEY (player_id) REFERENCES users(id),
                 FOREIGN KEY (uploaded_by) REFERENCES users(id)
             )
         """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_player_documents_player ON player_documents(player_id)")
-
-        # Ensure legacy databases pick up the series metadata columns
-        cursor.execute("PRAGMA table_info(player_documents)")
-        pd_columns = {row[1] for row in cursor.fetchall()}
-        if "category" not in pd_columns:
-            cursor.execute("ALTER TABLE player_documents ADD COLUMN category TEXT")
-        if "series_opponent" not in pd_columns:
-            cursor.execute("ALTER TABLE player_documents ADD COLUMN series_opponent TEXT")
-        if "series_label" not in pd_columns:
-            cursor.execute("ALTER TABLE player_documents ADD COLUMN series_label TEXT")
-        if "series_start" not in pd_columns:
-            cursor.execute("ALTER TABLE player_documents ADD COLUMN series_start REAL")
-        if "series_end" not in pd_columns:
-            cursor.execute("ALTER TABLE player_documents ADD COLUMN series_end REAL")
-
-        # Player document activity log
-        cursor.execute("""
+        self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_player_documents_player ON player_documents(player_id)")
+        
+        # Ensure legacy columns exist (player_documents table)
+        self._ensure_columns_exist('player_documents', {
+            'category': text_type,
+            'series_opponent': text_type,
+            'series_label': text_type,
+            'series_start': real_type,
+            'series_end': real_type,
+        })
+        
+        # Player document log
+        self._execute(cursor, f"""
             CREATE TABLE IF NOT EXISTS player_document_log (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {auto_inc},
                 player_id INTEGER NOT NULL,
-                filename TEXT NOT NULL,
-                action TEXT NOT NULL,
+                filename {text_type} NOT NULL,
+                action {text_type} NOT NULL,
                 performed_by INTEGER,
-                timestamp REAL NOT NULL,
+                timestamp {real_type} NOT NULL,
                 FOREIGN KEY (player_id) REFERENCES users(id),
                 FOREIGN KEY (performed_by) REFERENCES users(id)
             )
         """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_player_document_log_player ON player_document_log(player_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_player_document_log_time ON player_document_log(timestamp)")
-
-        # Journal entries table
-        cursor.execute("""
+        self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_player_document_log_player ON player_document_log(player_id)")
+        self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_player_document_log_time ON player_document_log(timestamp)")
+        
+        # Journal entries
+        self._execute(cursor, f"""
             CREATE TABLE IF NOT EXISTS journal_entries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {auto_inc},
                 user_id INTEGER NOT NULL,
-                entry_date TEXT NOT NULL,
-                visibility TEXT NOT NULL,
-                title TEXT,
-                body TEXT,
-                created_at REAL NOT NULL,
-                updated_at REAL NOT NULL,
+                entry_date {text_type} NOT NULL,
+                visibility {text_type} NOT NULL,
+                title {text_type},
+                body {text_type},
+                created_at {real_type} NOT NULL,
+                updated_at {real_type} NOT NULL,
                 FOREIGN KEY (user_id) REFERENCES users(id),
                 UNIQUE(user_id, entry_date, visibility)
             )
         """)
-        cursor.execute("""
+        self._execute(cursor, f"""
             CREATE INDEX IF NOT EXISTS idx_journal_entries_user_date
             ON journal_entries(user_id, entry_date)
         """)
-
-        # Staff notes table
-        cursor.execute("""
+        
+        # Staff notes
+        self._execute(cursor, f"""
             CREATE TABLE IF NOT EXISTS staff_notes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                body TEXT NOT NULL,
-                team_abbr TEXT,
-                tags TEXT,
+                id {auto_inc},
+                title {text_type} NOT NULL,
+                body {text_type} NOT NULL,
+                team_abbr {text_type},
+                tags {text_type},
                 pinned INTEGER NOT NULL DEFAULT 0,
                 author_id INTEGER,
-                author_name TEXT,
-                created_at REAL NOT NULL,
-                updated_at REAL NOT NULL,
+                author_name {text_type},
+                created_at {real_type} NOT NULL,
+                updated_at {real_type} NOT NULL,
                 FOREIGN KEY (author_id) REFERENCES users(id)
             )
         """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_staff_notes_team ON staff_notes(team_abbr)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_staff_notes_pinned ON staff_notes(pinned)")
+        self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_staff_notes_team ON staff_notes(team_abbr)")
+        self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_staff_notes_pinned ON staff_notes(pinned)")
         
         self.conn.commit()
+    
+    def _ensure_columns_exist(self, table_name: str, columns: Dict[str, str]):
+        """Ensure columns exist in table (for migrations)"""
+        existing_columns = self._get_table_columns(table_name)
+        for col_name, col_type in columns.items():
+            if col_name not in existing_columns:
+                try:
+                    default = "DEFAULT 0" if "INTEGER" in col_type else "DEFAULT NULL"
+                    if col_name == "updated_at":
+                        default = "DEFAULT 0"
+                    elif col_name == "is_active":
+                        default = "DEFAULT 1"  # New accounts should be active by default
+                    elif col_name == "email_verified":
+                        default = "DEFAULT 0"  # New accounts need email verification
+                    self._execute(self.conn.cursor(), 
+                        f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type} {default}")
+                    self.conn.commit()
+                except Exception:
+                    pass  # Column might already exist
+    
+    def _get_table_columns(self, table_name: str) -> set:
+        """Get list of columns in a table"""
+        if self.is_postgres:
+            cursor = self.conn.cursor()
+            self._execute(cursor, """
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = %s
+            """, (table_name,))
+            return {row[0] for row in cursor.fetchall()}
+        else:
+            cursor = self.conn.cursor()
+            self._execute(cursor, f"PRAGMA table_info({table_name})")
+            return {row[1] for row in cursor.fetchall()}
     
     def upsert_team(self, team_data: Dict[str, Any]):
         """Insert or update team"""
         cursor = self.conn.cursor()
-        cursor.execute("""
-            INSERT OR REPLACE INTO teams 
-            (team_id, abbreviation, name, city, league, division, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
+        params = (
             team_data.get('id') or team_data.get('team_id'),
             team_data.get('abbreviation') or team_data.get('abbr'),
             team_data.get('name') or team_data.get('team_name'),
@@ -274,14 +384,33 @@ class PlayerDB:
             team_data.get('league'),
             team_data.get('division'),
             datetime.now().timestamp()
-        ))
+        )
+        
+        if self.is_postgres:
+            self._execute(cursor, """
+                INSERT INTO teams 
+                (team_id, abbreviation, name, city, league, division, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (team_id) DO UPDATE SET
+                    abbreviation = EXCLUDED.abbreviation,
+                    name = EXCLUDED.name,
+                    city = EXCLUDED.city,
+                    league = EXCLUDED.league,
+                    division = EXCLUDED.division,
+                    updated_at = EXCLUDED.updated_at
+            """, params)
+        else:
+            self._execute(cursor, """
+                INSERT OR REPLACE INTO teams 
+                (team_id, abbreviation, name, city, league, division, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, params)
         self.conn.commit()
     
     def upsert_player(self, player_data: Dict[str, Any]):
         """Insert or update player"""
         cursor = self.conn.cursor()
         
-        # Extract player ID (try multiple possible fields)
         player_id = (player_data.get('id') or 
                     player_data.get('player_id') or 
                     player_data.get('sportradar_id'))
@@ -289,13 +418,7 @@ class PlayerDB:
         if not player_id:
             raise ValueError("Player data missing ID")
         
-        cursor.execute("""
-            INSERT OR REPLACE INTO players 
-            (sportradar_id, mlbam_id, name, first_name, last_name, position, 
-             primary_position, team_id, team_abbr, jersey_number, handedness,
-             height, weight, birth_date, birth_place, debut_date, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
+        params = (
             player_id,
             player_data.get('mlbam_id') or player_data.get('mlb_id'),
             player_data.get('name') or player_data.get('full_name') or 
@@ -314,19 +437,47 @@ class PlayerDB:
             player_data.get('birth_place'),
             player_data.get('debut_date') or player_data.get('mlb_debut'),
             datetime.now().timestamp()
-        ))
+        )
+        
+        if self.is_postgres:
+            self._execute(cursor, """
+                INSERT INTO players 
+                (player_id, mlbam_id, name, first_name, last_name, position, 
+                 primary_position, team_id, team_abbr, jersey_number, handedness,
+                 height, weight, birth_date, birth_place, debut_date, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (player_id) DO UPDATE SET
+                    mlbam_id = EXCLUDED.mlbam_id,
+                    name = EXCLUDED.name,
+                    first_name = EXCLUDED.first_name,
+                    last_name = EXCLUDED.last_name,
+                    position = EXCLUDED.position,
+                    primary_position = EXCLUDED.primary_position,
+                    team_id = EXCLUDED.team_id,
+                    team_abbr = EXCLUDED.team_abbr,
+                    jersey_number = EXCLUDED.jersey_number,
+                    handedness = EXCLUDED.handedness,
+                    height = EXCLUDED.height,
+                    weight = EXCLUDED.weight,
+                    birth_date = EXCLUDED.birth_date,
+                    birth_place = EXCLUDED.birth_place,
+                    debut_date = EXCLUDED.debut_date,
+                    updated_at = EXCLUDED.updated_at
+            """, params)
+        else:
+            self._execute(cursor, """
+                INSERT OR REPLACE INTO players 
+                (player_id, mlbam_id, name, first_name, last_name, position, 
+                 primary_position, team_id, team_abbr, jersey_number, handedness,
+                 height, weight, birth_date, birth_place, debut_date, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, params)
         self.conn.commit()
     
     def upsert_player_season(self, player_id: str, season: str, stats: Dict[str, Any]):
         """Insert or update player season stats"""
         cursor = self.conn.cursor()
-        cursor.execute("""
-            INSERT OR REPLACE INTO player_seasons
-            (sportradar_id, season, games, at_bats, hits, doubles, triples,
-             home_runs, rbi, runs, stolen_bases, walks, strikeouts,
-             avg, obp, slg, ops, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
+        params = (
             player_id,
             season,
             stats.get('games') or stats.get('games_played'),
@@ -345,7 +496,41 @@ class PlayerDB:
             stats.get('slg') or stats.get('slugging_percentage'),
             stats.get('ops') or stats.get('on_base_plus_slugging'),
             datetime.now().timestamp()
-        ))
+        )
+        
+        if self.is_postgres:
+            self._execute(cursor, """
+                INSERT INTO player_seasons
+                (player_id, season, games, at_bats, hits, doubles, triples,
+                 home_runs, rbi, runs, stolen_bases, walks, strikeouts,
+                 avg, obp, slg, ops, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (player_id, season) DO UPDATE SET
+                    games = EXCLUDED.games,
+                    at_bats = EXCLUDED.at_bats,
+                    hits = EXCLUDED.hits,
+                    doubles = EXCLUDED.doubles,
+                    triples = EXCLUDED.triples,
+                    home_runs = EXCLUDED.home_runs,
+                    rbi = EXCLUDED.rbi,
+                    runs = EXCLUDED.runs,
+                    stolen_bases = EXCLUDED.stolen_bases,
+                    walks = EXCLUDED.walks,
+                    strikeouts = EXCLUDED.strikeouts,
+                    avg = EXCLUDED.avg,
+                    obp = EXCLUDED.obp,
+                    slg = EXCLUDED.slg,
+                    ops = EXCLUDED.ops,
+                    updated_at = EXCLUDED.updated_at
+            """, params)
+        else:
+            self._execute(cursor, """
+                INSERT OR REPLACE INTO player_seasons
+                (player_id, season, games, at_bats, hits, doubles, triples,
+                 home_runs, rbi, runs, stolen_bases, walks, strikeouts,
+                 avg, obp, slg, ops, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, params)
         self.conn.commit()
     
     def search_players(self, search: Optional[str] = None, team: Optional[str] = None,
@@ -372,23 +557,23 @@ class PlayerDB:
         query += " ORDER BY name LIMIT ? OFFSET ?"
         params.extend([limit, offset])
         
-        cursor.execute(query, params)
+        self._execute(cursor, query, tuple(params))
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
     
     def get_player(self, player_id: str) -> Optional[Dict[str, Any]]:
         """Get player by ID"""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM players WHERE sportradar_id = ?", (player_id,))
+        self._execute(cursor, "SELECT * FROM players WHERE player_id = ?", (player_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
     
     def get_player_seasons(self, player_id: str) -> List[Dict[str, Any]]:
         """Get all season stats for a player"""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        self._execute(cursor, """
             SELECT * FROM player_seasons 
-            WHERE sportradar_id = ? 
+            WHERE player_id = ? 
             ORDER BY season DESC
         """, (player_id,))
         rows = cursor.fetchall()
@@ -397,9 +582,9 @@ class PlayerDB:
     def get_player_current_season(self, player_id: str, season: str = "2024") -> Optional[Dict[str, Any]]:
         """Get current season stats for a player"""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        self._execute(cursor, """
             SELECT * FROM player_seasons 
-            WHERE sportradar_id = ? AND season = ?
+            WHERE player_id = ? AND season = ?
         """, (player_id, season))
         row = cursor.fetchone()
         return dict(row) if row else None
@@ -407,7 +592,7 @@ class PlayerDB:
     def get_all_teams(self) -> List[Dict[str, Any]]:
         """Get all teams"""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM teams ORDER BY abbreviation")
+        self._execute(cursor, "SELECT * FROM teams ORDER BY abbreviation")
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
     
@@ -432,7 +617,7 @@ class PlayerDB:
             query += " AND position LIKE ?"
             params.append(f"%{position}%")
         
-        cursor.execute(query, params)
+        self._execute(cursor, query, tuple(params))
         return cursor.fetchone()[0]
     
     def close(self):
@@ -443,45 +628,70 @@ class PlayerDB:
     # Authentication helpers
     # ---------------------------
 
-    def create_user(self, email: str, password_hash: str, first_name: str, last_name: str, is_admin: bool = False) -> int:
+    def create_user(self, email: str, password_hash: str, first_name: str, last_name: str, is_admin: bool = False, is_active: bool = True, email_verified: bool = False) -> int:
         """Insert a new user and return the user ID."""
         cursor = self.conn.cursor()
-        cursor.execute("""
-            INSERT INTO users (email, password_hash, first_name, last_name, created_at, updated_at, is_admin)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
+        params = (
             (email or "").strip().lower(),
             password_hash,
             (first_name or "").strip(),
             (last_name or "").strip(),
             datetime.now().timestamp(),
             datetime.now().timestamp(),
-            1 if is_admin else 0
-        ))
+            1 if is_admin else 0,
+            1 if is_active else 0,
+            1 if email_verified else 0
+        )
+        
+        if self.is_postgres:
+            self._execute(cursor, """
+                INSERT INTO users (email, password_hash, first_name, last_name, created_at, updated_at, is_admin, is_active, email_verified)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, params)
+            user_id = cursor.fetchone()[0]
+        else:
+            self._execute(cursor, """
+                INSERT INTO users (email, password_hash, first_name, last_name, created_at, updated_at, is_admin, is_active, email_verified)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, params)
+            user_id = cursor.lastrowid
+        
         self.conn.commit()
-        return cursor.lastrowid
+        return user_id
 
     def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
         """Retrieve a user record by email."""
         if not email:
             return None
         cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE email = ?", ((email or "").strip().lower(),))
+        self._execute(cursor, "SELECT * FROM users WHERE email = ?", ((email or "").strip().lower(),))
         row = cursor.fetchone()
         return dict(row) if row else None
 
     def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
         """Retrieve a user record by ID."""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+        self._execute(cursor, "SELECT * FROM users WHERE id = ?", (user_id,))
         row = cursor.fetchone()
-        return dict(row) if row else None
+        if row:
+            user_dict = dict(row)
+            # Ensure is_active defaults to True if not set
+            if 'is_active' not in user_dict or user_dict.get('is_active') is None:
+                user_dict['is_active'] = 1
+            # Ensure email_verified defaults to False if not set
+            if 'email_verified' not in user_dict or user_dict.get('email_verified') is None:
+                user_dict['email_verified'] = 0
+            return user_dict
+        return None
 
     def list_users(self) -> List[Dict[str, Any]]:
         """Return all users sorted by creation date."""
         cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT id, email, first_name, last_name, created_at, updated_at, is_admin
+        self._execute(cursor, """
+            SELECT id, email, first_name, last_name, created_at, updated_at, is_admin, 
+                   COALESCE(is_active, 1) as is_active,
+                   COALESCE(email_verified, 0) as email_verified
             FROM users
             ORDER BY created_at DESC
         """)
@@ -491,20 +701,229 @@ class PlayerDB:
     def set_user_admin(self, user_id: int, is_admin: bool) -> None:
         """Toggle admin flag for a user."""
         cursor = self.conn.cursor()
-        cursor.execute(
+        self._execute(cursor,
             "UPDATE users SET is_admin = ?, updated_at = ? WHERE id = ?",
             (1 if is_admin else 0, datetime.now().timestamp(), user_id)
         )
         self.conn.commit()
 
+    def set_user_active(self, user_id: int, is_active: bool) -> None:
+        """Set user active/inactive status."""
+        cursor = self.conn.cursor()
+        self._execute(cursor,
+            "UPDATE users SET is_active = ?, updated_at = ? WHERE id = ?",
+            (1 if is_active else 0, datetime.now().timestamp(), user_id)
+        )
+        self.conn.commit()
+
+    def delete_user(self, user_id: int) -> bool:
+        """Delete a user account. Returns True if deleted, False if not found."""
+        cursor = self.conn.cursor()
+        
+        # First check if user exists and get admin status
+        self._execute(cursor, "SELECT id, is_admin FROM users WHERE id = ?", (user_id,))
+        user = cursor.fetchone()
+        if not user:
+            return False
+        
+        # Convert row to dict for easier access
+        user_dict = dict(user) if hasattr(user, 'keys') else {'id': user[0], 'is_admin': user[1] if len(user) > 1 else 0}
+        
+        # Prevent deleting admin accounts
+        if user_dict.get("is_admin"):
+            raise PermissionError("Cannot delete admin accounts.")
+        
+        # Delete related data first (foreign key constraints)
+        # Delete verification tokens
+        self._execute(cursor, "DELETE FROM email_verification_tokens WHERE user_id = ?", (user_id,))
+        # Delete player document logs (must be before player documents)
+        self._execute(cursor, "DELETE FROM player_document_log WHERE player_id = ?", (user_id,))
+        # Delete player documents
+        self._execute(cursor, "DELETE FROM player_documents WHERE player_id = ?", (user_id,))
+        # Delete journal entries
+        self._execute(cursor, "DELETE FROM journal_entries WHERE user_id = ?", (user_id,))
+        
+        # Finally delete the user
+        self._execute(cursor, "DELETE FROM users WHERE id = ?", (user_id,))
+        self.conn.commit()
+        return True
+
     def update_user_password(self, user_id: int, password_hash: str) -> None:
         """Update a user's password hash."""
         cursor = self.conn.cursor()
-        cursor.execute(
+        self._execute(cursor,
             "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
             (password_hash, datetime.now().timestamp(), user_id)
         )
         self.conn.commit()
+
+    def create_verification_token(self, user_id: int, token: str, expires_in_hours: int = 24) -> int:
+        """Create an email verification token"""
+        cursor = self.conn.cursor()
+        expires_at = datetime.now().timestamp() + (expires_in_hours * 3600)
+        params = (user_id, token, datetime.now().timestamp(), expires_at)
+        
+        if self.is_postgres:
+            self._execute(cursor, """
+                INSERT INTO email_verification_tokens (user_id, token, created_at, expires_at)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+            """, params)
+            token_id = cursor.fetchone()[0]
+        else:
+            self._execute(cursor, """
+                INSERT INTO email_verification_tokens (user_id, token, created_at, expires_at)
+                VALUES (?, ?, ?, ?)
+            """, params)
+            token_id = cursor.lastrowid
+        
+        self.conn.commit()
+        return token_id
+
+    def get_verification_token(self, token: str) -> Optional[Dict[str, Any]]:
+        """Get verification token by token string"""
+        cursor = self.conn.cursor()
+        self._execute(cursor, """
+            SELECT * FROM email_verification_tokens 
+            WHERE token = ? AND used_at IS NULL AND expires_at > ?
+        """, (token, datetime.now().timestamp()))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def mark_token_used(self, token_id: int) -> None:
+        """Mark a verification token as used"""
+        cursor = self.conn.cursor()
+        self._execute(cursor, """
+            UPDATE email_verification_tokens 
+            SET used_at = ? 
+            WHERE id = ?
+        """, (datetime.now().timestamp(), token_id))
+        self.conn.commit()
+
+    def mark_email_verified(self, user_id: int) -> None:
+        """Mark user's email as verified"""
+        cursor = self.conn.cursor()
+        self._execute(cursor, """
+            UPDATE users 
+            SET email_verified = 1, updated_at = ? 
+            WHERE id = ?
+        """, (datetime.now().timestamp(), user_id))
+        self.conn.commit()
+
+    def delete_expired_tokens(self) -> None:
+        """Clean up expired verification tokens"""
+        cursor = self.conn.cursor()
+        self._execute(cursor, """
+            DELETE FROM email_verification_tokens 
+            WHERE expires_at < ? OR used_at IS NOT NULL
+        """, (datetime.now().timestamp(),))
+        self.conn.commit()
+
+    def create_invite_code(self, code: str, created_by: Optional[int] = None) -> int:
+        """Create a new invite code and return its ID."""
+        cursor = self.conn.cursor()
+        params = (
+            code.upper().strip(),
+            created_by,
+            datetime.now().timestamp(),
+            1  # is_active
+        )
+        
+        if self.is_postgres:
+            self._execute(cursor, """
+                INSERT INTO invite_codes (code, created_by, created_at, is_active)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+            """, params)
+            invite_id = cursor.fetchone()[0]
+        else:
+            self._execute(cursor, """
+                INSERT INTO invite_codes (code, created_by, created_at, is_active)
+                VALUES (?, ?, ?, ?)
+            """, params)
+            invite_id = cursor.lastrowid
+        
+        self.conn.commit()
+        return invite_id
+
+    def get_invite_code(self, code: str) -> Optional[Dict[str, Any]]:
+        """Retrieve an invite code by code string."""
+        if not code:
+            return None
+        cursor = self.conn.cursor()
+        self._execute(cursor, 
+            "SELECT * FROM invite_codes WHERE code = ?", 
+            (code.upper().strip(),)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def use_invite_code(self, code: str, used_by: int) -> bool:
+        """Mark an invite code as used. Returns True if successful."""
+        cursor = self.conn.cursor()
+        invite = self.get_invite_code(code)
+        if not invite or not invite.get("is_active") or invite.get("used_at"):
+            return False
+        
+        self._execute(cursor, """
+            UPDATE invite_codes 
+            SET used_at = ?, used_by = ?, is_active = 0
+            WHERE code = ?
+        """, (datetime.now().timestamp(), used_by, code.upper().strip()))
+        self.conn.commit()
+        return True
+
+    def list_invite_codes(self, include_used: bool = False, limit: int = 100) -> List[Dict[str, Any]]:
+        """List invite codes, optionally including used ones."""
+        cursor = self.conn.cursor()
+        if include_used:
+            self._execute(cursor, """
+                SELECT 
+                    ic.*,
+                    u.first_name as used_by_first_name,
+                    u.last_name as used_by_last_name
+                FROM invite_codes ic
+                LEFT JOIN users u ON ic.used_by = u.id
+                ORDER BY ic.created_at DESC
+                LIMIT ?
+            """, (limit,))
+        else:
+            self._execute(cursor, """
+                SELECT 
+                    ic.*,
+                    u.first_name as used_by_first_name,
+                    u.last_name as used_by_last_name
+                FROM invite_codes ic
+                LEFT JOIN users u ON ic.used_by = u.id
+                WHERE ic.is_active = 1 AND ic.used_at IS NULL
+                ORDER BY ic.created_at DESC
+                LIMIT ?
+            """, (limit,))
+        rows = cursor.fetchall()
+        # Convert rows to dicts, handling both SQLite Row and PostgreSQL RealDictRow
+        result = []
+        for row in rows:
+            if hasattr(row, 'keys'):
+                # Already a dict-like object (PostgreSQL RealDictRow or similar)
+                result.append(dict(row))
+            elif hasattr(row, '__iter__') and not isinstance(row, str):
+                # SQLite Row or tuple
+                if self.is_postgres:
+                    result.append(dict(row))
+                else:
+                    # SQLite Row object
+                    result.append({key: row[key] for key in row.keys()})
+            else:
+                # Fallback
+                result.append(dict(row))
+        return result
+
+    def delete_invite_code(self, code_id: int) -> bool:
+        """Delete an invite code by ID."""
+        cursor = self.conn.cursor()
+        self._execute(cursor, "DELETE FROM invite_codes WHERE id = ?", (code_id,))
+        self.conn.commit()
+        return cursor.rowcount > 0
 
     def update_user_profile(self, user_id: int, **fields) -> bool:
         """Update user profile metadata."""
@@ -535,10 +954,8 @@ class PlayerDB:
         params.append(user_id)
 
         cursor = self.conn.cursor()
-        cursor.execute(
-            f"UPDATE users SET {', '.join(assignments)} WHERE id = ?",
-            params
-        )
+        query = f"UPDATE users SET {', '.join(assignments)} WHERE id = ?"
+        self._execute(cursor, query, tuple(params))
         self.conn.commit()
         return cursor.rowcount > 0
 
@@ -552,10 +969,7 @@ class PlayerDB:
         """Create a staff note and return its ID."""
         cursor = self.conn.cursor()
         now_ts = datetime.now().timestamp()
-        cursor.execute("""
-            INSERT INTO staff_notes (title, body, team_abbr, tags, pinned, author_id, author_name, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
+        params = (
             (title or "").strip(),
             (body or "").strip(),
             (team_abbr or "").strip().upper() or None,
@@ -565,9 +979,24 @@ class PlayerDB:
             author_name,
             now_ts,
             now_ts,
-        ))
+        )
+        
+        if self.is_postgres:
+            self._execute(cursor, """
+                INSERT INTO staff_notes (title, body, team_abbr, tags, pinned, author_id, author_name, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, params)
+            note_id = cursor.fetchone()[0]
+        else:
+            self._execute(cursor, """
+                INSERT INTO staff_notes (title, body, team_abbr, tags, pinned, author_id, author_name, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, params)
+            note_id = cursor.lastrowid
+        
         self.conn.commit()
-        return cursor.lastrowid
+        return note_id
 
     def update_staff_note(self, note_id: int, **fields) -> bool:
         """Update an existing staff note with provided fields."""
@@ -600,25 +1029,26 @@ class PlayerDB:
         params.append(note_id)
 
         cursor = self.conn.cursor()
-        cursor.execute(f"""
+        query = f"""
             UPDATE staff_notes
-            SET {", ".join(assignments)}
+            SET {', '.join(assignments)}
             WHERE id = ?
-        """, params)
+        """
+        self._execute(cursor, query, tuple(params))
         self.conn.commit()
         return cursor.rowcount > 0
 
     def delete_staff_note(self, note_id: int) -> bool:
         """Remove a staff note."""
         cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM staff_notes WHERE id = ?", (note_id,))
+        self._execute(cursor, "DELETE FROM staff_notes WHERE id = ?", (note_id,))
         self.conn.commit()
         return cursor.rowcount > 0
 
     def get_staff_note(self, note_id: int) -> Optional[Dict[str, Any]]:
         """Fetch a single staff note."""
         cursor = self.conn.cursor()
-        cursor.execute("SELECT * FROM staff_notes WHERE id = ?", (note_id,))
+        self._execute(cursor, "SELECT * FROM staff_notes WHERE id = ?", (note_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
 
@@ -635,7 +1065,7 @@ class PlayerDB:
             params.append(team_abbr.strip().upper())
         query += " ORDER BY pinned DESC, updated_at DESC LIMIT ?"
         params.append(limit)
-        cursor.execute(query, params)
+        self._execute(cursor, query, tuple(params))
         rows = cursor.fetchall()
         notes = []
         for row in rows:
@@ -656,13 +1086,7 @@ class PlayerDB:
                                series_end: Optional[float] = None) -> int:
         """Store metadata for an uploaded player document."""
         cursor = self.conn.cursor()
-        cursor.execute("""
-            INSERT INTO player_documents (
-                player_id, filename, path, uploaded_by, uploaded_at, category,
-                series_opponent, series_label, series_start, series_end
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
+        params = (
             int(player_id),
             filename,
             path,
@@ -673,14 +1097,35 @@ class PlayerDB:
             (series_label or "").strip() or None,
             float(series_start) if series_start is not None else None,
             float(series_end) if series_end is not None else None
-        ))
+        )
+        
+        if self.is_postgres:
+            self._execute(cursor, """
+                INSERT INTO player_documents (
+                    player_id, filename, path, uploaded_by, uploaded_at, category,
+                    series_opponent, series_label, series_start, series_end
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, params)
+            doc_id = cursor.fetchone()[0]
+        else:
+            self._execute(cursor, """
+                INSERT INTO player_documents (
+                    player_id, filename, path, uploaded_by, uploaded_at, category,
+                    series_opponent, series_label, series_start, series_end
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, params)
+            doc_id = cursor.lastrowid
+        
         self.conn.commit()
-        return cursor.lastrowid
+        return doc_id
 
     def delete_player_document(self, doc_id: int) -> Optional[Dict[str, Any]]:
         """Delete a player document and return the deleted record."""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        self._execute(cursor, """
             SELECT id, player_id, filename, path, uploaded_by, uploaded_at,
                    category, series_opponent, series_label, series_start, series_end
             FROM player_documents
@@ -689,7 +1134,7 @@ class PlayerDB:
         row = cursor.fetchone()
         if not row:
             return None
-        cursor.execute("DELETE FROM player_documents WHERE id = ?", (doc_id,))
+        self._execute(cursor, "DELETE FROM player_documents WHERE id = ?", (doc_id,))
         self.conn.commit()
         return dict(row)
 
@@ -702,14 +1147,15 @@ class PlayerDB:
         if category is not None:
             category_clause = "category = ?"
             params.append((category or "").strip().lower())
-        cursor.execute(f"""
+        query = f"""
             SELECT id, player_id, filename, path, uploaded_by, uploaded_at,
                    category, series_opponent, series_label, series_start, series_end
             FROM player_documents
             WHERE player_id = ?
               AND {category_clause}
             ORDER BY uploaded_at DESC
-        """, params)
+        """
+        self._execute(cursor, query, tuple(params))
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
@@ -717,7 +1163,7 @@ class PlayerDB:
                                                category: str) -> Optional[Dict[str, Any]]:
         """Return newest document for a player within a category."""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        self._execute(cursor, """
             SELECT id, player_id, filename, path, uploaded_by, uploaded_at,
                    category, series_opponent, series_label, series_start, series_end
             FROM player_documents
@@ -732,7 +1178,7 @@ class PlayerDB:
                                    limit: int = 10) -> List[Dict[str, Any]]:
         """List most recent documents by category."""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        self._execute(cursor, """
             SELECT id, player_id, filename, path, uploaded_by, uploaded_at,
                    category, series_opponent, series_label, series_start, series_end
             FROM player_documents
@@ -751,7 +1197,7 @@ class PlayerDB:
     def get_player_document(self, doc_id: int) -> Optional[Dict[str, Any]]:
         """Retrieve a single player document entry."""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        self._execute(cursor, """
             SELECT id, player_id, filename, path, uploaded_by, uploaded_at,
                    category, series_opponent, series_label, series_start, series_end
             FROM player_documents
@@ -765,7 +1211,7 @@ class PlayerDB:
         cursor = self.conn.cursor()
         if reference_ts is None:
             reference_ts = datetime.now().timestamp()
-        cursor.execute("""
+        self._execute(cursor, """
             SELECT id, player_id, filename, path, uploaded_by, uploaded_at,
                    category,
                    series_opponent, series_label, series_start, series_end
@@ -779,18 +1225,30 @@ class PlayerDB:
                                      performed_by: Optional[int]) -> int:
         """Log document actions such as upload/delete."""
         cursor = self.conn.cursor()
-        cursor.execute("""
-            INSERT INTO player_document_log (player_id, filename, action, performed_by, timestamp)
-            VALUES (?, ?, ?, ?, ?)
-        """, (
+        params = (
             int(player_id),
             filename,
             action,
             performed_by,
             datetime.now().timestamp()
-        ))
+        )
+        
+        if self.is_postgres:
+            self._execute(cursor, """
+                INSERT INTO player_document_log (player_id, filename, action, performed_by, timestamp)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
+            """, params)
+            log_id = cursor.fetchone()[0]
+        else:
+            self._execute(cursor, """
+                INSERT INTO player_document_log (player_id, filename, action, performed_by, timestamp)
+                VALUES (?, ?, ?, ?, ?)
+            """, params)
+            log_id = cursor.lastrowid
+        
         self.conn.commit()
-        return cursor.lastrowid
+        return log_id
 
     def list_player_document_events(self, player_id: Optional[int] = None, limit: int = 200) -> List[Dict[str, Any]]:
         """Return document activity, optionally filtered by player."""
@@ -805,7 +1263,7 @@ class PlayerDB:
             params.append(int(player_id))
         query += " ORDER BY timestamp DESC LIMIT ?"
         params.append(limit)
-        cursor.execute(query, params)
+        self._execute(cursor, query, tuple(params))
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
@@ -828,15 +1286,7 @@ class PlayerDB:
             raise ValueError("entry_date must be formatted as YYYY-MM-DD")
 
         now_ts = datetime.now().timestamp()
-        cursor = self.conn.cursor()
-        cursor.execute("""
-            INSERT INTO journal_entries (user_id, entry_date, visibility, title, body, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(user_id, entry_date, visibility) DO UPDATE SET
-                title = excluded.title,
-                body = excluded.body,
-                updated_at = excluded.updated_at
-        """, (
+        params = (
             int(user_id),
             sanitized_date,
             normalized_visibility,
@@ -844,15 +1294,39 @@ class PlayerDB:
             (body or "").strip() or "",
             now_ts,
             now_ts,
-        ))
+        )
+        
+        cursor = self.conn.cursor()
+        if self.is_postgres:
+            self._execute(cursor, """
+                INSERT INTO journal_entries (user_id, entry_date, visibility, title, body, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT(user_id, entry_date, visibility) DO UPDATE SET
+                    title = EXCLUDED.title,
+                    body = EXCLUDED.body,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING id
+            """, params)
+            entry_id = cursor.fetchone()[0]
+        else:
+            self._execute(cursor, """
+                INSERT INTO journal_entries (user_id, entry_date, visibility, title, body, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id, entry_date, visibility) DO UPDATE SET
+                    title = excluded.title,
+                    body = excluded.body,
+                    updated_at = excluded.updated_at
+            """, params)
+            entry_id = cursor.lastrowid
+        
         self.conn.commit()
-        return cursor.lastrowid
+        return entry_id
 
     def get_journal_entry(self, user_id: int, entry_date: str,
                           visibility: str) -> Optional[Dict[str, Any]]:
         """Fetch a journal entry for a specific date and visibility."""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        self._execute(cursor, """
             SELECT id, user_id, entry_date, visibility, title, body, created_at, updated_at
             FROM journal_entries
             WHERE user_id = ? AND entry_date = ? AND visibility = ?
@@ -892,17 +1366,16 @@ class PlayerDB:
         """
         params.append(int(limit) if limit and limit > 0 else 180)
 
-        cursor.execute(query, params)
+        self._execute(cursor, query, tuple(params))
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
     def delete_journal_entry(self, entry_id: int, user_id: int) -> bool:
         """Remove a journal entry."""
         cursor = self.conn.cursor()
-        cursor.execute("""
+        self._execute(cursor, """
             DELETE FROM journal_entries
             WHERE id = ? AND user_id = ?
         """, (int(entry_id), int(user_id)))
         self.conn.commit()
         return cursor.rowcount > 0
-

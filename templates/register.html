@@ -43,6 +43,16 @@
                     <input type="email" id="email" name="email" placeholder="name@team.com" autocomplete="email" required>
                 </div>
             </div>
+            <div class="auth-field">
+                <label for="invite_code">
+                    <span class="field-label">Invite Code</span>
+                </label>
+                <div class="input-wrapper">
+                    <span class="input-icon"><i class="fas fa-key"></i></span>
+                    <input type="text" id="invite_code" name="invite_code" placeholder="Enter your invite code" autocomplete="off" required style="text-transform: uppercase;">
+                </div>
+                <small class="field-hint">An invite code is required to create an account.</small>
+            </div>
             <div class="two-column">
                 <div class="auth-field">
                     <label for="password">
@@ -71,7 +81,7 @@
         </form>
         <div class="auth-switch">
             <span>Already have an account?</span>
-            <a href="{{ url_for('login', next=request.args.get('next') or request.path) }}">Sign in</a>
+            <a href="{{ url_for('auth.login', next=request.args.get('next') or request.path) }}">Sign in</a>
         </div>
     </div>
 </div>
