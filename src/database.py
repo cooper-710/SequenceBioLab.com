@@ -367,7 +367,7 @@ class PlayerDB:
                 FROM information_schema.columns 
                 WHERE table_name = %s
             """, (table_name,))
-            return {row[0] for row in cursor.fetchall()}
+            return {row['column_name'] for row in cursor.fetchall()}
         else:
             cursor = self.conn.cursor()
             self._execute(cursor, f"PRAGMA table_info({table_name})")
