@@ -618,7 +618,8 @@ class PlayerDB:
             params.append(f"%{position}%")
         
         self._execute(cursor, query, tuple(params))
-        return cursor.fetchone()[0]
+        result = cursor.fetchone()
+        return result['count'] if self.is_postgres else result[0]
     
     def close(self):
         """Close database connection"""
@@ -649,7 +650,7 @@ class PlayerDB:
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, params)
-            user_id = cursor.fetchone()[0]
+            user_id = cursor.fetchone()['id']
         else:
             self._execute(cursor, """
                 INSERT INTO users (email, password_hash, first_name, last_name, created_at, updated_at, is_admin, is_active, email_verified)
@@ -769,7 +770,7 @@ class PlayerDB:
                 VALUES (%s, %s, %s, %s)
                 RETURNING id
             """, params)
-            token_id = cursor.fetchone()[0]
+            token_id = cursor.fetchone()['id']
         else:
             self._execute(cursor, """
                 INSERT INTO email_verification_tokens (user_id, token, created_at, expires_at)
@@ -835,7 +836,7 @@ class PlayerDB:
                 VALUES (%s, %s, %s, %s)
                 RETURNING id
             """, params)
-            invite_id = cursor.fetchone()[0]
+            invite_id = cursor.fetchone()['id']
         else:
             self._execute(cursor, """
                 INSERT INTO invite_codes (code, created_by, created_at, is_active)
@@ -987,7 +988,7 @@ class PlayerDB:
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, params)
-            note_id = cursor.fetchone()[0]
+            note_id = cursor.fetchone()['id']
         else:
             self._execute(cursor, """
                 INSERT INTO staff_notes (title, body, team_abbr, tags, pinned, author_id, author_name, created_at, updated_at)
@@ -1108,7 +1109,7 @@ class PlayerDB:
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, params)
-            doc_id = cursor.fetchone()[0]
+            doc_id = cursor.fetchone()['id']
         else:
             self._execute(cursor, """
                 INSERT INTO player_documents (
@@ -1239,7 +1240,7 @@ class PlayerDB:
                 VALUES (%s, %s, %s, %s, %s)
                 RETURNING id
             """, params)
-            log_id = cursor.fetchone()[0]
+            log_id = cursor.fetchone()['id']
         else:
             self._execute(cursor, """
                 INSERT INTO player_document_log (player_id, filename, action, performed_by, timestamp)
@@ -1307,7 +1308,7 @@ class PlayerDB:
                     updated_at = EXCLUDED.updated_at
                 RETURNING id
             """, params)
-            entry_id = cursor.fetchone()[0]
+            entry_id = cursor.fetchone()['id']
         else:
             self._execute(cursor, """
                 INSERT INTO journal_entries (user_id, entry_date, visibility, title, body, created_at, updated_at)
