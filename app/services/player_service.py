@@ -73,3 +73,5 @@ def determine_user_team(user: Optional[Dict[str, Any]]) -> str:
 
 
 
+
+

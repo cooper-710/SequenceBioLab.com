@@ -9,9 +9,14 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-# Import the app from app.py
-# This will create the Flask app instance
-from app import app
+# Import the app from app.py (the root file, not the app package)
+# We need to import the file directly, not the package
+import importlib.util
+app_py_path = Path(__file__).parent / "app.py"
+spec = importlib.util.spec_from_file_location("app_py", app_py_path)
+app_py = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(app_py)
+app = app_py.app
 
 # Ensure we're not in debug mode for production
 if os.environ.get('FLASK_ENV') != 'development':
@@ -22,5 +27,6 @@ application = app
 
 if __name__ == "__main__":
     # For local testing
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+    port = int(os.environ.get('PORT', 5001))
+    app.run(host='0.0.0.0', port=port)
 

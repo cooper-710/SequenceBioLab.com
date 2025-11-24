@@ -44,8 +44,22 @@ class Config:
     WORKOUT_DOCS_DIR = ROOT_DIR / "build" / "workouts"
     CACHE_DIR = ROOT_DIR / "build" / "cache"
     
-    # Application settings
-    SECRET_KEY = os.environ.get("SECRET_KEY") or _get_secret_key_from_settings()
+    # Application settings - lazy loaded to avoid circular import issues
+    _secret_key = None
+    
+    @classmethod
+    def _get_secret_key(cls):
+        """Lazy load secret key"""
+        if cls._secret_key is None:
+            cls._secret_key = os.environ.get("SECRET_KEY") or _get_secret_key_from_settings()
+        return cls._secret_key
+    
+    @classmethod
+    def get_secret_key(cls):
+        """Get secret key - use this method instead of SECRET_KEY attribute"""
+        return cls._get_secret_key()
+    
+    # For backward compatibility, we'll set SECRET_KEY after class definition
     DEBUG = os.environ.get("FLASK_ENV", "development") != "production"
     PORT = int(os.environ.get("PORT", 5001))
     
@@ -96,4 +110,8 @@ class Config:
     def refresh_settings_cache(cls):
         """Clear settings cache"""
         cls.get_settings.cache_clear()
+
+
+# Set SECRET_KEY as class attribute after class definition to avoid circular import issues
+Config.SECRET_KEY = Config._get_secret_key()
 

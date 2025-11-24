@@ -53,3 +53,5 @@ def detect_image_type(data: bytes) -> str:
 
 
 
+
+
