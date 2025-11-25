@@ -2234,7 +2234,7 @@ document.addEventListener('click', async (event) => {
     const countdownContainer = document.getElementById('game-countdown');
     if (!countdownContainer) return;
 
-    const gameDateTimeIso = '{{ next_series.first_game_datetime_iso|default("")|safe }}';
+    const gameDateTimeIso = '{% if next_series and next_series.first_game_datetime_iso %}{{ next_series.first_game_datetime_iso|safe }}{% else %}''{% endif %}';
     if (!gameDateTimeIso || gameDateTimeIso === 'None' || gameDateTimeIso === '') return;
 
     const countdownDays = document.getElementById('countdown-days');

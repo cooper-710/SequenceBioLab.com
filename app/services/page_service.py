@@ -1553,7 +1553,7 @@ def build_player_home_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
     return {
         "hero_message": None,
-        "next_series": next_series,
+        "next_series": next_series or {},  # Ensure it's always a dict, never None
         "latest_document": latest_document,
         "deliverables": deliverables,
         "outstanding_count": outstanding_count,
