@@ -40,13 +40,23 @@ def _get_postgres_pool(database_url: str):
                 hostname = parsed.hostname
                 port = parsed.port or 5432
                 
+                # URL decode username and password (urlparse should do this, but be explicit)
+                from urllib.parse import unquote
+                username = unquote(parsed.username or '')
+                password = unquote(parsed.password or '')
+                
+                # Log connection details (without password) for debugging
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"Connecting to database: host={hostname}, port={port}, user={username}, database={parsed.path.lstrip('/') or 'postgres'}")
+                
                 # Build connection parameters dict
                 conn_params = {
                     'host': hostname,  # Keep hostname for SSL/routing
                     'port': port,
                     'database': parsed.path.lstrip('/') or 'postgres',
-                    'user': parsed.username,
-                    'password': parsed.password,
+                    'user': username,  # Use decoded username
+                    'password': password,  # Use decoded password
                     'connect_timeout': 10,  # Increased timeout for reliability
                     'cursor_factory': RealDictCursor,
                     'sslmode': 'require',  # REQUIRED for Supabase connections
@@ -79,8 +89,6 @@ def _get_postgres_pool(database_url: str):
                 # But keep hostname for Supabase routing/SSL verification
                 if ipv4_addr:
                     conn_params['hostaddr'] = ipv4_addr
-                    import logging
-                    logger = logging.getLogger(__name__)
                     logger.info(f"Using IPv4 address {ipv4_addr} for {hostname}")
                 
                 # Create connection pool with increased size for concurrent requests
