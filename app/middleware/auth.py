@@ -38,6 +38,10 @@ def setup_auth_middleware(app):
             logger = logging.getLogger(__name__)
             logger.warning(f"Failed to load user {user_id}: {exc}")
             g.user = None
+            # Don't clear session on transient connection errors
+            # Only clear if it's a permanent auth failure
+            if "timeout" not in str(exc).lower() and "connection" not in str(exc).lower():
+                session.clear()
         
         # Check if account is deactivated (but skip check for admins)
         if g.user and not g.user.get("is_admin"):
@@ -139,6 +143,7 @@ def ensure_default_admin():
     
     from werkzeug.security import generate_password_hash, check_password_hash
     import logging
+    import time
     
     logger = logging.getLogger(__name__)
     
@@ -149,30 +154,40 @@ def ensure_default_admin():
         logger.warning("DEFAULT_ADMIN_PASSWORD not set. Admin creation skipped.")
         return
     
-    try:
-        db = PlayerDB()
-        existing = db.get_user_by_email(default_email)
-        password_hash = generate_password_hash(default_password)
-        
-        if not existing:
-            db.create_user(
-                email=default_email,
-                password_hash=password_hash,
-                first_name="Sequence",
-                last_name="Admin",
-                is_admin=True,
-                email_verified=True  # Admin accounts are pre-verified
-            )
-            logger.info(f"Default admin user created: {default_email}")
-        else:
-            if not existing.get("is_admin"):
-                db.set_user_admin(existing["id"], True)
-            if not check_password_hash(existing.get("password_hash", ""), default_password):
-                db.update_user_password(existing["id"], password_hash)
-        db.close()
-    except Exception as exc:
-        # Log but don't crash - app can start without admin user
-        # Admin can be created manually if needed
-        logger.error(f"Unable to ensure default admin user: {exc}")
-        logger.warning("App will continue without default admin. Check DATABASE_URL configuration.")
+    max_retries = 3
+    retry_delay = 2.0
+    
+    for attempt in range(max_retries):
+        try:
+            db = PlayerDB()
+            existing = db.get_user_by_email(default_email)
+            password_hash = generate_password_hash(default_password)
+            
+            if not existing:
+                db.create_user(
+                    email=default_email,
+                    password_hash=password_hash,
+                    first_name="Sequence",
+                    last_name="Admin",
+                    is_admin=True,
+                    email_verified=True  # Admin accounts are pre-verified
+                )
+                logger.info(f"Default admin user created: {default_email}")
+            else:
+                if not existing.get("is_admin"):
+                    db.set_user_admin(existing["id"], True)
+                if not check_password_hash(existing.get("password_hash", ""), default_password):
+                    db.update_user_password(existing["id"], password_hash)
+            db.close()
+            break  # Success, exit retry loop
+        except Exception as exc:
+            if attempt < max_retries - 1:
+                logger.warning(f"Unable to ensure default admin user (attempt {attempt + 1}/{max_retries}): {exc}. Retrying in {retry_delay}s...")
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+                continue
+            # Log but don't crash - app can start without admin user
+            # Admin can be created manually if needed
+            logger.error(f"Unable to ensure default admin user after {max_retries} attempts: {exc}")
+            logger.warning("App will continue without default admin. Check DATABASE_URL configuration.")
 

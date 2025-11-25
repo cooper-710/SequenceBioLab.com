@@ -67,7 +67,7 @@ def _get_postgres_pool(database_url: str):
             'database': parsed.path.lstrip('/') or 'postgres',
             'user': username,  # Use decoded username
             'password': password,  # Use decoded password
-            'connect_timeout': 10,  # Increased timeout for reliability
+            'connect_timeout': 30,  # Increased to 30 seconds for Supabase pooler reliability
             'cursor_factory': RealDictCursor,
             'sslmode': 'require',  # REQUIRED for Supabase connections
         }
@@ -106,10 +106,11 @@ def _get_postgres_pool(database_url: str):
             logger.info(f"Using hostname for Supabase connection (SSL verification enabled)")
         
         # Create connection pool with conservative settings per worker
-        # With 2 gunicorn workers, 3 connections each = 6 total (safe for Supabase)
+        # Reduced max connections per worker to avoid exceeding Supabase limits
+        # With 4 workers, 2 connections each = 8 total (safer for Supabase free tier)
         pool = psycopg2.pool.ThreadedConnectionPool(
             minconn=1,  # Start with 1 connection
-            maxconn=3,  # Max 3 connections per worker (2 workers * 3 = 6 total max)
+            maxconn=2,  # Reduced from 3 to 2 connections per worker to avoid pool exhaustion
             **conn_params
         )
         _postgres_pools[worker_pid] = pool
@@ -135,19 +136,63 @@ class PlayerDB:
         if self.is_postgres:
             # Get connection from pool (reuses existing connections)
             # Use timeout to prevent hanging if pool is exhausted
+            import time
             conn_pool = _get_postgres_pool(self.database_url)
-            try:
-                # Try to get connection with a timeout
-                # If pool is exhausted, this will raise PoolError
-                self.conn = conn_pool.getconn()
-                self._from_pool = True
-            except Exception as e:
-                # If we can't get a connection, log and raise
-                # This prevents the app from hanging indefinitely
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"Failed to get database connection from pool: {e}")
-                raise
+            max_retries = 3
+            retry_delay = 1.0  # Start with 1 second
+            
+            for attempt in range(max_retries):
+                try:
+                    # Try to get connection with a timeout
+                    # If pool is exhausted, this will raise PoolError
+                    
+                    # Use a timeout mechanism for getconn
+                    # Note: psycopg2 pool doesn't have built-in timeout, so we use a workaround
+                    self.conn = None
+                    start_time = time.time()
+                    timeout_seconds = 10  # 10 second timeout for getting connection
+                    
+                    while self.conn is None and (time.time() - start_time) < timeout_seconds:
+                        try:
+                            self.conn = conn_pool.getconn()
+                            self._from_pool = True
+                            break
+                        except psycopg2.pool.PoolError:
+                            # Pool exhausted, wait a bit and retry
+                            if (time.time() - start_time) < timeout_seconds:
+                                time.sleep(0.5)
+                                continue
+                            raise
+                    
+                    if self.conn is None:
+                        raise psycopg2.pool.PoolError("Timeout waiting for connection from pool")
+                    
+                    # Test the connection immediately
+                    test_cursor = self.conn.cursor()
+                    test_cursor.execute("SELECT 1")
+                    test_cursor.fetchone()
+                    test_cursor.close()
+                    break  # Success, exit retry loop
+                    
+                except (psycopg2.pool.PoolError, psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                    if attempt < max_retries - 1:
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.warning(f"Failed to get database connection (attempt {attempt + 1}/{max_retries}): {e}. Retrying in {retry_delay}s...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        continue
+                    # If we can't get a connection after retries, log and raise
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Failed to get database connection from pool after {max_retries} attempts: {e}")
+                    raise
+                except Exception as e:
+                    # For other exceptions, don't retry
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Failed to get database connection from pool: {e}")
+                    raise
             self.param_style = '%s'  # PostgreSQL uses %s
         else:
             # SQLite connection (fallback)
