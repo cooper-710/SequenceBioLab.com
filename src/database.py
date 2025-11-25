@@ -6,9 +6,11 @@ import os
 import sqlite3
 import json
 import threading
+import socket
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Union
 from datetime import datetime
+from urllib.parse import urlparse
 
 # Try to import PostgreSQL driver
 try:
@@ -28,19 +30,54 @@ _schema_lock = threading.Lock()
 
 
 def _get_postgres_pool(database_url: str):
-    """Get or create PostgreSQL connection pool"""
+    """Get or create PostgreSQL connection pool with IPv4 forcing"""
     global _postgres_pool
     if _postgres_pool is None:
         with _pool_lock:
             if _postgres_pool is None:
-                # Use connection string directly - let psycopg2 handle IPv4/IPv6
-                # The pooler connection string should handle network routing automatically
+                # Parse connection URL to force IPv4
+                parsed = urlparse(database_url)
+                hostname = parsed.hostname
+                port = parsed.port or 5432
+                
+                # Build connection parameters dict
+                conn_params = {
+                    'host': hostname,  # Keep hostname for SSL/routing
+                    'port': port,
+                    'database': parsed.path.lstrip('/') or 'postgres',
+                    'user': parsed.username,
+                    'password': parsed.password,
+                    'connect_timeout': 5,
+                    'cursor_factory': RealDictCursor,
+                }
+                
+                # Force IPv4 by resolving hostname to IPv4 address
+                ipv4_addr = None
+                try:
+                    # Try getaddrinfo with IPv4 only
+                    addr_info = socket.getaddrinfo(hostname, port, socket.AF_INET, socket.SOCK_STREAM)
+                    if addr_info:
+                        ipv4_addr = addr_info[0][4][0]
+                except (socket.gaierror, OSError):
+                    try:
+                        # Fallback to gethostbyname (IPv4 only)
+                        ipv4_addr = socket.gethostbyname(hostname)
+                    except (socket.gaierror, OSError):
+                        pass
+                
+                # If we got IPv4, use hostaddr to force IPv4 connection
+                # But keep hostname for Supabase routing/SSL verification
+                if ipv4_addr:
+                    conn_params['hostaddr'] = ipv4_addr
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.info(f"Using IPv4 address {ipv4_addr} for {hostname}")
+                
+                # Create connection pool with connection parameters
                 _postgres_pool = psycopg2.pool.ThreadedConnectionPool(
                     minconn=1,
                     maxconn=1,
-                    dsn=database_url,
-                    cursor_factory=RealDictCursor,
-                    connect_timeout=5  # Connection timeout in seconds
+                    **conn_params
                 )
     return _postgres_pool
 
