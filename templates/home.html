@@ -1820,7 +1820,7 @@
     }
     
     // Use real schedule data from backend
-    const scheduleCalendar = {{ schedule_calendar|tojson|safe }} || [];
+    const scheduleCalendar = {{ (schedule_calendar or [])|tojson|safe }};
     
     console.log('Schedule calendar data received:', scheduleCalendar);
     console.log('Number of games:', scheduleCalendar.length);

@@ -1547,6 +1547,9 @@ def build_player_home_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     except Exception:
         mlb_logo_url = "/static/MLB_Logo.png"
     schedule_calendar = load_schedule_calendar(user)
+    # Ensure schedule_calendar is always a list, never None or Undefined
+    if not isinstance(schedule_calendar, list):
+        schedule_calendar = []
 
     return {
         "hero_message": None,
