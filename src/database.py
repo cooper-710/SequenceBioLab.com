@@ -5,6 +5,7 @@ Player Database - PostgreSQL/SQLite compatible operations
 import os
 import sqlite3
 import json
+import threading
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Union
 from datetime import datetime
@@ -13,9 +14,33 @@ from datetime import datetime
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor, execute_values
+    from psycopg2 import pool
     HAS_POSTGRES = True
 except ImportError:
     HAS_POSTGRES = False
+    pool = None
+
+# Module-level connection pool for PostgreSQL (shared across all instances)
+_postgres_pool = None
+_pool_lock = threading.Lock()
+_schema_initialized = False
+_schema_lock = threading.Lock()
+
+
+def _get_postgres_pool(database_url: str):
+    """Get or create PostgreSQL connection pool"""
+    global _postgres_pool
+    if _postgres_pool is None:
+        with _pool_lock:
+            if _postgres_pool is None:
+                # Create connection pool: min 2, max 10 connections
+                _postgres_pool = psycopg2.pool.ThreadedConnectionPool(
+                    minconn=2,
+                    maxconn=10,
+                    dsn=database_url,
+                    cursor_factory=RealDictCursor
+                )
+    return _postgres_pool
 
 
 class PlayerDB:
@@ -32,10 +57,13 @@ class PlayerDB:
         self.database_url = database_url or os.environ.get('DATABASE_URL')
         self.is_postgres = bool(self.database_url and HAS_POSTGRES)
         self.db_path = Path(db_path)
+        self._from_pool = False  # Track if connection came from pool
         
         if self.is_postgres:
-            # PostgreSQL connection
-            self.conn = psycopg2.connect(self.database_url, cursor_factory=RealDictCursor)
+            # Get connection from pool (reuses existing connections)
+            conn_pool = _get_postgres_pool(self.database_url)
+            self.conn = conn_pool.getconn()
+            self._from_pool = True
             self.param_style = '%s'  # PostgreSQL uses %s
         else:
             # SQLite connection (fallback)
@@ -44,7 +72,8 @@ class PlayerDB:
             self.conn.row_factory = sqlite3.Row
             self.param_style = '?'  # SQLite uses ?
         
-        self._init_schema()
+        # Initialize schema only once per worker (thread-safe)
+        self._init_schema_cached()
     
     def _param(self, *args):
         """Convert parameters to appropriate style for current database"""
@@ -61,6 +90,20 @@ class PlayerDB:
             cursor.execute(query, params)
         else:
             cursor.execute(query)
+    
+    def _init_schema_cached(self):
+        """Initialize schema only once per worker (thread-safe)"""
+        global _schema_initialized
+        if _schema_initialized:
+            return  # Schema already initialized
+        
+        with _schema_lock:
+            # Double-check after acquiring lock
+            if _schema_initialized:
+                return
+            # Initialize schema
+            self._init_schema()
+            _schema_initialized = True
     
     def _init_schema(self):
         """Initialize database schema"""
@@ -622,8 +665,14 @@ class PlayerDB:
         return result['count'] if self.is_postgres else result[0]
     
     def close(self):
-        """Close database connection"""
-        self.conn.close()
+        """Close database connection or return to pool"""
+        if self.is_postgres and self._from_pool and _postgres_pool:
+            # Return connection to pool instead of closing
+            _postgres_pool.putconn(self.conn)
+            self._from_pool = False
+        else:
+            # Close SQLite connection or direct PostgreSQL connection
+            self.conn.close()
 
     # ---------------------------
     # Authentication helpers
