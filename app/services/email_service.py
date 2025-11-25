@@ -119,7 +119,17 @@ class EmailService:
         try:
             # Generate verification URL
             if not base_url:
-                base_url = os.environ.get('BASE_URL', 'http://localhost:5001')
+                # Try BASE_URL env var first
+                base_url = os.environ.get('BASE_URL')
+                # Only fallback to localhost in development
+                if not base_url:
+                    flask_env = os.environ.get('FLASK_ENV', 'development')
+                    if flask_env == 'production':
+                        # In production, use Render URL or default production URL
+                        base_url = os.environ.get('RENDER_EXTERNAL_URL') or 'https://sequencebiolab.onrender.com'
+                    else:
+                        # Development fallback
+                        base_url = 'http://localhost:5001'
             verification_url = f"{base_url}/verify-email?token={verification_token}"
             
             # Create email with related parts for inline images
