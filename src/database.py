@@ -44,74 +44,75 @@ def _get_postgres_pool(database_url: str):
         # Double-check after acquiring lock
         if worker_pid in _postgres_pools:
             return _postgres_pools[worker_pid]
-                # Parse connection URL to force IPv4
-                parsed = urlparse(database_url)
-                hostname = parsed.hostname
-                port = parsed.port or 5432
-                
-                # URL decode username and password (urlparse should do this, but be explicit)
-                from urllib.parse import unquote
-                username = unquote(parsed.username or '')
-                password = unquote(parsed.password or '')
-                
-                # Log connection details (without password) for debugging
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.info(f"Creating connection pool for worker {worker_pid}: host={hostname}, port={port}, user={username}, database={parsed.path.lstrip('/') or 'postgres'}")
-                
-                # Build connection parameters dict
-                conn_params = {
-                    'host': hostname,  # Keep hostname for SSL/routing
-                    'port': port,
-                    'database': parsed.path.lstrip('/') or 'postgres',
-                    'user': username,  # Use decoded username
-                    'password': password,  # Use decoded password
-                    'connect_timeout': 10,  # Increased timeout for reliability
-                    'cursor_factory': RealDictCursor,
-                    'sslmode': 'require',  # REQUIRED for Supabase connections
-                }
-                
-                # Check if connection string already has sslmode parameter
-                # If so, use that instead of defaulting to 'require'
-                if parsed.query:
-                    from urllib.parse import parse_qs
-                    query_params = parse_qs(parsed.query)
-                    if 'sslmode' in query_params:
-                        conn_params['sslmode'] = query_params['sslmode'][0]
-                
-                # For Supabase pooler, DO NOT use hostaddr as it breaks SSL verification
-                # The pooler handles IPv4/IPv6 routing automatically via hostname
-                is_supabase = 'pooler.supabase.com' in hostname or 'supabase.co' in hostname
-                
-                if not is_supabase:
-                    # Only force IPv4 for non-Supabase connections
-                    ipv4_addr = None
-                    try:
-                        # Try getaddrinfo with IPv4 only
-                        addr_info = socket.getaddrinfo(hostname, port, socket.AF_INET, socket.SOCK_STREAM)
-                        if addr_info:
-                            ipv4_addr = addr_info[0][4][0]
-                    except (socket.gaierror, OSError):
-                        try:
-                            # Fallback to gethostbyname (IPv4 only)
-                            ipv4_addr = socket.gethostbyname(hostname)
-                        except (socket.gaierror, OSError):
-                            pass
-                    
-                    if ipv4_addr:
-                        conn_params['hostaddr'] = ipv4_addr
-                        logger.info(f"Using IPv4 address {ipv4_addr} for {hostname}")
-                else:
-                    logger.info(f"Using hostname for Supabase connection (SSL verification enabled)")
-                
-                # Create connection pool with conservative settings per worker
-                # With 2 gunicorn workers, 3 connections each = 6 total (safe for Supabase)
-                pool = psycopg2.pool.ThreadedConnectionPool(
-                    minconn=1,  # Start with 1 connection
-                    maxconn=3,  # Max 3 connections per worker (2 workers * 3 = 6 total max)
-                    **conn_params
-                )
-                _postgres_pools[worker_pid] = pool
+        
+        # Parse connection URL to force IPv4
+        parsed = urlparse(database_url)
+        hostname = parsed.hostname
+        port = parsed.port or 5432
+        
+        # URL decode username and password (urlparse should do this, but be explicit)
+        from urllib.parse import unquote
+        username = unquote(parsed.username or '')
+        password = unquote(parsed.password or '')
+        
+        # Log connection details (without password) for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Creating connection pool for worker {worker_pid}: host={hostname}, port={port}, user={username}, database={parsed.path.lstrip('/') or 'postgres'}")
+        
+        # Build connection parameters dict
+        conn_params = {
+            'host': hostname,  # Keep hostname for SSL/routing
+            'port': port,
+            'database': parsed.path.lstrip('/') or 'postgres',
+            'user': username,  # Use decoded username
+            'password': password,  # Use decoded password
+            'connect_timeout': 10,  # Increased timeout for reliability
+            'cursor_factory': RealDictCursor,
+            'sslmode': 'require',  # REQUIRED for Supabase connections
+        }
+        
+        # Check if connection string already has sslmode parameter
+        # If so, use that instead of defaulting to 'require'
+        if parsed.query:
+            from urllib.parse import parse_qs
+            query_params = parse_qs(parsed.query)
+            if 'sslmode' in query_params:
+                conn_params['sslmode'] = query_params['sslmode'][0]
+        
+        # For Supabase pooler, DO NOT use hostaddr as it breaks SSL verification
+        # The pooler handles IPv4/IPv6 routing automatically via hostname
+        is_supabase = 'pooler.supabase.com' in hostname or 'supabase.co' in hostname
+        
+        if not is_supabase:
+            # Only force IPv4 for non-Supabase connections
+            ipv4_addr = None
+            try:
+                # Try getaddrinfo with IPv4 only
+                addr_info = socket.getaddrinfo(hostname, port, socket.AF_INET, socket.SOCK_STREAM)
+                if addr_info:
+                    ipv4_addr = addr_info[0][4][0]
+            except (socket.gaierror, OSError):
+                try:
+                    # Fallback to gethostbyname (IPv4 only)
+                    ipv4_addr = socket.gethostbyname(hostname)
+                except (socket.gaierror, OSError):
+                    pass
+            
+            if ipv4_addr:
+                conn_params['hostaddr'] = ipv4_addr
+                logger.info(f"Using IPv4 address {ipv4_addr} for {hostname}")
+        else:
+            logger.info(f"Using hostname for Supabase connection (SSL verification enabled)")
+        
+        # Create connection pool with conservative settings per worker
+        # With 2 gunicorn workers, 3 connections each = 6 total (safe for Supabase)
+        pool = psycopg2.pool.ThreadedConnectionPool(
+            minconn=1,  # Start with 1 connection
+            maxconn=3,  # Max 3 connections per worker (2 workers * 3 = 6 total max)
+            **conn_params
+        )
+        _postgres_pools[worker_pid] = pool
     return _postgres_pools[worker_pid]
 
 
