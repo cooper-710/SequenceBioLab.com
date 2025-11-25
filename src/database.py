@@ -70,31 +70,35 @@ def _get_postgres_pool(database_url: str):
                     if 'sslmode' in query_params:
                         conn_params['sslmode'] = query_params['sslmode'][0]
                 
-                # Force IPv4 by resolving hostname to IPv4 address
-                # This is needed for Supabase pooler which is IPv4 compatible
-                ipv4_addr = None
-                try:
-                    # Try getaddrinfo with IPv4 only
-                    addr_info = socket.getaddrinfo(hostname, port, socket.AF_INET, socket.SOCK_STREAM)
-                    if addr_info:
-                        ipv4_addr = addr_info[0][4][0]
-                except (socket.gaierror, OSError):
+                # For Supabase pooler, DO NOT use hostaddr as it breaks SSL verification
+                # The pooler handles IPv4/IPv6 routing automatically via hostname
+                is_supabase = 'pooler.supabase.com' in hostname or 'supabase.co' in hostname
+                
+                if not is_supabase:
+                    # Only force IPv4 for non-Supabase connections
+                    ipv4_addr = None
                     try:
-                        # Fallback to gethostbyname (IPv4 only)
-                        ipv4_addr = socket.gethostbyname(hostname)
+                        # Try getaddrinfo with IPv4 only
+                        addr_info = socket.getaddrinfo(hostname, port, socket.AF_INET, socket.SOCK_STREAM)
+                        if addr_info:
+                            ipv4_addr = addr_info[0][4][0]
                     except (socket.gaierror, OSError):
-                        pass
+                        try:
+                            # Fallback to gethostbyname (IPv4 only)
+                            ipv4_addr = socket.gethostbyname(hostname)
+                        except (socket.gaierror, OSError):
+                            pass
+                    
+                    if ipv4_addr:
+                        conn_params['hostaddr'] = ipv4_addr
+                        logger.info(f"Using IPv4 address {ipv4_addr} for {hostname}")
+                else:
+                    logger.info(f"Using hostname for Supabase connection (SSL verification enabled)")
                 
-                # If we got IPv4, use hostaddr to force IPv4 connection
-                # But keep hostname for Supabase routing/SSL verification
-                if ipv4_addr:
-                    conn_params['hostaddr'] = ipv4_addr
-                    logger.info(f"Using IPv4 address {ipv4_addr} for {hostname}")
-                
-                # Create connection pool with increased size for concurrent requests
-                # Increased from 1 to handle multiple concurrent database operations
+                # Create connection pool with conservative settings
+                # Start with minconn=1 to avoid creating multiple failing connections
                 _postgres_pool = psycopg2.pool.ThreadedConnectionPool(
-                    minconn=2,  # Minimum 2 connections ready
+                    minconn=1,  # Start with 1 connection to avoid SSL issues
                     maxconn=10,  # Maximum 10 concurrent connections
                     **conn_params
                 )
@@ -161,7 +165,7 @@ class PlayerDB:
             test_cursor.execute("SELECT 1")
             test_cursor.fetchone()
             test_cursor.close()
-        except (psycopg2.OperationalError, psycopg2.InterfaceError, psycopg2.DatabaseError) as e:
+        except (psycopg2.OperationalError, psycopg2.InterfaceError, psycopg2.DatabaseError, psycopg2.ProgrammingError) as e:
             # Connection is dead, get a fresh one
             import logging
             logger = logging.getLogger(__name__)
@@ -172,14 +176,26 @@ class PlayerDB:
                     _postgres_pool.putconn(self.conn, close=True)  # Close bad connection
                 except:
                     pass
-            # Get fresh connection
+            # Get fresh connection with retry for transient SSL errors
             conn_pool = _get_postgres_pool(self.database_url)
-            try:
-                self.conn = conn_pool.getconn()
-                self._from_pool = True
-            except Exception as pool_err:
-                logger.error(f"Failed to get fresh connection from pool: {pool_err}")
-                raise
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    self.conn = conn_pool.getconn()
+                    self._from_pool = True
+                    # Verify the new connection works
+                    test_cursor = self.conn.cursor()
+                    test_cursor.execute("SELECT 1")
+                    test_cursor.fetchone()
+                    test_cursor.close()
+                    break  # Success, exit retry loop
+                except Exception as pool_err:
+                    if attempt < max_retries - 1:
+                        import time
+                        time.sleep(0.5 * (attempt + 1))  # Exponential backoff
+                        continue
+                    logger.error(f"Failed to get fresh connection from pool after {max_retries} attempts: {pool_err}")
+                    raise
     
     def _execute(self, cursor, query: str, params: tuple = None):
         """Execute query with proper parameter style and handle connection errors"""
