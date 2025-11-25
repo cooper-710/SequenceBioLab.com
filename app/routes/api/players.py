@@ -621,15 +621,19 @@ def api_matchups():
         
         today = date.today()
         
-        # Determine seasons
+        # MEMORY FIX: Strict limits to prevent memory exhaustion
+        MAX_SEASONS = 2  # Hard limit - max 2 years
+        MAX_ROWS = 300000  # Reject if data exceeds this
+        
+        # Determine seasons with hard limit
         if seasons and len(seasons) > 0:
-            season_ints = sorted([int(s) for s in seasons if s.isdigit()])
+            season_ints = sorted([int(s) for s in seasons if s.isdigit()])[:MAX_SEASONS]  # Hard limit
             if not season_ints:
-                season_ints = [today.year - 3, today.year - 2, today.year - 1, today.year]
+                season_ints = [today.year - 1, today.year]  # Default to 2 years
         elif season:
             season_ints = [season]
         else:
-            season_ints = [today.year - 3, today.year - 2, today.year - 1, today.year]
+            season_ints = [today.year - 1, today.year]  # Default to 2 years (reduced from 4)
         
         # Calculate date range
         if season_ints:
@@ -638,7 +642,7 @@ def api_matchups():
             start_date = f"{min_season}-03-01"
             end_date = f"{max_season}-11-30"
         else:
-            start_date = f"{today.year - 3}-03-01"
+            start_date = f"{today.year - 1}-03-01"  # Reduced from 4 to 2 years
             end_date = today.strftime("%Y-%m-%d")
         
         # STEP 1: Fetch Statcast data (unfiltered first)
@@ -655,6 +659,15 @@ def api_matchups():
             import traceback
             traceback.print_exc()
             return jsonify({"error": f"Error fetching Statcast data: {str(e)}"}), 500
+        
+        # MEMORY FIX: Reject if data is too large (before processing)
+        if len(df_raw) > MAX_ROWS:
+            row_count = len(df_raw)
+            del df_raw
+            gc.collect()
+            return jsonify({
+                "error": f"Too much data to process ({row_count:,} rows). Please select fewer seasons (max 2 years recommended)."
+            }), 400
         
         if df_raw.empty:
             del df_raw

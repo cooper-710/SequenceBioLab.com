@@ -22,19 +22,28 @@ except ImportError:
     HAS_POSTGRES = False
     pool = None
 
-# Module-level connection pool for PostgreSQL (shared across all instances)
-_postgres_pool = None
+# Module-level connection pools for PostgreSQL (per-worker)
+# Each gunicorn worker process needs its own pool to avoid conflicts
+import os
+_postgres_pools = {}  # Dict of {worker_pid: pool}
 _pool_lock = threading.Lock()
 _schema_initialized = False
 _schema_lock = threading.Lock()
 
 
 def _get_postgres_pool(database_url: str):
-    """Get or create PostgreSQL connection pool with IPv4 forcing"""
-    global _postgres_pool
-    if _postgres_pool is None:
-        with _pool_lock:
-            if _postgres_pool is None:
+    """Get or create PostgreSQL connection pool (per-worker)"""
+    global _postgres_pools
+    worker_pid = os.getpid()
+    
+    # Check if this worker already has a pool
+    if worker_pid in _postgres_pools:
+        return _postgres_pools[worker_pid]
+    
+    with _pool_lock:
+        # Double-check after acquiring lock
+        if worker_pid in _postgres_pools:
+            return _postgres_pools[worker_pid]
                 # Parse connection URL to force IPv4
                 parsed = urlparse(database_url)
                 hostname = parsed.hostname
@@ -48,7 +57,7 @@ def _get_postgres_pool(database_url: str):
                 # Log connection details (without password) for debugging
                 import logging
                 logger = logging.getLogger(__name__)
-                logger.info(f"Connecting to database: host={hostname}, port={port}, user={username}, database={parsed.path.lstrip('/') or 'postgres'}")
+                logger.info(f"Creating connection pool for worker {worker_pid}: host={hostname}, port={port}, user={username}, database={parsed.path.lstrip('/') or 'postgres'}")
                 
                 # Build connection parameters dict
                 conn_params = {
@@ -95,14 +104,15 @@ def _get_postgres_pool(database_url: str):
                 else:
                     logger.info(f"Using hostname for Supabase connection (SSL verification enabled)")
                 
-                # Create connection pool with conservative settings
-                # Start with minconn=1 to avoid creating multiple failing connections
-                _postgres_pool = psycopg2.pool.ThreadedConnectionPool(
-                    minconn=1,  # Start with 1 connection to avoid SSL issues
-                    maxconn=10,  # Maximum 10 concurrent connections
+                # Create connection pool with conservative settings per worker
+                # With 2 gunicorn workers, 3 connections each = 6 total (safe for Supabase)
+                pool = psycopg2.pool.ThreadedConnectionPool(
+                    minconn=1,  # Start with 1 connection
+                    maxconn=3,  # Max 3 connections per worker (2 workers * 3 = 6 total max)
                     **conn_params
                 )
-    return _postgres_pool
+                _postgres_pools[worker_pid] = pool
+    return _postgres_pools[worker_pid]
 
 
 class PlayerDB:
@@ -171,11 +181,13 @@ class PlayerDB:
             logger = logging.getLogger(__name__)
             logger.warning(f"Connection lost, refreshing: {e}")
             
-            if self._from_pool and _postgres_pool:
-                try:
-                    _postgres_pool.putconn(self.conn, close=True)  # Close bad connection
-                except:
-                    pass
+            if self._from_pool:
+                worker_pid = os.getpid()
+                if worker_pid in _postgres_pools:
+                    try:
+                        _postgres_pools[worker_pid].putconn(self.conn, close=True)  # Close bad connection
+                    except:
+                        pass
             # Get fresh connection with retry for transient SSL errors
             conn_pool = _get_postgres_pool(self.database_url)
             max_retries = 3
@@ -799,10 +811,15 @@ class PlayerDB:
     
     def close(self):
         """Close database connection or return to pool"""
-        if self.is_postgres and self._from_pool and _postgres_pool:
-            # Return connection to pool instead of closing
-            _postgres_pool.putconn(self.conn)
-            self._from_pool = False
+        if self.is_postgres and self._from_pool:
+            worker_pid = os.getpid()
+            if worker_pid in _postgres_pools:
+                # Return connection to pool instead of closing
+                _postgres_pools[worker_pid].putconn(self.conn)
+                self._from_pool = False
+            else:
+                # Pool doesn't exist, just close
+                self.conn.close()
         else:
             # Close SQLite connection or direct PostgreSQL connection
             self.conn.close()
