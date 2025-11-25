@@ -30,7 +30,7 @@ _schema_lock = threading.Lock()
 
 
 def _force_ipv4_connection(database_url: str) -> str:
-    """Force IPv4 connection by resolving hostname to IPv4 address"""
+    """Force IPv4 connection by using connection parameters that prefer IPv4"""
     try:
         parsed = urlparse(database_url)
         hostname = parsed.hostname
@@ -38,27 +38,52 @@ def _force_ipv4_connection(database_url: str) -> str:
         if not hostname:
             return database_url
         
-        # Resolve hostname to IPv4 address
-        # Use getaddrinfo with AF_INET to force IPv4
-        addr_info = socket.getaddrinfo(hostname, parsed.port or 5432, socket.AF_INET, socket.SOCK_STREAM)
-        if addr_info:
-            ipv4_addr = addr_info[0][4][0]  # Get IPv4 address from first result
-            
-            # Replace hostname with IPv4 address in connection string
-            # Keep original hostname in host parameter for SSL verification
+        # Try multiple methods to get IPv4 address
+        ipv4_addr = None
+        
+        # Method 1: Try DNS resolution with IPv4 only
+        try:
+            addr_info = socket.getaddrinfo(hostname, parsed.port or 5432, socket.AF_INET, socket.SOCK_STREAM)
+            if addr_info:
+                ipv4_addr = addr_info[0][4][0]
+        except (socket.gaierror, OSError):
+            pass
+        
+        # Method 2: Try gethostbyname (IPv4 only, but deprecated)
+        if not ipv4_addr:
+            try:
+                ipv4_addr = socket.gethostbyname(hostname)
+            except (socket.gaierror, OSError):
+                pass
+        
+        # If we got an IPv4 address, use it with hostaddr parameter
+        if ipv4_addr:
             query_params = parse_qs(parsed.query)
             query_params['hostaddr'] = [ipv4_addr]  # Force IPv4 address
+            query_params['host'] = [hostname]  # Keep hostname for SSL verification
             new_query = urlencode(query_params, doseq=True)
             
-            # Reconstruct URL with IPv4 address
+            # Reconstruct URL with IPv4 address in netloc
             new_parsed = parsed._replace(netloc=f"{parsed.username}:{parsed.password}@{ipv4_addr}:{parsed.port or 5432}")
             new_parsed = new_parsed._replace(query=new_query)
             return urlunparse(new_parsed)
+        else:
+            # If DNS resolution fails, add connection parameters to prefer IPv4
+            # Use psycopg2 connection string format with options
+            query_params = parse_qs(parsed.query)
+            # Add options to prefer IPv4 (this is a PostgreSQL connection option)
+            # We'll use the connection dict approach instead
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Could not resolve IPv4 for {hostname}. Will use connection parameters.")
+            # Return original URL - psycopg2 should handle IPv4 preference
+            return database_url
+            
     except Exception as e:
-        # If resolution fails, return original URL
+        # If anything fails, return original URL
         import logging
         logger = logging.getLogger(__name__)
-        logger.warning(f"Failed to force IPv4 for {hostname}: {e}. Using original connection string.")
+        logger.warning(f"Failed to force IPv4 for connection: {e}. Using original connection string.")
     
     return database_url
 
@@ -69,17 +94,48 @@ def _get_postgres_pool(database_url: str):
     if _postgres_pool is None:
         with _pool_lock:
             if _postgres_pool is None:
-                # Force IPv4 connection to avoid IPv6 issues on Render
-                ipv4_url = _force_ipv4_connection(database_url)
+                # Parse connection URL and create connection dict for better control
+                parsed = urlparse(database_url)
+                
+                # Build connection parameters dict
+                conn_params = {
+                    'host': parsed.hostname,
+                    'port': parsed.port or 5432,
+                    'database': parsed.path.lstrip('/') or 'postgres',
+                    'user': parsed.username,
+                    'password': parsed.password,
+                    'connect_timeout': 5,
+                    'cursor_factory': RealDictCursor,
+                }
+                
+                # Try to force IPv4 by resolving hostname
+                try:
+                    # Try to get IPv4 address
+                    addr_info = socket.getaddrinfo(parsed.hostname, conn_params['port'], socket.AF_INET, socket.SOCK_STREAM)
+                    if addr_info:
+                        ipv4_addr = addr_info[0][4][0]
+                        conn_params['hostaddr'] = ipv4_addr  # Use IPv4 address directly
+                        # Keep hostname for SSL verification
+                        conn_params['host'] = parsed.hostname
+                except (socket.gaierror, OSError, Exception) as e:
+                    # If DNS resolution fails, try gethostbyname as fallback
+                    try:
+                        ipv4_addr = socket.gethostbyname(parsed.hostname)
+                        conn_params['hostaddr'] = ipv4_addr
+                        conn_params['host'] = parsed.hostname
+                    except (socket.gaierror, OSError):
+                        # If all DNS resolution fails, use hostname and let psycopg2 handle it
+                        # But log a warning
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.warning(f"Could not resolve IPv4 for {parsed.hostname}. Connection may fail if IPv6 is not available.")
                 
                 # Create connection pool: min 1, max 1 connection per worker
                 # With 2 workers, max 2 total connections (direct connection allows more)
                 _postgres_pool = psycopg2.pool.ThreadedConnectionPool(
                     minconn=1,
                     maxconn=1,
-                    dsn=ipv4_url,
-                    cursor_factory=RealDictCursor,
-                    connect_timeout=5  # Reduced timeout to fail faster (5 seconds)
+                    **conn_params
                 )
     return _postgres_pool
 
