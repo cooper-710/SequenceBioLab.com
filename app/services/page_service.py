@@ -536,7 +536,8 @@ def load_player_deliverables(user: Dict[str, Any]) -> Tuple[Optional[Dict[str, A
     try:
         db = PlayerDB()
         cursor = db.conn.cursor()
-        cursor.execute(
+        # Use _execute to handle PostgreSQL parameter conversion (? -> %s)
+        db._execute(cursor,
             """
             SELECT d.*,
                    u.first_name AS uploader_first_name,

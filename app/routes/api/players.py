@@ -606,11 +606,18 @@ def api_matchups():
     except Exception as e:
         return jsonify({"error": f"Could not find player IDs: {str(e)}"}), 404
     
+    # Initialize variables for cleanup
+    df_raw = None
+    df = None
+    df_with_events = None
+    pa_ending = None
+    
     try:
         from datetime import date
         import numpy as np
         import pandas as pd
         import math
+        import gc  # For garbage collection
         
         today = date.today()
         
@@ -650,6 +657,8 @@ def api_matchups():
             return jsonify({"error": f"Error fetching Statcast data: {str(e)}"}), 500
         
         if df_raw.empty:
+            del df_raw
+            gc.collect()
             return jsonify({
                 "player": player_name,
                 "opponent": opponent_name,
@@ -674,6 +683,8 @@ def api_matchups():
         
         if not filter_col:
             available_cols = df_raw.columns.tolist()
+            del df_raw
+            gc.collect()
             return jsonify({
                 "error": f"Could not find filter column. Available columns: {available_cols}"
             }), 500
@@ -690,10 +701,16 @@ def api_matchups():
         print(f"DEBUG: Unique {filter_col} values in data (first 20): {unique_vals}")
         print(f"DEBUG: Looking for {opponent_id_int} in these values: {opponent_id_int in unique_vals}")
         
-        # CRITICAL: Filter BEFORE any calculations
+        # CRITICAL: Filter BEFORE any calculations to reduce memory
         df = df_raw[df_raw[filter_col] == opponent_id_int].copy()
         
+        # Clean up large DataFrame immediately after filtering
+        del df_raw
+        gc.collect()
+        
         if df.empty:
+            del df
+            gc.collect()
             return jsonify({
                 "player": player_name,
                 "opponent": opponent_name,
@@ -712,6 +729,8 @@ def api_matchups():
             print(f"DEBUG: After filtering to regular season games (game_type='R'): {before_reg_season} -> {len(df)} rows")
             
             if df.empty:
+                del df
+                gc.collect()
                 return jsonify({
                     "player": player_name,
                     "opponent": opponent_name,
@@ -724,6 +743,8 @@ def api_matchups():
         # STEP 5: Verify filter worked
         unique_after = df[filter_col].unique()
         if len(unique_after) > 1 or (len(unique_after) == 1 and int(unique_after[0]) != opponent_id_int):
+            del df
+            gc.collect()
             return jsonify({
                 "error": f"Filter validation failed. Expected only {opponent_id_int}, but found: {unique_after}"
             }), 500
@@ -731,6 +752,8 @@ def api_matchups():
         # STEP 5: Now calculate stats using the EXACT logic from plots_hitter_checkin.py
         # Filter to rows with valid events
         if 'events' not in df.columns or 'at_bat_number' not in df.columns or 'game_pk' not in df.columns:
+            del df
+            gc.collect()
             return jsonify({
                 "error": "Missing required columns: events, at_bat_number, or game_pk"
             }), 500
@@ -741,6 +764,10 @@ def api_matchups():
         df_with_events = df[events_mask].copy()
         
         if df_with_events.empty:
+            del df_with_events
+            if df is not None:
+                del df
+            gc.collect()
             return jsonify({
                 "player": player_name,
                 "opponent": opponent_name,
@@ -1155,6 +1182,15 @@ def api_matchups():
             }
         }
         
+        # Clean up DataFrames before returning
+        if df_with_events is not None:
+            del df_with_events
+        if pa_ending is not None:
+            del pa_ending
+        if df is not None:
+            del df
+        gc.collect()
+        
         return jsonify({
             "player": player_name,
             "opponent": opponent_name,
@@ -1164,6 +1200,16 @@ def api_matchups():
         })
         
     except Exception as e:
+        # Cleanup on error
+        if df_raw is not None:
+            del df_raw
+        if df is not None:
+            del df
+        if df_with_events is not None:
+            del df_with_events
+        if pa_ending is not None:
+            del pa_ending
+        gc.collect()
         import traceback
         traceback.print_exc()
         return jsonify({"error": f"Error fetching matchup data: {str(e)}"}), 500
