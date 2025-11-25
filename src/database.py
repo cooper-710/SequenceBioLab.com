@@ -737,6 +737,8 @@ class PlayerDB:
         # Delete related data first (foreign key constraints)
         # Delete verification tokens
         self._execute(cursor, "DELETE FROM email_verification_tokens WHERE user_id = ?", (user_id,))
+        # Clear invite code references (set used_by to NULL to preserve code history)
+        self._execute(cursor, "UPDATE invite_codes SET used_by = NULL WHERE used_by = ?", (user_id,))
         # Delete player document logs (must be before player documents)
         self._execute(cursor, "DELETE FROM player_document_log WHERE player_id = ?", (user_id,))
         # Delete player documents
