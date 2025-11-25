@@ -6,9 +6,11 @@ import os
 import sqlite3
 import json
 import threading
+import socket
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Union
 from datetime import datetime
+from urllib.parse import urlparse, urlunparse, parse_qs, urlencode
 
 # Try to import PostgreSQL driver
 try:
@@ -27,18 +29,55 @@ _schema_initialized = False
 _schema_lock = threading.Lock()
 
 
+def _force_ipv4_connection(database_url: str) -> str:
+    """Force IPv4 connection by resolving hostname to IPv4 address"""
+    try:
+        parsed = urlparse(database_url)
+        hostname = parsed.hostname
+        
+        if not hostname:
+            return database_url
+        
+        # Resolve hostname to IPv4 address
+        # Use getaddrinfo with AF_INET to force IPv4
+        addr_info = socket.getaddrinfo(hostname, parsed.port or 5432, socket.AF_INET, socket.SOCK_STREAM)
+        if addr_info:
+            ipv4_addr = addr_info[0][4][0]  # Get IPv4 address from first result
+            
+            # Replace hostname with IPv4 address in connection string
+            # Keep original hostname in host parameter for SSL verification
+            query_params = parse_qs(parsed.query)
+            query_params['hostaddr'] = [ipv4_addr]  # Force IPv4 address
+            new_query = urlencode(query_params, doseq=True)
+            
+            # Reconstruct URL with IPv4 address
+            new_parsed = parsed._replace(netloc=f"{parsed.username}:{parsed.password}@{ipv4_addr}:{parsed.port or 5432}")
+            new_parsed = new_parsed._replace(query=new_query)
+            return urlunparse(new_parsed)
+    except Exception as e:
+        # If resolution fails, return original URL
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Failed to force IPv4 for {hostname}: {e}. Using original connection string.")
+    
+    return database_url
+
+
 def _get_postgres_pool(database_url: str):
     """Get or create PostgreSQL connection pool"""
     global _postgres_pool
     if _postgres_pool is None:
         with _pool_lock:
             if _postgres_pool is None:
+                # Force IPv4 connection to avoid IPv6 issues on Render
+                ipv4_url = _force_ipv4_connection(database_url)
+                
                 # Create connection pool: min 1, max 1 connection per worker
                 # With 2 workers, max 2 total connections (direct connection allows more)
                 _postgres_pool = psycopg2.pool.ThreadedConnectionPool(
                     minconn=1,
                     maxconn=1,
-                    dsn=database_url,
+                    dsn=ipv4_url,
                     cursor_factory=RealDictCursor,
                     connect_timeout=5  # Reduced timeout to fail faster (5 seconds)
                 )
