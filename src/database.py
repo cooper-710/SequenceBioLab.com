@@ -106,11 +106,13 @@ def _get_postgres_pool(database_url: str):
             logger.info(f"Using hostname for Supabase connection (SSL verification enabled)")
         
         # Create connection pool with conservative settings per worker
-        # Reduced max connections per worker to avoid exceeding Supabase limits
-        # With 4 workers, 2 connections each = 8 total (safer for Supabase free tier)
+        # CRITICAL FIX: Supabase Session mode has strict connection limits
+        # - minconn=0: Don't create connections at pool creation (lazy initialization)
+        # - maxconn=1: Each worker can only use 1 connection maximum
+        # With 4 workers, this gives us maximum 4 total connections (well within limits)
         pool = psycopg2.pool.ThreadedConnectionPool(
-            minconn=1,  # Start with 1 connection
-            maxconn=2,  # Reduced from 3 to 2 connections per worker to avoid pool exhaustion
+            minconn=0,  # CRITICAL: Don't create connections at startup (lazy init)
+            maxconn=1,  # CRITICAL: Only 1 connection per worker to stay within Supabase limits
             **conn_params
         )
         _postgres_pools[worker_pid] = pool
