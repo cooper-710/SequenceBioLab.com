@@ -47,11 +47,21 @@ def _get_postgres_pool(database_url: str):
                     'database': parsed.path.lstrip('/') or 'postgres',
                     'user': parsed.username,
                     'password': parsed.password,
-                    'connect_timeout': 5,
+                    'connect_timeout': 10,  # Increased timeout for reliability
                     'cursor_factory': RealDictCursor,
+                    'sslmode': 'require',  # REQUIRED for Supabase connections
                 }
                 
+                # Check if connection string already has sslmode parameter
+                # If so, use that instead of defaulting to 'require'
+                if parsed.query:
+                    from urllib.parse import parse_qs
+                    query_params = parse_qs(parsed.query)
+                    if 'sslmode' in query_params:
+                        conn_params['sslmode'] = query_params['sslmode'][0]
+                
                 # Force IPv4 by resolving hostname to IPv4 address
+                # This is needed for Supabase pooler which is IPv4 compatible
                 ipv4_addr = None
                 try:
                     # Try getaddrinfo with IPv4 only
@@ -73,10 +83,11 @@ def _get_postgres_pool(database_url: str):
                     logger = logging.getLogger(__name__)
                     logger.info(f"Using IPv4 address {ipv4_addr} for {hostname}")
                 
-                # Create connection pool with connection parameters
+                # Create connection pool with increased size for concurrent requests
+                # Increased from 1 to handle multiple concurrent database operations
                 _postgres_pool = psycopg2.pool.ThreadedConnectionPool(
-                    minconn=1,
-                    maxconn=1,
+                    minconn=2,  # Minimum 2 connections ready
+                    maxconn=10,  # Maximum 10 concurrent connections
                     **conn_params
                 )
     return _postgres_pool
@@ -142,8 +153,12 @@ class PlayerDB:
             test_cursor.execute("SELECT 1")
             test_cursor.fetchone()
             test_cursor.close()
-        except (psycopg2.OperationalError, psycopg2.InterfaceError, psycopg2.DatabaseError):
+        except (psycopg2.OperationalError, psycopg2.InterfaceError, psycopg2.DatabaseError) as e:
             # Connection is dead, get a fresh one
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Connection lost, refreshing: {e}")
+            
             if self._from_pool and _postgres_pool:
                 try:
                     _postgres_pool.putconn(self.conn, close=True)  # Close bad connection
@@ -151,8 +166,12 @@ class PlayerDB:
                     pass
             # Get fresh connection
             conn_pool = _get_postgres_pool(self.database_url)
-            self.conn = conn_pool.getconn()
-            self._from_pool = True
+            try:
+                self.conn = conn_pool.getconn()
+                self._from_pool = True
+            except Exception as pool_err:
+                logger.error(f"Failed to get fresh connection from pool: {pool_err}")
+                raise
     
     def _execute(self, cursor, query: str, params: tuple = None):
         """Execute query with proper parameter style and handle connection errors"""
