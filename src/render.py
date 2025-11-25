@@ -25,7 +25,23 @@ def render_html_to_pdf(template_path: str, ctx: Dict[str, Any], out_pdf: Path) -
     out_html.write_text(html, encoding="utf-8")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = p.chromium.launch(
+            headless=True,
+            args=[
+                '--no-sandbox',
+                '--disable-dev-shm-usage',  # Reduces memory usage
+                '--disable-gpu',
+                '--disable-software-rasterizer',
+                '--disable-extensions',
+                '--disable-background-networking',
+                '--disable-background-timer-throttling',
+                '--disable-renderer-backgrounding',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-ipc-flooding-protection',
+                '--memory-pressure-off',  # Disable memory pressure handling
+                '--max-old-space-size=256'  # Limit V8 heap size to 256MB
+            ]
+        )
         page = browser.new_page()
         page.goto(out_html.as_uri(), wait_until="load")
         page.pdf(path=str(out_pdf), print_background=True, prefer_css_page_size=True)

@@ -34,12 +34,13 @@ def _get_postgres_pool(database_url: str):
         with _pool_lock:
             if _postgres_pool is None:
                 # Create connection pool: min 1, max 1 connection per worker
-                # With 4 workers, max 4 total connections (within Supabase free tier limits)
+                # With 2 workers, max 2 total connections (direct connection allows more)
                 _postgres_pool = psycopg2.pool.ThreadedConnectionPool(
                     minconn=1,
                     maxconn=1,
                     dsn=database_url,
-                    cursor_factory=RealDictCursor
+                    cursor_factory=RealDictCursor,
+                    connect_timeout=10  # Connection timeout in seconds
                 )
     return _postgres_pool
 
