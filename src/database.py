@@ -40,7 +40,7 @@ def _get_postgres_pool(database_url: str):
                     maxconn=1,
                     dsn=database_url,
                     cursor_factory=RealDictCursor,
-                    connect_timeout=10  # Connection timeout in seconds
+                    connect_timeout=5  # Reduced timeout to fail faster (5 seconds)
                 )
     return _postgres_pool
 
@@ -63,9 +63,20 @@ class PlayerDB:
         
         if self.is_postgres:
             # Get connection from pool (reuses existing connections)
+            # Use timeout to prevent hanging if pool is exhausted
             conn_pool = _get_postgres_pool(self.database_url)
-            self.conn = conn_pool.getconn()
-            self._from_pool = True
+            try:
+                # Try to get connection with a timeout
+                # If pool is exhausted, this will raise PoolError
+                self.conn = conn_pool.getconn()
+                self._from_pool = True
+            except Exception as e:
+                # If we can't get a connection, log and raise
+                # This prevents the app from hanging indefinitely
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to get database connection from pool: {e}")
+                raise
             self.param_style = '%s'  # PostgreSQL uses %s
         else:
             # SQLite connection (fallback)

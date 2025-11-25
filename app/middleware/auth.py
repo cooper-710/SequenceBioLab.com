@@ -171,5 +171,8 @@ def ensure_default_admin():
                 db.update_user_password(existing["id"], password_hash)
         db.close()
     except Exception as exc:
+        # Log but don't crash - app can start without admin user
+        # Admin can be created manually if needed
         logger.error(f"Unable to ensure default admin user: {exc}")
+        logger.warning("App will continue without default admin. Check DATABASE_URL configuration.")
 
