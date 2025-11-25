@@ -71,9 +71,46 @@ def login():
         return redirect(url_for('auth.login'))
     
     try:
-        db = PlayerDB()
-        user = db.get_user_by_email(email)
-        db.close()
+        # Use threading timeout for cross-platform compatibility
+        # This prevents the login from hanging indefinitely if database connection times out
+        import threading
+        import queue
+        
+        result_queue = queue.Queue()
+        error_queue = queue.Queue()
+        
+        def db_operation():
+            try:
+                db = PlayerDB()
+                user = db.get_user_by_email(email)
+                db.close()
+                result_queue.put(user)
+            except Exception as e:
+                error_queue.put(e)
+        
+        # Start database operation in a thread
+        db_thread = threading.Thread(target=db_operation)
+        db_thread.daemon = True
+        db_thread.start()
+        db_thread.join(timeout=15)  # 15 second timeout
+        
+        if db_thread.is_alive():
+            # Thread is still running, operation timed out
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Login timeout for email: {email}")
+            flash("Database connection timed out. Please try again in a moment.", "error")
+            return redirect(url_for('auth.login'))
+        
+        # Check for errors
+        if not error_queue.empty():
+            raise error_queue.get()
+        
+        # Get result
+        if result_queue.empty():
+            user = None
+        else:
+            user = result_queue.get()
         
         if not user or not check_password_hash(user.get("password_hash", ""), password):
             flash("Invalid email or password.", "error")
@@ -111,7 +148,12 @@ def login():
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Login error: {exc}", exc_info=True)
-        flash("An error occurred during login. Please try again.", "error")
+        # Check if it's a connection/timeout error
+        error_msg = str(exc).lower()
+        if "timeout" in error_msg or "connection" in error_msg:
+            flash("Database connection failed. Please try again in a moment.", "error")
+        else:
+            flash("An error occurred during login. Please try again.", "error")
         return redirect(url_for('auth.login'))
 
 
