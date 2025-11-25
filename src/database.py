@@ -81,15 +81,55 @@ class PlayerDB:
             return args
         return args
     
+    def _ensure_connection(self):
+        """Ensure connection is valid, refresh if needed"""
+        if not self.is_postgres:
+            return  # SQLite doesn't need this
+        
+        try:
+            # Quick validation query
+            test_cursor = self.conn.cursor()
+            test_cursor.execute("SELECT 1")
+            test_cursor.fetchone()
+            test_cursor.close()
+        except (psycopg2.OperationalError, psycopg2.InterfaceError, psycopg2.DatabaseError):
+            # Connection is dead, get a fresh one
+            if self._from_pool and _postgres_pool:
+                try:
+                    _postgres_pool.putconn(self.conn, close=True)  # Close bad connection
+                except:
+                    pass
+            # Get fresh connection
+            conn_pool = _get_postgres_pool(self.database_url)
+            self.conn = conn_pool.getconn()
+            self._from_pool = True
+    
     def _execute(self, cursor, query: str, params: tuple = None):
-        """Execute query with proper parameter style"""
+        """Execute query with proper parameter style and handle connection errors"""
         if self.is_postgres:
             # Convert ? to %s for PostgreSQL
             query = query.replace('?', '%s')
-        if params:
-            cursor.execute(query, params)
-        else:
-            cursor.execute(query)
+        
+        # Ensure connection is valid before executing
+        if self.is_postgres:
+            self._ensure_connection()
+        
+        # Execute query - if it fails with connection error, connection is refreshed for next attempt
+        try:
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+            # Connection error detected - refresh connection for future use
+            # Note: Current cursor is invalid, but connection is now fresh
+            # Caller will need to create new cursor on retry
+            try:
+                self._ensure_connection()
+            except:
+                pass
+            # Re-raise so caller can handle (they can retry with new cursor)
+            raise
     
     def _init_schema_cached(self):
         """Initialize schema only once per worker (thread-safe)"""
