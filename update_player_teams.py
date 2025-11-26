@@ -184,14 +184,15 @@ def update_database_teams(db: PlayerDB, latest_teams: dict, dry_run: bool = Fals
     
     for player_row in db_players:
         # Handle both dict-like (PostgreSQL) and tuple (SQLite) row access
-        if isinstance(player_row, dict) or hasattr(player_row, 'keys'):
-            # PostgreSQL RealDictRow or similar dict-like object
+        # Use database type to determine access method
+        if db.is_postgres:
+            # PostgreSQL RealDictRow - access by key
             player_id = player_row.get('player_id')
             mlbam_id = player_row.get('mlbam_id')
             player_name = player_row.get('name')
             current_team_abbr = player_row.get('team_abbr')
         else:
-            # SQLite Row or tuple
+            # SQLite Row or tuple - access by index
             player_id = player_row[0]
             mlbam_id = player_row[1]
             player_name = player_row[2]
