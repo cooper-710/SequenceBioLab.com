@@ -30,6 +30,22 @@ _pool_lock = threading.Lock()
 _schema_initialized = False
 _schema_lock = threading.Lock()
 
+# Global connection semaphore for Supabase Session mode
+# Limits total connections across ALL workers to prevent "MaxClientsInSessionMode" errors
+# Set to 2 to stay well within Supabase Session pooler limits (typically 3-4)
+_connection_semaphore = None
+_semaphore_lock = threading.Lock()
+_MAX_TOTAL_CONNECTIONS = 2  # Maximum 2 connections total across all workers
+
+def _get_connection_semaphore():
+    """Get or create global connection semaphore for Supabase Session mode"""
+    global _connection_semaphore
+    if _connection_semaphore is None:
+        with _semaphore_lock:
+            if _connection_semaphore is None:
+                _connection_semaphore = threading.Semaphore(_MAX_TOTAL_CONNECTIONS)
+    return _connection_semaphore
+
 
 def _get_postgres_pool(database_url: str):
     """Get or create PostgreSQL connection pool (per-worker)"""
@@ -134,68 +150,127 @@ class PlayerDB:
         self.is_postgres = bool(self.database_url and HAS_POSTGRES)
         self.db_path = Path(db_path)
         self._from_pool = False  # Track if connection came from pool
+        self._semaphore_acquired = False  # Track if we acquired semaphore
         
         if self.is_postgres:
             # Get connection from pool (reuses existing connections)
             # Use timeout to prevent hanging if pool is exhausted
             import time
             conn_pool = _get_postgres_pool(self.database_url)
-            max_retries = 3
-            retry_delay = 1.0  # Start with 1 second
             
-            for attempt in range(max_retries):
-                try:
-                    # Try to get connection with a timeout
-                    # If pool is exhausted, this will raise PoolError
+            # Check if this is Supabase Session mode - use semaphore to limit total connections
+            parsed = urlparse(self.database_url)
+            is_supabase_session = ('pooler.supabase.com' in parsed.hostname or 'supabase.co' in parsed.hostname) and (parsed.port or 5432) == 5432
+            
+            if is_supabase_session:
+                # For Supabase Session mode, use semaphore to limit total connections
+                semaphore = _get_connection_semaphore()
+                max_retries = 3
+                retry_delay = 1.0
+                
+                for attempt in range(max_retries):
+                    # Try to acquire semaphore (limits total connections)
+                    if not semaphore.acquire(timeout=10):
+                        if attempt < max_retries - 1:
+                            import logging
+                            logger = logging.getLogger(__name__)
+                            logger.warning(f"Connection semaphore timeout (attempt {attempt + 1}/{max_retries}). Retrying in {retry_delay}s...")
+                            time.sleep(retry_delay)
+                            retry_delay *= 2
+                            continue
+                        raise psycopg2.pool.PoolError("Timeout waiting for connection semaphore")
                     
-                    # Use a timeout mechanism for getconn
-                    # Note: psycopg2 pool doesn't have built-in timeout, so we use a workaround
-                    self.conn = None
-                    start_time = time.time()
-                    timeout_seconds = 10  # 10 second timeout for getting connection
+                    self._semaphore_acquired = True
                     
-                    while self.conn is None and (time.time() - start_time) < timeout_seconds:
-                        try:
-                            self.conn = conn_pool.getconn()
-                            self._from_pool = True
-                            break
-                        except psycopg2.pool.PoolError:
-                            # Pool exhausted, wait a bit and retry
-                            if (time.time() - start_time) < timeout_seconds:
-                                time.sleep(0.5)
-                                continue
-                            raise
-                    
-                    if self.conn is None:
-                        raise psycopg2.pool.PoolError("Timeout waiting for connection from pool")
-                    
-                    # Test the connection immediately
-                    test_cursor = self.conn.cursor()
-                    test_cursor.execute("SELECT 1")
-                    test_cursor.fetchone()
-                    test_cursor.close()
-                    break  # Success, exit retry loop
-                    
-                except (psycopg2.pool.PoolError, psycopg2.OperationalError, psycopg2.InterfaceError) as e:
-                    if attempt < max_retries - 1:
+                    try:
+                        # Got semaphore, now try to get connection from pool
+                        self.conn = conn_pool.getconn()
+                        self._from_pool = True
+                        # Test connection
+                        test_cursor = self.conn.cursor()
+                        test_cursor.execute("SELECT 1")
+                        test_cursor.fetchone()
+                        test_cursor.close()
+                        break  # Success
+                    except (psycopg2.pool.PoolError, psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                        # Release semaphore on error
+                        semaphore.release()
+                        self._semaphore_acquired = False
+                        if attempt < max_retries - 1:
+                            import logging
+                            logger = logging.getLogger(__name__)
+                            logger.warning(f"Failed to get connection (attempt {attempt + 1}/{max_retries}): {e}. Retrying in {retry_delay}s...")
+                            time.sleep(retry_delay)
+                            retry_delay *= 2
+                            continue
                         import logging
                         logger = logging.getLogger(__name__)
-                        logger.warning(f"Failed to get database connection (attempt {attempt + 1}/{max_retries}): {e}. Retrying in {retry_delay}s...")
-                        time.sleep(retry_delay)
-                        retry_delay *= 2  # Exponential backoff
-                        continue
-                    # If we can't get a connection after retries, log and raise
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    logger.error(f"Failed to get database connection from pool after {max_retries} attempts: {e}")
-                    raise
-                except Exception as e:
-                    # For other exceptions, don't retry
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    logger.error(f"Failed to get database connection from pool: {e}")
-                    raise
-            self.param_style = '%s'  # PostgreSQL uses %s
+                        logger.error(f"Failed to get database connection after {max_retries} attempts: {e}")
+                        raise
+                    except Exception as e:
+                        semaphore.release()
+                        self._semaphore_acquired = False
+                        raise
+                
+                self.param_style = '%s'
+            else:
+                # For non-Supabase, use existing logic without semaphore
+                max_retries = 3
+                retry_delay = 1.0  # Start with 1 second
+                
+                for attempt in range(max_retries):
+                    try:
+                        # Try to get connection with a timeout
+                        # If pool is exhausted, this will raise PoolError
+                        
+                        # Use a timeout mechanism for getconn
+                        # Note: psycopg2 pool doesn't have built-in timeout, so we use a workaround
+                        self.conn = None
+                        start_time = time.time()
+                        timeout_seconds = 10  # 10 second timeout for getting connection
+                        
+                        while self.conn is None and (time.time() - start_time) < timeout_seconds:
+                            try:
+                                self.conn = conn_pool.getconn()
+                                self._from_pool = True
+                                break
+                            except psycopg2.pool.PoolError:
+                                # Pool exhausted, wait a bit and retry
+                                if (time.time() - start_time) < timeout_seconds:
+                                    time.sleep(0.5)
+                                    continue
+                                raise
+                        
+                        if self.conn is None:
+                            raise psycopg2.pool.PoolError("Timeout waiting for connection from pool")
+                        
+                        # Test the connection immediately
+                        test_cursor = self.conn.cursor()
+                        test_cursor.execute("SELECT 1")
+                        test_cursor.fetchone()
+                        test_cursor.close()
+                        break  # Success, exit retry loop
+                        
+                    except (psycopg2.pool.PoolError, psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+                        if attempt < max_retries - 1:
+                            import logging
+                            logger = logging.getLogger(__name__)
+                            logger.warning(f"Failed to get database connection (attempt {attempt + 1}/{max_retries}): {e}. Retrying in {retry_delay}s...")
+                            time.sleep(retry_delay)
+                            retry_delay *= 2  # Exponential backoff
+                            continue
+                        # If we can't get a connection after retries, log and raise
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.error(f"Failed to get database connection from pool after {max_retries} attempts: {e}")
+                        raise
+                    except Exception as e:
+                        # For other exceptions, don't retry
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.error(f"Failed to get database connection from pool: {e}")
+                        raise
+                self.param_style = '%s'  # PostgreSQL uses %s
         else:
             # SQLite connection (fallback)
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -860,17 +935,39 @@ class PlayerDB:
     def close(self):
         """Close database connection or return to pool"""
         if self.is_postgres and self._from_pool:
+            # Check if this is Supabase Session mode - release semaphore
+            parsed = urlparse(self.database_url)
+            is_supabase_session = ('pooler.supabase.com' in parsed.hostname or 'supabase.co' in parsed.hostname) and (parsed.port or 5432) == 5432
+            
             worker_pid = os.getpid()
             if worker_pid in _postgres_pools:
                 # Return connection to pool instead of closing
                 _postgres_pools[worker_pid].putconn(self.conn)
                 self._from_pool = False
+                
+                # Release semaphore if Supabase Session mode
+                if is_supabase_session and self._semaphore_acquired:
+                    semaphore = _get_connection_semaphore()
+                    semaphore.release()
+                    self._semaphore_acquired = False
             else:
                 # Pool doesn't exist, just close
                 self.conn.close()
+                if is_supabase_session and self._semaphore_acquired:
+                    semaphore = _get_connection_semaphore()
+                    semaphore.release()
+                    self._semaphore_acquired = False
         else:
             # Close SQLite connection or direct PostgreSQL connection
             self.conn.close()
+            # Release semaphore if it was acquired
+            if hasattr(self, '_semaphore_acquired') and self._semaphore_acquired:
+                parsed = urlparse(self.database_url)
+                is_supabase_session = ('pooler.supabase.com' in parsed.hostname or 'supabase.co' in parsed.hostname) and (parsed.port or 5432) == 5432
+                if is_supabase_session:
+                    semaphore = _get_connection_semaphore()
+                    semaphore.release()
+                    self._semaphore_acquired = False
 
     # ---------------------------
     # Authentication helpers
