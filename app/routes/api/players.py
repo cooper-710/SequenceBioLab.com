@@ -621,9 +621,9 @@ def api_matchups():
         
         today = date.today()
         
-        # MEMORY FIX: Strict limits to prevent memory exhaustion
+        # MEMORY FIX: Process seasons one at a time to reduce memory
         MAX_SEASONS = 2  # Hard limit - max 2 years
-        MAX_ROWS = 300000  # Reject if data exceeds this
+        MAX_ROWS_PER_SEASON = 150000  # Reject if single season exceeds this
         
         # Determine seasons with hard limit
         if seasons and len(seasons) > 0:
@@ -635,125 +635,110 @@ def api_matchups():
         else:
             season_ints = [today.year - 1, today.year]  # Default to 2 years (reduced from 4)
         
-        # Calculate date range
-        if season_ints:
-            min_season = min(season_ints)
-            max_season = max(season_ints)
-            start_date = f"{min_season}-03-01"
-            end_date = f"{max_season}-11-30"
-        else:
-            start_date = f"{today.year - 1}-03-01"  # Reduced from 4 to 2 years
-            end_date = today.strftime("%Y-%m-%d")
-        
-        # STEP 1: Fetch Statcast data (unfiltered first)
-        df_raw = pd.DataFrame()
-        try:
-            if player_role == 'pitcher':
-                df_raw = fetch_pitcher_statcast(player_id, start_date, end_date)
-                print(f"Fetched Statcast data for pitcher {player_id}: {len(df_raw)} rows (BEFORE filtering)")
-            else:
-                df_raw = fetch_batter_statcast(player_id, start_date, end_date)
-                print(f"Fetched Statcast data for batter {player_id}: {len(df_raw)} rows (BEFORE filtering)")
-        except Exception as e:
-            print(f"Error fetching Statcast data: {e}")
-            import traceback
-            traceback.print_exc()
-            return jsonify({"error": f"Error fetching Statcast data: {str(e)}"}), 500
-        
-        # MEMORY FIX: Reject if data is too large (before processing)
-        if len(df_raw) > MAX_ROWS:
-            row_count = len(df_raw)
-            del df_raw
-            gc.collect()
-            return jsonify({
-                "error": f"Too much data to process ({row_count:,} rows). Please select fewer seasons (max 2 years recommended)."
-            }), 400
-        
-        if df_raw.empty:
-            del df_raw
-            gc.collect()
-            return jsonify({
-                "player": player_name,
-                "opponent": opponent_name,
-                "player_role": player_role,
-                "matchups": [],
-                "summary": {},
-                "message": "No Statcast data found for these players"
-            })
-        
-        # STEP 2: Find the correct column name for filtering
-        filter_col = None
-        if player_role == 'pitcher':
-            for col_name in ['batter', 'batter_id']:
-                if col_name in df_raw.columns:
-                    filter_col = col_name
-                    break
-        else:
-            for col_name in ['pitcher', 'pitcher_id']:
-                if col_name in df_raw.columns:
-                    filter_col = col_name
-                    break
-        
-        if not filter_col:
-            available_cols = df_raw.columns.tolist()
-            del df_raw
-            gc.collect()
-            return jsonify({
-                "error": f"Could not find filter column. Available columns: {available_cols}"
-            }), 500
-        
-        print(f"DEBUG: Using filter column: '{filter_col}'")
-        print(f"DEBUG: Looking for opponent_id: {opponent_id} (type: {type(opponent_id)})")
-        
-        # STEP 3: Convert IDs to same type and filter
-        df_raw[filter_col] = pd.to_numeric(df_raw[filter_col], errors='coerce')
+        # Convert opponent ID once
         opponent_id_int = int(opponent_id)
         
-        # Debug: Show unique values before filtering
-        unique_vals = df_raw[filter_col].dropna().unique()[:20]
-        print(f"DEBUG: Unique {filter_col} values in data (first 20): {unique_vals}")
-        print(f"DEBUG: Looking for {opponent_id_int} in these values: {opponent_id_int in unique_vals}")
+        # Find the filter column name first (we'll need this for each season)
+        filter_col = None
+        all_filtered_dfs = []
         
-        # CRITICAL: Filter BEFORE any calculations to reduce memory
-        df = df_raw[df_raw[filter_col] == opponent_id_int].copy()
-        
-        # Clean up large DataFrame immediately after filtering
-        del df_raw
-        gc.collect()
-        
-        if df.empty:
-            del df
+        # Process each season separately to reduce memory usage
+        for season_year in season_ints:
+            start_date = f"{season_year}-03-01"
+            end_date = f"{season_year}-11-30"
+            
+            # Fetch data for this season only
+            df_season = pd.DataFrame()
+            try:
+                if player_role == 'pitcher':
+                    df_season = fetch_pitcher_statcast(player_id, start_date, end_date)
+                    print(f"Fetched Statcast data for pitcher {player_id} ({season_year}): {len(df_season)} rows (BEFORE filtering)")
+                else:
+                    df_season = fetch_batter_statcast(player_id, start_date, end_date)
+                    print(f"Fetched Statcast data for batter {player_id} ({season_year}): {len(df_season)} rows (BEFORE filtering)")
+            except Exception as e:
+                print(f"Error fetching Statcast data for {season_year}: {e}")
+                import traceback
+                traceback.print_exc()
+                continue  # Skip this season, try next one
+            
+            # MEMORY FIX: Reject if single season is too large
+            if len(df_season) > MAX_ROWS_PER_SEASON:
+                row_count = len(df_season)
+                del df_season
+                gc.collect()
+                return jsonify({
+                    "error": f"Too much data for {season_year} ({row_count:,} rows). Please select fewer seasons."
+                }), 400
+            
+            if df_season.empty:
+                del df_season
+                gc.collect()
+                continue  # Skip empty seasons
+            
+            # Find filter column (same for all seasons, determine once)
+            if filter_col is None:
+                if player_role == 'pitcher':
+                    for col_name in ['batter', 'batter_id']:
+                        if col_name in df_season.columns:
+                            filter_col = col_name
+                            break
+                else:
+                    for col_name in ['pitcher', 'pitcher_id']:
+                        if col_name in df_season.columns:
+                            filter_col = col_name
+                            break
+                
+                if not filter_col:
+                    available_cols = df_season.columns.tolist()
+                    del df_season
+                    gc.collect()
+                    return jsonify({
+                        "error": f"Could not find filter column. Available columns: {available_cols}"
+                    }), 500
+            
+            # Filter to opponent immediately (before keeping in memory)
+            df_season[filter_col] = pd.to_numeric(df_season[filter_col], errors='coerce')
+            df_filtered = df_season[df_season[filter_col] == opponent_id_int].copy()
+            
+            # Free the full season data immediately
+            del df_season
             gc.collect()
+            
+            # Only keep filtered results if there are any
+            if not df_filtered.empty:
+                # Filter to regular season games only
+                if 'game_type' in df_filtered.columns:
+                    df_filtered = df_filtered[df_filtered['game_type'] == 'R'].copy()
+                
+                if not df_filtered.empty:
+                    all_filtered_dfs.append(df_filtered)
+            
+            # Clean up
+            del df_filtered
+            gc.collect()
+        
+        # Combine all filtered results (should be much smaller now)
+        if not all_filtered_dfs:
             return jsonify({
                 "player": player_name,
                 "opponent": opponent_name,
                 "player_role": player_role,
                 "matchups": [],
                 "summary": {},
-                "error": f"No matchup data found. Player {player_name} (ID: {player_id}) has no at-bats vs {opponent_name} (ID: {opponent_id_int}) in selected seasons."
+                "message": "No matchup data found for these players in selected seasons"
             })
         
-        print(f"DEBUG: After filtering to {opponent_id_int}: {len(df)} rows")
+        # Combine filtered results (much smaller than original)
+        df = pd.concat(all_filtered_dfs, ignore_index=True)
         
-        # STEP 4: Filter to regular season games only (exclude spring training, exhibition, etc.)
-        if 'game_type' in df.columns:
-            before_reg_season = len(df)
-            df = df[df['game_type'] == 'R'].copy()
-            print(f"DEBUG: After filtering to regular season games (game_type='R'): {before_reg_season} -> {len(df)} rows")
-            
-            if df.empty:
-                del df
-                gc.collect()
-                return jsonify({
-                    "player": player_name,
-                    "opponent": opponent_name,
-                    "player_role": player_role,
-                    "matchups": [],
-                    "summary": {},
-                    "error": f"No regular season matchup data found. Player {player_name} (ID: {player_id}) has no regular season at-bats vs {opponent_name} (ID: {opponent_id_int}) in selected seasons."
-                })
+        # Clean up list of dataframes
+        del all_filtered_dfs
+        gc.collect()
         
-        # STEP 5: Verify filter worked
+        print(f"DEBUG: After filtering to {opponent_id_int} across all seasons: {len(df)} rows")
+        
+        # Verify filter worked
         unique_after = df[filter_col].unique()
         if len(unique_after) > 1 or (len(unique_after) == 1 and int(unique_after[0]) != opponent_id_int):
             del df
