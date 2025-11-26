@@ -78,7 +78,14 @@ def populate_players_from_csv(db: PlayerDB, latest_teams: dict, dry_run: bool = 
     
     # Check if players table is empty
     cursor.execute("SELECT COUNT(*) FROM players")
-    existing_count = cursor.fetchone()[0]
+    count_result = cursor.fetchone()
+    # Handle both tuple (SQLite) and dict-like (PostgreSQL) results
+    if hasattr(count_result, '__getitem__') and not isinstance(count_result, dict):
+        existing_count = count_result[0]
+    elif isinstance(count_result, dict):
+        existing_count = list(count_result.values())[0]
+    else:
+        existing_count = count_result[0] if count_result else 0
     
     if existing_count > 0:
         print(f"Database already has {existing_count} players. Skipping population.")
@@ -101,21 +108,47 @@ def populate_players_from_csv(db: PlayerDB, latest_teams: dict, dry_run: bool = 
                 # Create a unique player_id from mlbam_id
                 db_player_id = f"mlbam-{player_id}"
                 
-                cursor.execute("""
-                    INSERT OR REPLACE INTO players 
-                    (player_id, mlbam_id, name, first_name, last_name, 
-                     team_id, team_abbr, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    db_player_id,
-                    player_id,
-                    player_name,
-                    first_name,
-                    last_name,
-                    info['team_id'],
-                    info['team_abbr'],
-                    datetime.now().timestamp()
-                ))
+                # Use appropriate SQL syntax based on database type
+                if db.is_postgres:
+                    cursor.execute("""
+                        INSERT INTO players 
+                        (player_id, mlbam_id, name, first_name, last_name, 
+                         team_id, team_abbr, updated_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (player_id) DO UPDATE SET
+                        mlbam_id = EXCLUDED.mlbam_id,
+                        name = EXCLUDED.name,
+                        first_name = EXCLUDED.first_name,
+                        last_name = EXCLUDED.last_name,
+                        team_id = EXCLUDED.team_id,
+                        team_abbr = EXCLUDED.team_abbr,
+                        updated_at = EXCLUDED.updated_at
+                    """, (
+                        db_player_id,
+                        player_id,
+                        player_name,
+                        first_name,
+                        last_name,
+                        info['team_id'],
+                        info['team_abbr'],
+                        datetime.now().timestamp()
+                    ))
+                else:
+                    cursor.execute("""
+                        INSERT OR REPLACE INTO players 
+                        (player_id, mlbam_id, name, first_name, last_name, 
+                         team_id, team_abbr, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        db_player_id,
+                        player_id,
+                        player_name,
+                        first_name,
+                        last_name,
+                        info['team_id'],
+                        info['team_abbr'],
+                        datetime.now().timestamp()
+                    ))
                 added_count += 1
                 if added_count % 100 == 0:
                     print(f"  Added {added_count} players...")
@@ -150,10 +183,19 @@ def update_database_teams(db: PlayerDB, latest_teams: dict, dry_run: bool = Fals
     print(f"\nProcessing {len(db_players)} players from database...")
     
     for player_row in db_players:
-        player_id = player_row[0]
-        mlbam_id = player_row[1]
-        player_name = player_row[2]
-        current_team_abbr = player_row[3]
+        # Handle both dict-like (PostgreSQL) and tuple (SQLite) row access
+        if isinstance(player_row, dict) or hasattr(player_row, 'keys'):
+            # PostgreSQL RealDictRow or similar dict-like object
+            player_id = player_row.get('player_id')
+            mlbam_id = player_row.get('mlbam_id')
+            player_name = player_row.get('name')
+            current_team_abbr = player_row.get('team_abbr')
+        else:
+            # SQLite Row or tuple
+            player_id = player_row[0]
+            mlbam_id = player_row[1]
+            player_name = player_row[2]
+            current_team_abbr = player_row[3]
         
         # Try to find player in CSV by mlbam_id first
         team_info = None
@@ -186,11 +228,19 @@ def update_database_teams(db: PlayerDB, latest_teams: dict, dry_run: bool = Fals
             print(f"     Current: {current_team_abbr or 'None'} → New: {new_team_abbr} (season {season})")
         else:
             try:
-                cursor.execute("""
-                    UPDATE players 
-                    SET team_abbr = ?, team_id = ?, updated_at = ?
-                    WHERE player_id = ?
-                """, (new_team_abbr, team_info['team_id'], datetime.now().timestamp(), player_id))
+                # Use appropriate parameter style based on database type
+                if db.is_postgres:
+                    cursor.execute("""
+                        UPDATE players 
+                        SET team_abbr = %s, team_id = %s, updated_at = %s
+                        WHERE player_id = %s
+                    """, (new_team_abbr, team_info['team_id'], datetime.now().timestamp(), player_id))
+                else:
+                    cursor.execute("""
+                        UPDATE players 
+                        SET team_abbr = ?, team_id = ?, updated_at = ?
+                        WHERE player_id = ?
+                    """, (new_team_abbr, team_info['team_id'], datetime.now().timestamp(), player_id))
                 updated_count += 1
                 if updated_count <= 20:  # Only print first 20 to avoid spam
                     print(f"  ✅ Updated: {player_name} → {new_team_abbr} (season {season})")
