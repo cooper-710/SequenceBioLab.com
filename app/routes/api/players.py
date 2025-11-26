@@ -391,86 +391,96 @@ def api_matchups_seasons():
     try:
         from datetime import date
         import pandas as pd
+        import gc
         
         today = date.today()
         start_year = 2015
         end_year = today.year
         
-        # Fetch Statcast data for a wide date range
-        start_date = f"{start_year}-03-01"
-        end_date = f"{end_year}-11-30"
-        
-        # Fetch Statcast data (unfiltered first)
-        df_raw = pd.DataFrame()
-        try:
-            if player_role == 'pitcher':
-                df_raw = fetch_pitcher_statcast(player_id, start_date, end_date)
-            else:
-                df_raw = fetch_batter_statcast(player_id, start_date, end_date)
-        except Exception as e:
-            return jsonify({"error": f"Error fetching Statcast data: {str(e)}"}), 500
-        
-        if df_raw.empty:
-            seasons = []
-            # Cache empty result too
-            with _seasons_cache_lock:
-                _seasons_cache[cache_key] = seasons
-            return jsonify({"seasons": seasons})
-        
-        # Find the correct column name for filtering
-        filter_col = None
-        if player_role == 'pitcher':
-            for col_name in ['batter', 'batter_id']:
-                if col_name in df_raw.columns:
-                    filter_col = col_name
-                    break
-        else:
-            for col_name in ['pitcher', 'pitcher_id']:
-                if col_name in df_raw.columns:
-                    filter_col = col_name
-                    break
-        
-        if not filter_col:
-            seasons = []
-            with _seasons_cache_lock:
-                _seasons_cache[cache_key] = seasons
-            return jsonify({"seasons": seasons})
-        
-        # Convert IDs to same type and filter to opponent
-        df_raw[filter_col] = pd.to_numeric(df_raw[filter_col], errors='coerce')
+        # MEMORY FIX: Process years one at a time instead of all at once
+        MAX_ROWS_PER_SEASON = 25000  # Same limit as main endpoint
         opponent_id_int = int(opponent_id)
-        df = df_raw[df_raw[filter_col] == opponent_id_int].copy()
+        all_seasons = set()
         
-        if df.empty:
-            seasons = []
-            with _seasons_cache_lock:
-                _seasons_cache[cache_key] = seasons
-            return jsonify({"seasons": seasons})
+        # Process each year individually to reduce memory
+        for year in range(start_year, end_year + 1):
+            start_date = f"{year}-03-01"
+            end_date = f"{year}-11-30"
+            
+            df_year = pd.DataFrame()
+            try:
+                if player_role == 'pitcher':
+                    df_year = fetch_pitcher_statcast(player_id, start_date, end_date)
+                else:
+                    df_year = fetch_batter_statcast(player_id, start_date, end_date)
+            except Exception as e:
+                print(f"Error fetching data for {year}: {e}")
+                continue  # Skip this year, continue to next
+            
+            # MEMORY FIX: Skip years with too much data
+            if len(df_year) > MAX_ROWS_PER_SEASON:
+                print(f"Skipping {year} - too much data ({len(df_year)} rows)")
+                del df_year
+                gc.collect()
+                continue
+            
+            if df_year.empty:
+                del df_year
+                gc.collect()
+                continue
+            
+            # Find filter column
+            filter_col = None
+            if player_role == 'pitcher':
+                for col_name in ['batter', 'batter_id']:
+                    if col_name in df_year.columns:
+                        filter_col = col_name
+                        break
+            else:
+                for col_name in ['pitcher', 'pitcher_id']:
+                    if col_name in df_year.columns:
+                        filter_col = col_name
+                        break
+            
+            if not filter_col:
+                del df_year
+                gc.collect()
+                continue
+            
+            # Filter to opponent immediately
+            df_year[filter_col] = pd.to_numeric(df_year[filter_col], errors='coerce')
+            df_filtered = df_year[df_year[filter_col] == opponent_id_int].copy()
+            del df_year
+            gc.collect()
+            
+            if df_filtered.empty:
+                del df_filtered
+                gc.collect()
+                continue
+            
+            # Filter to regular season
+            if 'game_type' in df_filtered.columns:
+                df_filtered = df_filtered[df_filtered['game_type'] == 'R'].copy()
+            
+            if df_filtered.empty:
+                del df_filtered
+                gc.collect()
+                continue
+            
+            # Check if this year has matchup data
+            if 'game_year' in df_filtered.columns:
+                years_in_data = df_filtered['game_year'].dropna().unique()
+                all_seasons.update(int(y) for y in years_in_data if pd.notna(y))
+            elif 'game_date' in df_filtered.columns:
+                df_filtered['game_date'] = pd.to_datetime(df_filtered['game_date'], errors='coerce')
+                years_in_data = df_filtered['game_date'].dt.year.dropna().unique()
+                all_seasons.update(int(y) for y in years_in_data if pd.notna(y))
+            
+            del df_filtered
+            gc.collect()
         
-        # Filter to regular season games only
-        if 'game_type' in df.columns:
-            df = df[df['game_type'] == 'R'].copy()
-        
-        if df.empty:
-            seasons = []
-            with _seasons_cache_lock:
-                _seasons_cache[cache_key] = seasons
-            return jsonify({"seasons": seasons})
-        
-        # Get available seasons from game_date or game_year
-        # OPTIMIZATION: Prefer game_year if available (faster than parsing dates)
-        seasons = set()
-        if 'game_year' in df.columns:
-            years = df['game_year'].dropna().unique()
-            seasons = set(int(y) for y in years if pd.notna(y))
-        elif 'game_date' in df.columns:
-            # Only parse dates if game_year not available
-            df['game_date'] = pd.to_datetime(df['game_date'], errors='coerce')
-            years = df['game_date'].dt.year.dropna().unique()
-            seasons = set(int(y) for y in years if pd.notna(y))
-        
-        # Filter to valid season range and sort
-        seasons = sorted([s for s in seasons if start_year <= s <= end_year])
+        # Sort seasons
+        seasons = sorted([s for s in all_seasons if start_year <= s <= end_year])
         
         # Cache the result (thread-safe)
         with _seasons_cache_lock:
@@ -478,6 +488,13 @@ def api_matchups_seasons():
         
         return jsonify({"seasons": seasons})
         
+    except MemoryError as e:
+        import gc
+        gc.collect()
+        return jsonify({
+            "error": "Out of memory while checking available seasons",
+            "detail": "Unable to check available seasons due to memory constraints."
+        }), 413
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -623,7 +640,7 @@ def api_matchups():
         
         # MEMORY FIX: Process seasons one at a time to reduce memory (aggressive limits for 512MB)
         MAX_SEASONS = 1  # Hard limit - max 1 year for 512MB instances
-        MAX_ROWS_PER_SEASON = 50000  # Reject if single season exceeds this (reduced for 512MB)
+        MAX_ROWS_PER_SEASON = 25000  # Reject if single season exceeds this (reduced for 512MB)
         
         # Determine seasons with hard limit
         if seasons and len(seasons) > 0:
