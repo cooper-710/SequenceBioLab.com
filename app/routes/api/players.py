@@ -621,19 +621,19 @@ def api_matchups():
         
         today = date.today()
         
-        # MEMORY FIX: Process seasons one at a time to reduce memory
-        MAX_SEASONS = 2  # Hard limit - max 2 years
-        MAX_ROWS_PER_SEASON = 150000  # Reject if single season exceeds this
+        # MEMORY FIX: Process seasons one at a time to reduce memory (aggressive limits for 512MB)
+        MAX_SEASONS = 1  # Hard limit - max 1 year for 512MB instances
+        MAX_ROWS_PER_SEASON = 50000  # Reject if single season exceeds this (reduced for 512MB)
         
         # Determine seasons with hard limit
         if seasons and len(seasons) > 0:
             season_ints = sorted([int(s) for s in seasons if s.isdigit()])[:MAX_SEASONS]  # Hard limit
             if not season_ints:
-                season_ints = [today.year - 1, today.year]  # Default to 2 years
+                season_ints = [today.year]  # Default to current year only for 512MB
         elif season:
             season_ints = [season]
         else:
-            season_ints = [today.year - 1, today.year]  # Default to 2 years (reduced from 4)
+            season_ints = [today.year]  # Default to current year only (reduced for 512MB)
         
         # Convert opponent ID once
         opponent_id_int = int(opponent_id)
@@ -668,8 +668,9 @@ def api_matchups():
                 del df_season
                 gc.collect()
                 return jsonify({
-                    "error": f"Too much data for {season_year} ({row_count:,} rows). Please select fewer seasons."
-                }), 400
+                    "error": f"Too much data for {season_year} ({row_count:,} rows, limit: {MAX_ROWS_PER_SEASON:,}). This player has too much data for a single season. Please try a different player or contact support.",
+                    "detail": "The selected player has more data than can be processed in the available memory."
+                }), 413
             
             if df_season.empty:
                 del df_season
@@ -1197,17 +1198,46 @@ def api_matchups():
             "summary": summary
         })
         
+    except MemoryError as e:
+        # Explicit memory error handling - ensure JSON is always returned
+        import gc
+        try:
+            if 'df_raw' in locals():
+                del df_raw
+            if 'df' in locals():
+                del df
+            if 'df_with_events' in locals():
+                del df_with_events
+            if 'pa_ending' in locals():
+                del pa_ending
+            if 'all_filtered_dfs' in locals():
+                del all_filtered_dfs
+        except:
+            pass
+        gc.collect()
+        return jsonify({
+            "error": "Out of memory. Please select fewer seasons or a single season.",
+            "detail": "The request exceeded available memory. Try selecting just the current season."
+        }), 413  # 413 Payload Too Large
     except Exception as e:
         # Cleanup on error
-        if df_raw is not None:
-            del df_raw
-        if df is not None:
-            del df
-        if df_with_events is not None:
-            del df_with_events
-        if pa_ending is not None:
-            del pa_ending
+        try:
+            if 'df_raw' in locals():
+                del df_raw
+            if 'df' in locals():
+                del df
+            if 'df_with_events' in locals():
+                del df_with_events
+            if 'pa_ending' in locals():
+                del pa_ending
+            if 'all_filtered_dfs' in locals():
+                del all_filtered_dfs
+        except:
+            pass
         gc.collect()
         import traceback
         traceback.print_exc()
-        return jsonify({"error": f"Error fetching matchup data: {str(e)}"}), 500
+        return jsonify({
+            "error": f"Error fetching matchup data: {str(e)}",
+            "detail": "An error occurred while processing the matchup request."
+        }), 500
