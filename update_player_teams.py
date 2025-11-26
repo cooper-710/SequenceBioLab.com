@@ -70,6 +70,49 @@ def load_latest_teams_from_csv(csv_path: str) -> dict:
     print(f"Found {len(latest_teams)} players with team data")
     return latest_teams
 
+def populate_teams_from_csv(db: PlayerDB, latest_teams: dict, dry_run: bool = False):
+    """
+    Populate the teams table from the latest teams data.
+    """
+    # Limit to teams from first 3 players for testing
+    import os
+    test_mode = os.environ.get('TEST_MODE', '').lower() == 'true'
+    teams_to_check = list(latest_teams.items())[:3] if test_mode else latest_teams.items()
+    
+    # Extract unique teams from the data
+    unique_teams = {}
+    for player_id, info in teams_to_check:
+        team_id = info.get('team_id')
+        if team_id and team_id not in unique_teams:
+            unique_teams[team_id] = {
+                'id': team_id,
+                'abbreviation': info.get('team_abbr', ''),
+                'name': info.get('team_name', ''),
+                'city': '',  # Not in CSV, will be empty
+                'league': '',  # Not in CSV, will be empty
+                'division': ''  # Not in CSV, will be empty
+            }
+    
+    if not unique_teams:
+        print("No team data found to populate.")
+        return
+    
+    print(f"\nPopulating teams table with {len(unique_teams)} teams...")
+    
+    if dry_run:
+        for team_id, team_data in list(unique_teams.items())[:10]:
+            print(f"  Would add team: {team_data['name']} ({team_data['abbreviation']})")
+        if len(unique_teams) > 10:
+            print(f"  ... and {len(unique_teams) - 10} more teams")
+    else:
+        for team_id, team_data in unique_teams.items():
+            try:
+                db.upsert_team(team_data)
+            except Exception as e:
+                print(f"  ❌ Error adding team {team_data.get('name', team_id)}: {e}")
+        
+        print(f"✅ Populated {len(unique_teams)} teams")
+
 def populate_players_from_csv(db: PlayerDB, latest_teams: dict, dry_run: bool = False):
     """
     Populate the players table from the latest teams data.
@@ -91,10 +134,20 @@ def populate_players_from_csv(db: PlayerDB, latest_teams: dict, dry_run: bool = 
         print(f"Database already has {existing_count} players. Skipping population.")
         return
     
-    print(f"\nPopulating players table with {len(latest_teams)} players...")
+    # Limit to 3 players for testing
+    test_mode = os.environ.get('TEST_MODE', '').lower() == 'true'
+    teams_to_process = list(latest_teams.items())[:3] if test_mode else latest_teams.items()
+    total_count = 3 if test_mode else len(latest_teams)
+    
+    if test_mode:
+        print(f"\n🧪 TEST MODE: Populating players table with 3 test players...")
+    else:
+        print(f"\nPopulating players table with {len(latest_teams)} players...")
     
     added_count = 0
-    for player_id, info in latest_teams.items():
+    error_count = 0
+    
+    for player_id, info in teams_to_process:
         player_name = info['player_name']
         # Split name into first and last
         name_parts = player_name.split()
@@ -153,11 +206,26 @@ def populate_players_from_csv(db: PlayerDB, latest_teams: dict, dry_run: bool = 
                 if added_count % 100 == 0:
                     print(f"  Added {added_count} players...")
             except Exception as e:
-                print(f"  ❌ Error adding {player_name}: {e}")
+                error_count += 1
+                if error_count <= 5:  # Only print first 5 errors
+                    print(f"  ❌ Error adding {player_name}: {e}")
+                # For PostgreSQL, rollback on error and continue
+                if db.is_postgres:
+                    try:
+                        db.conn.rollback()
+                    except:
+                        pass
+                # For SQLite, continue (it auto-rollbacks on error)
     
     if not dry_run:
-        db.conn.commit()
-        print(f"✅ Added {added_count} players to database")
+        try:
+            db.conn.commit()
+            print(f"✅ Added {added_count} players to database")
+            if error_count > 0:
+                print(f"⚠️  {error_count} players failed to add (see errors above)")
+        except Exception as e:
+            print(f"❌ Error committing: {e}")
+            db.conn.rollback()
     
     return added_count
 
@@ -283,14 +351,44 @@ def main():
     
     # Connect to database
     print("\nConnecting to database...")
-    db = PlayerDB()
+    # Check if DATABASE_URL is set
+    import os
+    database_url = os.environ.get('DATABASE_URL')
+    if database_url:
+        # Mask password in output
+        masked_url = database_url.split('@')[0].split(':')[-1] + '@' + database_url.split('@')[1] if '@' in database_url else database_url[:50]
+        print(f"Using DATABASE_URL: {masked_url}... (PostgreSQL)")
+    else:
+        print("⚠️  WARNING: No DATABASE_URL found, using local SQLite database")
+    
+    db = PlayerDB(database_url=database_url if database_url else None)
+    
+    # Print which database type we're using
+    if db.is_postgres:
+        print(f"✓ Connected to PostgreSQL database")
+        # Get database name for verification
+        cursor = db.conn.cursor()
+        cursor.execute("SELECT current_database()")
+        db_name_result = cursor.fetchone()
+        if db.is_postgres:
+            db_name = db_name_result.get('current_database') if hasattr(db_name_result, 'get') else db_name_result[0]
+        else:
+            db_name = db_name_result[0] if db_name_result else "unknown"
+        print(f"  Database name: {db_name}")
+        cursor.close()
+    else:
+        print(f"✓ Connected to SQLite database: {db.db_path}")
     
     try:
-        # First, populate players table if empty
+        # First, populate teams table (needed for foreign key constraints)
+        if not args.skip_populate:
+            populate_teams_from_csv(db, latest_teams, dry_run=args.dry_run)
+        
+        # Then populate players table if empty
         if not args.skip_populate:
             populate_players_from_csv(db, latest_teams, dry_run=args.dry_run)
         
-        # Then update teams
+        # Finally, update teams for existing players
         update_database_teams(db, latest_teams, dry_run=args.dry_run)
         
         if args.dry_run:
