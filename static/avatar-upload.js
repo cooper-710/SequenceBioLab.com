@@ -138,7 +138,26 @@
                     previewImage.src = event.target.result;
                 }
             });
-            reader.readAsDataURL(file);
+            reader.addEventListener("error", function () {
+                // If preview fails (e.g., HEIC on mobile), that's okay - upload will still work
+                // Don't show error, just note that preview isn't available
+                if (feedback && !feedback.textContent.includes("ready to upload")) {
+                    feedback.textContent = "File ready to upload (preview not available for this format).";
+                    feedback.classList.add("is-success");
+                    feedback.classList.remove("is-error");
+                }
+            });
+            try {
+                reader.readAsDataURL(file);
+            } catch (e) {
+                // HEIC files can't be previewed in most browsers
+                // This is okay - the upload will still work
+                if (feedback) {
+                    feedback.textContent = "File ready to upload (preview not available for this format).";
+                    feedback.classList.add("is-success");
+                    feedback.classList.remove("is-error");
+                }
+            }
         }
     }
 

@@ -10,7 +10,7 @@
         <div class="hero-content">
             <div class="hero-avatar-wrapper">
                 {% if current_user and current_user.profile_image_path %}
-                    <img src="{{ url_for('static', filename=current_user.profile_image_path) }}" alt="{{ current_user.first_name }} {{ current_user.last_name }}" class="hero-avatar-img">
+                    <img src="{{ url_for('static', filename=current_user.profile_image_path) }}?v={% if current_user.id %}{{ current_user.id }}{% else %}0{% endif %}" alt="{{ current_user.first_name }} {{ current_user.last_name }}" class="hero-avatar-img">
                 {% else %}
                     <div class="hero-avatar-placeholder">
                         <i class="fas fa-user"></i>

@@ -1487,6 +1487,8 @@ def profile_settings():
                         updates[key] = value or None
                 success = db.update_user_profile(viewer["id"], **updates)
                 if success:
+                    # Refresh g.user to ensure latest data including profile_image_path
+                    g.user = db.get_user_by_id(viewer["id"])
                     flash("Profile details updated.", "success")
                 else:
                     flash("No profile changes detected.", "info")
@@ -1497,6 +1499,8 @@ def profile_settings():
                     flash("Unknown theme selection.", "error")
                 else:
                     db.update_user_profile(viewer["id"], theme_preference=theme)
+                    # Refresh g.user to ensure latest data
+                    g.user = db.get_user_by_id(viewer["id"])
                     session["theme_preference"] = theme
                     flash("Appearance preference saved.", "success")
 
@@ -1510,6 +1514,8 @@ def profile_settings():
                     viewer["id"],
                     notification_preferences=json.dumps(prefs_payload)
                 )
+                # Refresh g.user to ensure latest data
+                g.user = db.get_user_by_id(viewer["id"])
                 flash("Notification preferences updated.", "success")
 
             elif form_name == "change-password":
@@ -1551,10 +1557,13 @@ def profile_settings():
                                     jpeg_data = convert_heic_to_jpeg(data)
                                     if jpeg_data is None:
                                         flash("Failed to convert HEIC image. Please try a different format.", "error")
-                                    else:
-                                        data = jpeg_data
-                                        extension = ".jpg"
-                                        detected_type = "jpeg"
+                                        return redirect(url_for("pages.profile_settings"))
+                                    data = jpeg_data
+                                    extension = ".jpg"
+                                    detected_type = "jpeg"
+                                
+                                # Ensure upload directory exists
+                                Config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
                                 
                                 unique_name = f"user-{viewer['id']}-{uuid.uuid4().hex}{extension}"
                                 destination = Config.UPLOAD_DIR / unique_name
@@ -1571,6 +1580,10 @@ def profile_settings():
                                         pass
                                 rel_path = f"uploads/profile_photos/{unique_name}"
                                 db.update_user_profile(viewer["id"], profile_image_path=rel_path)
+                                
+                                # Refresh g.user to show updated image immediately
+                                g.user = db.get_user_by_id(viewer["id"])
+                                
                                 flash("Profile photo updated.", "success")
             else:
                 flash("Unknown form submission.", "error")

@@ -7384,10 +7384,13 @@ def profile_settings():
                                     jpeg_data = convert_heic_to_jpeg(data)
                                     if jpeg_data is None:
                                         flash("Failed to convert HEIC image. Please try a different format.", "error")
-                                    else:
-                                        data = jpeg_data
-                                        extension = ".jpg"
-                                        detected_type = "jpeg"
+                                        return redirect(url_for("profile_settings"))
+                                    data = jpeg_data
+                                    extension = ".jpg"
+                                    detected_type = "jpeg"
+                                
+                                # Ensure upload directory exists
+                                PROFILE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
                                 
                                 unique_name = f"user-{viewer['id']}-{uuid.uuid4().hex}{extension}"
                                 destination = PROFILE_UPLOAD_DIR / unique_name
@@ -7404,6 +7407,10 @@ def profile_settings():
                                         pass
                                 rel_path = f"uploads/profile_photos/{unique_name}"
                                 db.update_user_profile(viewer["id"], profile_image_path=rel_path)
+                                
+                                # Refresh g.user to show updated image immediately
+                                g.user = db.get_user_by_id(viewer["id"])
+                                
                                 flash("Profile photo updated.", "success")
             else:
                 flash("Unknown form submission.", "error")

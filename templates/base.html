@@ -157,7 +157,7 @@
                         <div class="nav-item nav-item-static">
                             <span class="nav-icon">
                                 {% if current_user and current_user.profile_image_path %}
-                                    <img src="{{ url_for('static', filename=current_user.profile_image_path) }}" alt="{{ current_user.first_name }} {{ current_user.last_name }}" class="nav-profile-picture">
+                                    <img src="{{ url_for('static', filename=current_user.profile_image_path) }}?v={% if current_user.id %}{{ current_user.id }}{% else %}0{% endif %}" alt="{{ current_user.first_name }} {{ current_user.last_name }}" class="nav-profile-picture">
                                 {% else %}
                                     <i class="fas fa-user-circle"></i>
                                 {% endif %}
