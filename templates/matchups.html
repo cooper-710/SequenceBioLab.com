@@ -686,29 +686,7 @@
 }
 
 .toggle-seasons-btn {
-    background: var(--color-surface);
-    border: 2px solid var(--color-border);
-    border-radius: 8px;
-    color: var(--color-text-primary);
-    padding: 10px 18px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    margin-bottom: 12px;
-    transition: all 0.3s ease;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.toggle-seasons-btn:hover {
-    background: color-mix(in srgb, var(--color-surface) 85%, var(--color-main-bg));
-    border-color: var(--color-accent);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-}
-
-.toggle-seasons-btn:active {
-    transform: translateY(0);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    display: none;
 }
 
 .season-checkboxes {
@@ -721,7 +699,7 @@
     position: relative;
 }
 
-.season-checkbox-item input[type="checkbox"].season-checkbox {
+.season-checkbox-item input[type="radio"].season-radio {
     position: absolute;
     opacity: 0;
     cursor: pointer;
@@ -754,7 +732,7 @@
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
-.season-checkbox-item input[type="checkbox"].season-checkbox:checked + label.season-label {
+.season-checkbox-item input[type="radio"].season-radio:checked + label.season-label {
     background: linear-gradient(145deg, var(--color-accent), var(--color-accent-bright));
     border-color: var(--color-accent);
     color: var(--color-text-primary);
@@ -763,7 +741,7 @@
     transform: translateY(-2px);
 }
 
-.season-checkbox-item input[type="checkbox"].season-checkbox:checked + label.season-label:hover {
+.season-checkbox-item input[type="radio"].season-radio:checked + label.season-label:hover {
     background: linear-gradient(145deg, var(--color-accent-bright), var(--color-accent));
     box-shadow: 0 6px 16px rgba(255, 127, 0, 0.5);
 }
@@ -841,9 +819,8 @@
             </div>
             
             <div class="form-group">
-                <label>Seasons (optional - leave empty for last 3 years)</label>
+                <label>Season (optional - leave empty for last 3 years)</label>
                 <div class="season-selector-wrapper">
-                    <button type="button" id="toggleAllSeasons" class="toggle-seasons-btn">Select All</button>
                     <div class="season-checkboxes" id="seasonCheckboxes"></div>
                 </div>
             </div>
@@ -1164,64 +1141,18 @@ function initializeSeasonCheckboxes(availableSeasons = null) {
         }
     }
     
-    // Generate checkboxes for each season
+    // Generate radio buttons for each season (single selection only)
     let html = '';
     for (const year of seasonsToShow) {
         html += `
             <div class="season-checkbox-item">
-                <input type="checkbox" id="season-${year}" value="${year}" class="season-checkbox">
+                <input type="radio" id="season-${year}" name="season" value="${year}" class="season-radio">
                 <label for="season-${year}" class="season-label">${year}</label>
             </div>
         `;
     }
     
     seasonCheckboxes.innerHTML = html;
-    
-    // Setup toggle all button
-    setupToggleAllButton();
-}
-
-// Setup select all/deselect all button
-function setupToggleAllButton() {
-    const toggleBtn = document.getElementById('toggleAllSeasons');
-    const checkboxes = document.querySelectorAll('.season-checkbox');
-    
-    if (!toggleBtn) return;
-    
-    // Update button text based on current state
-    function updateButtonText() {
-        const checkedCount = document.querySelectorAll('.season-checkbox:checked').length;
-        const totalCount = checkboxes.length;
-        
-        if (checkedCount === totalCount) {
-            toggleBtn.textContent = 'Deselect All';
-        } else {
-            toggleBtn.textContent = 'Select All';
-        }
-    }
-    
-    // Toggle all checkboxes
-    toggleBtn.addEventListener('click', () => {
-        const checkedCount = document.querySelectorAll('.season-checkbox:checked').length;
-        const totalCount = checkboxes.length;
-        const shouldSelectAll = checkedCount < totalCount;
-        
-        checkboxes.forEach(checkbox => {
-            checkbox.checked = shouldSelectAll;
-            // Trigger change event to update visual state
-            checkbox.dispatchEvent(new Event('change'));
-        });
-        
-        updateButtonText();
-    });
-    
-    // Update button text when individual checkboxes change
-    checkboxes.forEach(checkbox => {
-        checkbox.addEventListener('change', updateButtonText);
-    });
-    
-    // Initial button text update
-    updateButtonText();
 }
 
 function updateRoleInfo() {
@@ -1365,26 +1296,18 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
     // Determine role based on player 1's type
     const role = player1Type; // 'pitcher' or 'batter'
     
-    // Get selected seasons from checkboxes
-    const selectedSeasons = Array.from(document.querySelectorAll('.season-checkbox:checked'))
-        .map(cb => cb.value)
-        .filter(val => val);
+    // Get selected season from radio buttons (single selection only)
+    const selectedSeasonRadio = document.querySelector('input[name="season"]:checked');
+    const selectedSeason = selectedSeasonRadio ? selectedSeasonRadio.value : null;
     
     const params = new URLSearchParams();
     params.append('player', player1Name);
     params.append('opponent', player2Name);
     params.append('role', role);
     
-    // Add seasons - if multiple selected, pass all of them; if one, use season param; if none, API defaults to last 3 years
-    if (selectedSeasons.length > 0) {
-        if (selectedSeasons.length === 1) {
-            params.append('season', selectedSeasons[0]);
-        } else {
-            // For multiple seasons, pass all selected seasons
-            selectedSeasons.forEach(season => {
-                params.append('seasons', season);
-            });
-        }
+    // Add season - if one selected, use season param; if none, API defaults to last 3 years
+    if (selectedSeason) {
+        params.append('season', selectedSeason);
     }
     
     const resultsDiv = document.getElementById('results');
