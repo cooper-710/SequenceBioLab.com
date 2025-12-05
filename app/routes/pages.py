@@ -1103,46 +1103,62 @@ def reports_library():
 @bp.route('/workouts')
 @login_required
 def workouts():
-    """Workouts page with admin/player modes."""
+    """Workouts page integrated with external weights app."""
     viewer_user = getattr(g, "user", None)
-    current_user_id = viewer_user.get("id") if viewer_user else None
-    workout_document = None
-    if PlayerDB and current_user_id:
-        db = None
-        try:
-            db = PlayerDB()
-            latest = db.get_latest_player_document_by_category(current_user_id, Config.WORKOUT_CATEGORY)
-            if latest:
-                workout_document = format_player_document(latest)
-        except Exception as exc:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Warning: unable to load workout document: {exc}")
-        finally:
-            if db:
-                db.close()
-
-    first_name = (viewer_user or {}).get("first_name") or ""
-    last_name = (viewer_user or {}).get("last_name") or ""
-    name_parts = [part for part in (first_name.strip(), last_name.strip()) if part]
-    initial_player_label = " ".join(name_parts) if name_parts else ((viewer_user or {}).get("email") or "Player")
-
-    is_admin = bool(session.get("is_admin"))
-    initial_player_id = None if is_admin else current_user_id
-    if is_admin:
-        workout_document = None
-
+    
+    # Check admin status from both session and user object
+    is_admin = bool(session.get("is_admin")) or (viewer_user and viewer_user.get("is_admin"))
+    
+    # External weights app URLs
+    WEIGHTS_APP_BASE = "https://sequence-weights-git-main-cooper-710s-projects.vercel.app"
+    ADMIN_TOKEN = "admin-sequence-2024-secure-token"
+    
+    weights_app_url = ""
+    player_name = None
+    
+    try:
+        if is_admin:
+            # Admin link with token
+            weights_app_url = f"{WEIGHTS_APP_BASE}/admin?token={ADMIN_TOKEN}"
+            player_name = None
+        else:
+            # Get player name exactly like mocap does
+            player_name = request.args.get('player')
+            if not player_name:
+                if viewer_user and viewer_user.get('first_name') and viewer_user.get('last_name'):
+                    player_name = f"{viewer_user['first_name']} {viewer_user['last_name']}"
+                elif session.get('first_name') and session.get('last_name'):
+                    player_name = f"{session['first_name']} {session['last_name']}"
+                else:
+                    # Fallback (should be rare with login_required)
+                    player_name = "Player"
+            
+            # URL encode the name (spaces become +)
+            encoded_name = quote_plus(player_name)
+            weights_app_url = f"{WEIGHTS_APP_BASE}/user?mode=player&player={encoded_name}"
+    except Exception as exc:
+        # Log error and provide fallback
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error building workouts URL: {exc}")
+        # Provide a fallback URL
+        if is_admin:
+            weights_app_url = f"{WEIGHTS_APP_BASE}/admin?token={ADMIN_TOKEN}"
+        else:
+            weights_app_url = f"{WEIGHTS_APP_BASE}/user?mode=player&player=Player"
+    
+    # Ensure we always have a URL
+    if not weights_app_url:
+        weights_app_url = f"{WEIGHTS_APP_BASE}/user?mode=player&player=Player"
+    
     from app.middleware.csrf import generate_csrf_token
 
     return render_template(
         'workouts.html',
-        workout_document=workout_document,
+        weights_app_url=weights_app_url,
+        is_admin=is_admin,
+        player_name=player_name,
         csrf_token=generate_csrf_token(),
-        workout_category=Config.WORKOUT_CATEGORY,
-        initial_player_id=initial_player_id,
-        initial_player_label=initial_player_label if initial_player_id else "",
-        current_user_id=current_user_id,
-        current_user_label=initial_player_label,
     )
 
 
