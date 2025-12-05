@@ -51,7 +51,7 @@ from app.constants import (
     JOURNAL_VISIBILITY_OPTIONS, MAX_JOURNAL_TIMELINE_ENTRIES, get_team_color
 )
 from app.utils.helpers import parse_bool, clean_str, sanitize_filename_component, get_safe_redirect
-from app.utils.validators import validate_auth_form_fields, detect_image_type
+from app.utils.validators import validate_auth_form_fields, detect_image_type, convert_heic_to_jpeg
 from app.utils.formatters import (
     normalize_journal_visibility, prepare_journal_timeline, augment_journal_entry,
     format_journal_date, coerce_utc_datetime, extract_game_datetime
@@ -7379,6 +7379,16 @@ def profile_settings():
                             if detected_type not in ALLOWED_PROFILE_IMAGE_TYPES:
                                 flash("Uploaded file is not a valid image.", "error")
                             else:
+                                # Convert HEIC/HEIF to JPEG for browser compatibility
+                                if detected_type == "heic" or extension in (".heic", ".heif"):
+                                    jpeg_data = convert_heic_to_jpeg(data)
+                                    if jpeg_data is None:
+                                        flash("Failed to convert HEIC image. Please try a different format.", "error")
+                                    else:
+                                        data = jpeg_data
+                                        extension = ".jpg"
+                                        detected_type = "jpeg"
+                                
                                 unique_name = f"user-{viewer['id']}-{uuid.uuid4().hex}{extension}"
                                 destination = PROFILE_UPLOAD_DIR / unique_name
                                 with destination.open("wb") as fh:

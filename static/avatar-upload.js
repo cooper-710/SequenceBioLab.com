@@ -28,9 +28,11 @@
         "image/jpeg",
         "image/jpg",
         "image/gif",
-        "image/webp"
+        "image/webp",
+        "image/heic",
+        "image/heif"
     ]);
-    const allowedExtensions = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp"]);
+    const allowedExtensions = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".heif"]);
     const maxBytes = 5 * 1024 * 1024;
 
     function resetVisualState() {
@@ -74,10 +76,14 @@
 
         const mimeType = (file.type || "").toLowerCase();
         const extension = getExtension(file.name);
-        const isAllowedType = allowedMimeTypes.has(mimeType) || allowedExtensions.has(extension);
+        // More lenient validation: if MIME type is missing or not recognized,
+        // check extension. Mobile browsers sometimes don't set MIME types correctly.
+        const isAllowedType = mimeType === "" || 
+                             allowedMimeTypes.has(mimeType) || 
+                             allowedExtensions.has(extension);
 
         if (!isAllowedType) {
-            return { valid: false, error: "Please choose a PNG, JPG, GIF, or WebP image." };
+            return { valid: false, error: "Please choose a PNG, JPG, GIF, WebP, or HEIC image." };
         }
 
         if (file.size > maxBytes) {

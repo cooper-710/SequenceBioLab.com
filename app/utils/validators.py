@@ -1,7 +1,8 @@
 """
 Input validation utilities
 """
-from typing import List
+from typing import List, Optional
+from io import BytesIO
 from app.utils.helpers import clean_str
 
 
@@ -37,7 +38,7 @@ def validate_auth_form_fields(
     return errors
 
 
-def detect_image_type(data: bytes) -> str:
+def detect_image_type(data: bytes) -> Optional[str]:
     """Detect image type for a small subset of formats using magic headers."""
     if not data or len(data) < 4:
         return None
@@ -49,7 +50,53 @@ def detect_image_type(data: bytes) -> str:
         return "gif"
     if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return "webp"
+    # HEIC/HEIF detection (starts with ftyp box)
+    if len(data) >= 12:
+        # HEIC files start with ftyp box, check for 'heic', 'heif', 'mif1', 'msf1'
+        if data[4:8] == b"ftyp":
+            brand = data[8:12].lower()
+            if brand in [b"heic", b"heif", b"mif1", b"msf1"]:
+                return "heic"
     return None
+
+
+def convert_heic_to_jpeg(data: bytes) -> Optional[bytes]:
+    """
+    Convert HEIC/HEIF image data to JPEG format.
+    Returns JPEG bytes if successful, None otherwise.
+    """
+    try:
+        from PIL import Image
+        try:
+            from pillow_heif import register_heif_opener
+            register_heif_opener()
+        except ImportError:
+            # pillow-heif not available, return None
+            return None
+        
+        # Open HEIC image from bytes
+        img = Image.open(BytesIO(data))
+        
+        # Convert to RGB if necessary (HEIC might have alpha channel)
+        if img.mode in ('RGBA', 'LA', 'P'):
+            # Create white background for transparency
+            rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'P':
+                img = img.convert('RGBA')
+            rgb_img.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+            img = rgb_img
+        elif img.mode != 'RGB':
+            img = img.convert('RGB')
+        
+        # Save as JPEG to bytes
+        output = BytesIO()
+        img.save(output, format='JPEG', quality=85, optimize=True)
+        return output.getvalue()
+    except Exception:
+        # If conversion fails for any reason, return None
+        return None
+
+
 
 
 

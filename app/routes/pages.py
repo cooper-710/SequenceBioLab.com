@@ -41,7 +41,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 import json
 import uuid
-from app.utils.validators import detect_image_type
+from app.utils.validators import detect_image_type, convert_heic_to_jpeg
 
 bp = Blueprint('pages', __name__)
 
@@ -1546,6 +1546,16 @@ def profile_settings():
                             if detected_type not in Config.ALLOWED_PROFILE_TYPES:
                                 flash("Uploaded file is not a valid image.", "error")
                             else:
+                                # Convert HEIC/HEIF to JPEG for browser compatibility
+                                if detected_type == "heic" or extension in (".heic", ".heif"):
+                                    jpeg_data = convert_heic_to_jpeg(data)
+                                    if jpeg_data is None:
+                                        flash("Failed to convert HEIC image. Please try a different format.", "error")
+                                    else:
+                                        data = jpeg_data
+                                        extension = ".jpg"
+                                        detected_type = "jpeg"
+                                
                                 unique_name = f"user-{viewer['id']}-{uuid.uuid4().hex}{extension}"
                                 destination = Config.UPLOAD_DIR / unique_name
                                 with destination.open("wb") as fh:

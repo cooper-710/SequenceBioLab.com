@@ -65,8 +65,8 @@ class Config:
     
     # File uploads
     MAX_UPLOAD_SIZE = 5 * 1024 * 1024  # 5MB
-    ALLOWED_PROFILE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
-    ALLOWED_PROFILE_TYPES = {"png", "jpeg", "gif", "webp"}
+    ALLOWED_PROFILE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".heif"}
+    ALLOWED_PROFILE_TYPES = {"png", "jpeg", "gif", "webp", "heic"}
     WORKOUT_ALLOWED_EXTENSIONS = {".pdf"}
     WORKOUT_CATEGORY = "workout"
     
