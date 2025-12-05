@@ -273,6 +273,11 @@ def api_admin_set_role(user_id: int):
         updated = db.get_user_by_id(user_id)
 
         db.close()
+        
+        # Invalidate cache if updating current user
+        if g.user and g.user.get("id") == user_id:
+            from app.middleware.auth import invalidate_user_cache
+            invalidate_user_cache(user_id)
 
     except Exception as exc:
 
@@ -319,6 +324,11 @@ def api_admin_set_active(user_id: int):
         db.set_user_active(user_id, is_active)
         updated = db.get_user_by_id(user_id)
         db.close()
+        
+        # Invalidate cache if updating current user
+        if g.user and g.user.get("id") == user_id:
+            from app.middleware.auth import invalidate_user_cache
+            invalidate_user_cache(user_id)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 

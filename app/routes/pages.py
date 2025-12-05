@@ -34,6 +34,7 @@ from app.utils.formatters import (
     format_journal_date
 )
 from app.middleware.csrf import generate_csrf_token, validate_csrf
+from app.middleware.auth import invalidate_user_cache, refresh_user_cache
 from app.constants import DIVISION_OPTIONS, LEAGUE_OPTIONS, JOURNAL_VISIBILITY_OPTIONS, MAX_JOURNAL_TIMELINE_ENTRIES
 from app.config import Config
 from flask import flash, abort
@@ -1487,8 +1488,9 @@ def profile_settings():
                         updates[key] = value or None
                 success = db.update_user_profile(viewer["id"], **updates)
                 if success:
-                    # Refresh g.user to ensure latest data including profile_image_path
-                    g.user = db.get_user_by_id(viewer["id"])
+                    # Invalidate and refresh cache to ensure latest data
+                    invalidate_user_cache(viewer["id"])
+                    g.user = refresh_user_cache(viewer["id"])
                     flash("Profile details updated.", "success")
                 else:
                     flash("No profile changes detected.", "info")
@@ -1499,8 +1501,9 @@ def profile_settings():
                     flash("Unknown theme selection.", "error")
                 else:
                     db.update_user_profile(viewer["id"], theme_preference=theme)
-                    # Refresh g.user to ensure latest data
-                    g.user = db.get_user_by_id(viewer["id"])
+                    # Invalidate and refresh cache to ensure latest data
+                    invalidate_user_cache(viewer["id"])
+                    g.user = refresh_user_cache(viewer["id"])
                     session["theme_preference"] = theme
                     flash("Appearance preference saved.", "success")
 
@@ -1514,8 +1517,9 @@ def profile_settings():
                     viewer["id"],
                     notification_preferences=json.dumps(prefs_payload)
                 )
-                # Refresh g.user to ensure latest data
-                g.user = db.get_user_by_id(viewer["id"])
+                # Invalidate and refresh cache to ensure latest data
+                invalidate_user_cache(viewer["id"])
+                g.user = refresh_user_cache(viewer["id"])
                 flash("Notification preferences updated.", "success")
 
             elif form_name == "change-password":
@@ -1532,6 +1536,8 @@ def profile_settings():
                     flash("Password must be at least 12 characters.", "error")
                 else:
                     db.update_user_password(viewer["id"], generate_password_hash(new_pw))
+                    # Invalidate cache after password change (security best practice)
+                    invalidate_user_cache(viewer["id"])
                     flash("Password updated.", "success")
 
             elif form_name == "avatar":
@@ -1581,8 +1587,9 @@ def profile_settings():
                                 rel_path = f"uploads/profile_photos/{unique_name}"
                                 db.update_user_profile(viewer["id"], profile_image_path=rel_path)
                                 
-                                # Refresh g.user to show updated image immediately
-                                g.user = db.get_user_by_id(viewer["id"])
+                                # Invalidate and refresh cache to show updated image immediately
+                                invalidate_user_cache(viewer["id"])
+                                g.user = refresh_user_cache(viewer["id"])
                                 
                                 flash("Profile photo updated.", "success")
             else:

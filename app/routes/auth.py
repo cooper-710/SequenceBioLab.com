@@ -136,6 +136,13 @@ def login():
         session['last_name'] = user.get('last_name', '')
         session['is_admin'] = bool(user.get('is_admin', False))
         session.permanent = True  # Make session persist across browser restarts
+        
+        # Cache full user object (exclude password_hash for security)
+        import time
+        user_cache = {k: v for k, v in user.items() if k != "password_hash"}
+        session["_cached_user"] = user_cache
+        session["_user_cache_timestamp"] = time.time()
+        
         generate_csrf_token()
         
         flash("Signed in successfully.", "success")
@@ -278,6 +285,10 @@ def logout():
     
     for key in ("user_id", "first_name", "last_name", "is_admin"):
         session.pop(key, None)
+    # Clear user cache
+    session.pop("_cached_user", None)
+    session.pop("_user_cache_timestamp", None)
+    session.pop("_user_cache_version", None)
     session.pop('csrf_token', None)
     generate_csrf_token()
     

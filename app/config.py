@@ -94,6 +94,10 @@ class Config:
     # Session configuration - sessions persist for 30 days
     PERMANENT_SESSION_LIFETIME = timedelta(days=30)
     
+    # User cache TTL in seconds (default: 5 minutes)
+    # This controls how long user data is cached in session before refreshing from database
+    USER_CACHE_TTL_SECONDS = int(os.environ.get("USER_CACHE_TTL_SECONDS", "300"))
+    
     @classmethod
     def ensure_directories(cls):
         """Create required directories"""

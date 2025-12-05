@@ -6,6 +6,7 @@ from flask import session, g, redirect, url_for, flash, request, abort
 from app.config import Config
 from app.constants import AUTH_EXEMPT_ENDPOINTS
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
@@ -15,12 +16,49 @@ except ImportError:
     PlayerDB = None
 
 
+def invalidate_user_cache(user_id=None):
+    """Invalidate user cache in session"""
+    if user_id is None:
+        user_id = session.get("user_id")
+    
+    cached_user = session.get("_cached_user")
+    if cached_user and cached_user.get("id") == user_id:
+        session.pop("_cached_user", None)
+        session.pop("_user_cache_timestamp", None)
+        session.pop("_user_cache_version", None)
+
+
+def refresh_user_cache(user_id=None):
+    """Force refresh user cache from database"""
+    if user_id is None:
+        user_id = session.get("user_id")
+    
+    if not user_id or not PlayerDB:
+        return None
+    
+    try:
+        db = PlayerDB()
+        user = db.get_user_by_id(user_id)
+        db.close()
+        
+        if user:
+            # Exclude password_hash for security
+            user_cache = {k: v for k, v in user.items() if k != "password_hash"}
+            session["_cached_user"] = user_cache
+            session["_user_cache_timestamp"] = time.time()
+            return user_cache
+    except Exception:
+        pass
+    
+    return None
+
+
 def setup_auth_middleware(app):
     """Setup authentication middleware"""
     
     @app.before_request
     def load_authenticated_user():
-        """Load authenticated user for request"""
+        """Load authenticated user for request with session caching"""
         g.user = None
         session.setdefault("is_admin", False)
         user_id = session.get("user_id")
@@ -29,15 +67,55 @@ def setup_auth_middleware(app):
             session["is_admin"] = False
             return
         
+        # Check cache first
+        cached_user = session.get("_cached_user")
+        cache_timestamp = session.get("_user_cache_timestamp", 0)
+        now = time.time()
+        cache_ttl = Config.USER_CACHE_TTL_SECONDS
+        
+        # Use cache if valid and not expired
+        if cached_user and cached_user.get("id") == user_id:
+            if (now - cache_timestamp) < cache_ttl:
+                g.user = cached_user
+                # Update session flags from cached data
+                session["is_admin"] = bool(cached_user.get("is_admin"))
+                if cached_user:
+                    session["first_name"] = cached_user.get("first_name", "")
+                    session["last_name"] = cached_user.get("last_name", "")
+                    if cached_user.get("theme_preference"):
+                        session["theme_preference"] = cached_user["theme_preference"]
+                
+                # Still check is_active for security (but don't query DB)
+                if not cached_user.get("is_admin"):
+                    is_active = cached_user.get("is_active")
+                    if is_active is not None and not is_active:
+                        session.clear()
+                        endpoint = request.endpoint or ""
+                        if endpoint not in {"auth.account_deactivated", "auth.login", "auth.register", "auth.verify_email", 
+                                            "auth.verify_email_pending", "auth.resend_verification", "static"}:
+                            return redirect(url_for("auth.account_deactivated"))
+                return
+        
+        # Cache miss or expired - query database
         try:
             db = PlayerDB()
             g.user = db.get_user_by_id(user_id)
             db.close()
+            
+            if g.user:
+                # Store in cache (exclude password_hash for security)
+                user_cache = {k: v for k, v in g.user.items() if k != "password_hash"}
+                session["_cached_user"] = user_cache
+                session["_user_cache_timestamp"] = now
         except Exception as exc:
             import logging
             logger = logging.getLogger(__name__)
             logger.warning(f"Failed to load user {user_id}: {exc}")
-            g.user = None
+            # On error, try to use stale cache if available
+            if cached_user and cached_user.get("id") == user_id:
+                g.user = cached_user
+            else:
+                g.user = None
             # Don't clear session on transient connection errors
             # Only clear if it's a permanent auth failure
             if "timeout" not in str(exc).lower() and "connection" not in str(exc).lower():
