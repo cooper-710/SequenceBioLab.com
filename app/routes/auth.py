@@ -135,6 +135,7 @@ def login():
         session['first_name'] = user.get('first_name', '')
         session['last_name'] = user.get('last_name', '')
         session['is_admin'] = bool(user.get('is_admin', False))
+        session.permanent = True  # Make session persist across browser restarts
         generate_csrf_token()
         
         flash("Signed in successfully.", "success")

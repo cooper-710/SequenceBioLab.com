@@ -29,6 +29,7 @@ def create_app(config=None):
     app.config['SECRET_KEY'] = Config.SECRET_KEY
     app.config['DEBUG'] = Config.DEBUG
     app.config['USE_MOCK_SCHEDULE'] = Config.USE_MOCK_SCHEDULE
+    app.config['PERMANENT_SESSION_LIFETIME'] = Config.PERMANENT_SESSION_LIFETIME
     
     # Ensure directories exist
     Config.ensure_directories()

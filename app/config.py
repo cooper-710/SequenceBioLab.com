@@ -4,6 +4,7 @@ Application configuration management
 import os
 from pathlib import Path
 from functools import lru_cache
+from datetime import timedelta
 import secrets
 import settings_manager
 
@@ -89,6 +90,9 @@ class Config:
     
     # Series management
     SERIES_AUTO_DELETE_GRACE_SECONDS = 0
+    
+    # Session configuration - sessions persist for 30 days
+    PERMANENT_SESSION_LIFETIME = timedelta(days=30)
     
     @classmethod
     def ensure_directories(cls):
