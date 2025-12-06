@@ -30,7 +30,7 @@
                     </p>
                 </div>
                 
-                <nav class="sidebar-nav">
+                <nav class="sidebar-nav{% if session.get('is_admin') %} sidebar-nav-admin{% endif %}">
                     {% if session.get('is_admin') %}
                     <a href="{{ url_for('pages.home') }}" class="nav-item {% if request.endpoint == 'pages.home' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-house-chimney"></i></span>

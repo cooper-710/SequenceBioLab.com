@@ -452,6 +452,11 @@ body {
     min-height: 0;
 }
 
+/* Enable scrolling for admin users who have more navigation items */
+.sidebar-nav-admin {
+    overflow-y: auto;
+}
+
 .nav-item {
     display: flex;
     align-items: center;
