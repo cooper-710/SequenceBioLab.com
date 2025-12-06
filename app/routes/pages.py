@@ -1089,6 +1089,20 @@ def matchups():
     )
 
 
+@bp.route('/video')
+@login_required
+def video():
+    """Video page"""
+    return render_template('video.html')
+
+
+@bp.route('/tools')
+@login_required
+def tools():
+    """Tools page"""
+    return render_template('tools.html')
+
+
 @bp.route('/game-analysis')
 def game_analysis():
     """Game analysis page"""

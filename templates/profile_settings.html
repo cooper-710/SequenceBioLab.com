@@ -211,6 +211,24 @@
                     </form>
                 </div>
             </section>
+
+            <section class="profile-panel logout-panel">
+                <div class="panel-heading">
+                    <div>
+                        <h2>Logout</h2>
+                        <p>Sign out of your account.</p>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <form method="post" action="{{ url_for('auth.logout') }}" class="logout-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn btn-secondary full-width logout-button">
+                            <i class="fas fa-right-from-bracket"></i>
+                            <span>Logout</span>
+                        </button>
+                    </form>
+                </div>
+            </section>
         </div>
     </div>
 </div>

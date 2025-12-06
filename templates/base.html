@@ -67,7 +67,7 @@
                     </a>
                     <a href="{{ url_for('player_database') }}" class="nav-item {% if request.endpoint == 'player_database' or request.endpoint == 'pages.player_database' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-magnifying-glass"></i></span>
-                        <span class="nav-text">Player Database</span>
+                        <span class="nav-text">Stats</span>
                     </a>
                     <a href="{{ url_for('visuals') }}" class="nav-item {% if request.endpoint == 'visuals' or request.endpoint == 'pages.visuals' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-chart-line"></i></span>
@@ -99,8 +99,14 @@
                     </a>
                     <div class="nav-divider"></div>
                     <a href="{{ url_for('pages.profile_settings') }}" class="nav-item {% if request.endpoint == 'pages.profile_settings' %}active{% endif %}">
-                        <span class="nav-icon"><i class="fas fa-user-gear"></i></span>
-                        <span class="nav-text">Profile Settings</span>
+                        <span class="nav-icon">
+                            {% if current_user and current_user.profile_image_path %}
+                                <img src="{{ url_for('static', filename=current_user.profile_image_path) }}?v={% if current_user.id %}{{ current_user.id }}{% else %}0{% endif %}" alt="{{ current_user.first_name }} {{ current_user.last_name }}" class="nav-profile-picture">
+                            {% else %}
+                                <i class="fas fa-user-gear"></i>
+                            {% endif %}
+                        </span>
+                        <span class="nav-text">Settings</span>
                     </a>
                     <a href="{{ url_for('settings.settings_page') }}" class="nav-item {% if request.endpoint == 'settings.settings_page' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-sliders"></i></span>
@@ -116,70 +122,47 @@
                         <span class="nav-icon"><i class="fas fa-trophy"></i></span>
                         <span class="nav-text">Gameday</span>
                     </a>
-                    <a href="{{ url_for('pages.schedule') }}" class="nav-item {% if request.endpoint == 'pages.schedule' %}active{% endif %}">
-                        <span class="nav-icon"><i class="fas fa-calendar-days"></i></span>
-                        <span class="nav-text">Schedule</span>
-                    </a>
-                    <a href="{{ url_for('pages.live_scores') }}" class="nav-item {% if request.endpoint == 'pages.live_scores' %}active{% endif %}">
-                        <span class="nav-icon"><i class="fas fa-baseball-ball"></i></span>
-                        <span class="nav-text">Live Scores</span>
-                    </a>
-                    <a href="{{ url_for('player_database') }}" class="nav-item {% if request.endpoint == 'player_database' or request.endpoint == 'pages.player_database' %}active{% endif %}">
-                        <span class="nav-icon"><i class="fas fa-magnifying-glass"></i></span>
-                        <span class="nav-text">Player Database</span>
+                    <a href="{{ url_for('workouts') }}" class="nav-item {% if request.endpoint == 'workouts' or request.endpoint == 'pages.workouts' %}active{% endif %}">
+                        <span class="nav-icon"><i class="fas fa-dumbbell"></i></span>
+                        <span class="nav-text">Workouts</span>
                     </a>
                     <a href="{{ url_for('mocap') }}" class="nav-item {% if request.endpoint == 'mocap' or request.endpoint == 'pages.mocap' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-person-running"></i></span>
                         <span class="nav-text">Mocap</span>
                     </a>
+                    <a href="{{ url_for('pages.tools') }}" class="nav-item {% if request.endpoint == 'pages.tools' %}active{% endif %}">
+                        <span class="nav-icon"><i class="fas fa-tools"></i></span>
+                        <span class="nav-text">Tools</span>
+                    </a>
+                    <a href="{{ url_for('pages.video') }}" class="nav-item {% if request.endpoint == 'pages.video' %}active{% endif %}">
+                        <span class="nav-icon"><i class="fas fa-video"></i></span>
+                        <span class="nav-text">Video</span>
+                    </a>
                     <a href="{{ url_for('pitchviz') }}" class="nav-item {% if request.endpoint == 'pitchviz' or request.endpoint == 'pages.pitchviz' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-wave-square"></i></span>
                         <span class="nav-text">PitchViz</span>
-                    </a>
-                    <a href="{{ url_for('workouts') }}" class="nav-item {% if request.endpoint == 'workouts' or request.endpoint == 'pages.workouts' %}active{% endif %}">
-                        <span class="nav-icon"><i class="fas fa-dumbbell"></i></span>
-                        <span class="nav-text">Workouts</span>
-                    </a>
-                    <a href="{{ url_for('journaling') }}" class="nav-item {% if request.endpoint == 'journaling' or request.endpoint == 'pages.journaling' %}active{% endif %}">
-                        <span class="nav-icon"><i class="fas fa-pen-to-square"></i></span>
-                        <span class="nav-text">Journaling</span>
                     </a>
                     <a href="{{ url_for('pages.matchups') }}" class="nav-item {% if request.endpoint == 'pages.matchups' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-crosshairs"></i></span>
                         <span class="nav-text">Matchups</span>
                     </a>
+                    <a href="{{ url_for('player_database') }}" class="nav-item {% if request.endpoint == 'player_database' or request.endpoint == 'pages.player_database' %}active{% endif %}">
+                        <span class="nav-icon"><i class="fas fa-magnifying-glass"></i></span>
+                        <span class="nav-text">Stats</span>
+                    </a>
                     <div class="nav-divider"></div>
                     <a href="{{ url_for('pages.profile_settings') }}" class="nav-item {% if request.endpoint == 'pages.profile_settings' %}active{% endif %}">
-                        <span class="nav-icon"><i class="fas fa-user-gear"></i></span>
-                        <span class="nav-text">Profile Settings</span>
+                        <span class="nav-icon">
+                            {% if current_user and current_user.profile_image_path %}
+                                <img src="{{ url_for('static', filename=current_user.profile_image_path) }}?v={% if current_user.id %}{{ current_user.id }}{% else %}0{% endif %}" alt="{{ current_user.first_name }} {{ current_user.last_name }}" class="nav-profile-picture">
+                            {% else %}
+                                <i class="fas fa-user-gear"></i>
+                            {% endif %}
+                        </span>
+                        <span class="nav-text">Settings</span>
                     </a>
                     {% endif %}
-                    <div class="nav-user-block">
-                        <div class="nav-item nav-item-static">
-                            <span class="nav-icon">
-                                {% if current_user and current_user.profile_image_path %}
-                                    <img src="{{ url_for('static', filename=current_user.profile_image_path) }}?v={% if current_user.id %}{{ current_user.id }}{% else %}0{% endif %}" alt="{{ current_user.first_name }} {{ current_user.last_name }}" class="nav-profile-picture">
-                                {% else %}
-                                    <i class="fas fa-user-circle"></i>
-                                {% endif %}
-                            </span>
-                            <span class="nav-text nav-user-name">
-                                {{ session.get('first_name', '') }} {{ session.get('last_name', '') }}
-                            </span>
-                        </div>
-                        <form method="post" action="{{ url_for('auth.logout') }}" class="nav-item nav-logout-form">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button type="submit">
-                                <span class="nav-icon"><i class="fas fa-right-from-bracket"></i></span>
-                                <span class="nav-text">Logout</span>
-                            </button>
-                        </form>
-                    </div>
                 </nav>
-                
-                <div class="sidebar-footer">
-                    <p class="version-text">v1.0</p>
-                </div>
             </aside>
             {% if user_authenticated %}
                 <!-- Sidebar Overlay for Mobile -->
