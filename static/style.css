@@ -316,7 +316,17 @@ body {
 }
 
 /* Mobile view - add blank header space above sidebar-header */
-@media (max-width: 1024px) {
+@media (max-width: 1024px) and (orientation: landscape) {
+    .sidebar .sidebar-header::before {
+        content: '';
+        display: block;
+        width: 100%;
+        height: 20px;
+        background: transparent;
+    }
+}
+
+@media (max-width: 1024px) and (orientation: portrait) {
     .sidebar .sidebar-header::before {
         content: '';
         display: block;
@@ -326,8 +336,8 @@ body {
     }
 }
 
-/* Hide sidebar header logo on small mobile - mobile button logo serves this purpose */
-@media (max-width: 768px) {
+/* Hide sidebar header logo when mobile menu button is visible - mobile button logo serves this purpose */
+@media (max-width: 1024px) {
     .sidebar .sidebar-header .logo-container,
     .sidebar.open .sidebar-header .logo-container,
     .sidebar:not(.collapsed) .sidebar-header .logo-container {
@@ -353,7 +363,7 @@ body {
         padding: 0 !important;
     }
     
-    /* Adjust sidebar header padding on small mobile since logo is removed */
+    /* Adjust sidebar header padding on mobile since logo is removed */
     .sidebar .sidebar-header {
         padding-top: 16px !important;
         padding-bottom: 16px !important;
@@ -471,6 +481,44 @@ body {
 /* Enable scrolling for admin users who have more navigation items */
 .sidebar-nav-admin {
     overflow-y: auto;
+}
+
+/* Desktop: Never show scrollbar */
+@media (min-width: 1025px) {
+    .sidebar-nav,
+    .sidebar-nav-admin {
+        overflow-y: hidden !important;
+        overflow-x: hidden !important;
+    }
+}
+
+/* Mobile/Tablet Portrait: No scrollbar, fit all items */
+@media (max-width: 1024px) and (orientation: portrait) {
+    .sidebar-nav,
+    .sidebar-nav-admin {
+        overflow-y: hidden !important;
+        overflow-x: hidden !important;
+    }
+    
+    /* Reduce padding and gap to fit more items */
+    .sidebar-nav {
+        padding: 12px 12px !important;
+        gap: 2px !important;
+    }
+    
+    .nav-item {
+        padding: 10px 14px !important;
+        gap: 10px !important;
+    }
+}
+
+/* Mobile/Tablet Landscape: Allow scrollbar when needed */
+@media (max-width: 1024px) and (orientation: landscape) {
+    .sidebar-nav,
+    .sidebar-nav-admin {
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+    }
 }
 
 .nav-item {
