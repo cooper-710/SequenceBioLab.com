@@ -382,6 +382,8 @@ body {
     z-index: 0;
     overflow: hidden;
     background: var(--color-main-bg);
+    visibility: visible;
+    opacity: 1;
 }
 
 .sphere {
@@ -389,6 +391,9 @@ body {
     border-radius: 50%;
     opacity: 0.3;
     animation: floatSphere 20s ease-in-out infinite;
+    will-change: transform;
+    transform: translateZ(0);
+    backface-visibility: hidden;
 }
 
 .sphere-1 {
@@ -1929,6 +1934,11 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
     
+    // Hide the elements initially
+    welcomeElement.style.opacity = '0';
+    nameElement.style.opacity = '0';
+    cursorElement.style.opacity = '0';
+    
     const firstName = '{{ current_user.first_name or "" }}';
     const welcomeText = 'Welcome, ';
     
@@ -1936,17 +1946,12 @@ document.addEventListener('DOMContentLoaded', function() {
     let nameIndex = 0;
     const typingSpeed = 100; // milliseconds per character
     
-    // Reserve space to prevent layout shifts
-    welcomeElement.textContent = welcomeText;
-    nameElement.textContent = firstName;
-    cursorElement.style.visibility = 'visible';
-    
     // Wait for fonts to load
     function startTyping() {
-        // Clear the reserved text
-        welcomeElement.textContent = '';
-        nameElement.textContent = '';
-        cursorElement.style.visibility = 'visible';
+        // Show elements and start typing
+        welcomeElement.style.opacity = '1';
+        nameElement.style.opacity = '1';
+        cursorElement.style.opacity = '1';
         
         function typeWelcome() {
             if (welcomeIndex < welcomeText.length) {
@@ -1972,23 +1977,26 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        // Start typing after a short delay
-        setTimeout(typeWelcome, 500);
+        // Start typing immediately after fonts are ready
+        typeWelcome();
     }
     
-    if (document.fonts && document.fonts.ready) {
-        document.fonts.ready.then(() => {
-            requestAnimationFrame(() => {
+    // Delay animation start by 1 second after page load
+    setTimeout(function() {
+        if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(() => {
                 requestAnimationFrame(() => {
-                    startTyping();
+                    requestAnimationFrame(() => {
+                        startTyping();
+                    });
                 });
             });
-        });
-    } else {
-        setTimeout(() => {
-            startTyping();
-        }, 400);
-    }
+        } else {
+            setTimeout(() => {
+                startTyping();
+            }, 400);
+        }
+    }, 1000); // 1 second delay from page load
 });
 
 // Handle player schedule search functionality (for admin)

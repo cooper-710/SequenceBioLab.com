@@ -182,6 +182,29 @@
         
         <!-- Main Content -->
         <main class="{% if user_authenticated %}main-content{% else %}unauthenticated-shell{% endif %}">
+            <!-- Global Page Loading Overlay -->
+            <div id="globalPageLoader" class="global-page-loader hidden">
+                <div class="idle-scene">
+                    <div class="idle-gradient"></div>
+                    <div class="idle-grid"></div>
+                    <div class="idle-grid idle-grid-alt"></div>
+
+                    <div class="idle-logo">
+                        <div class="idle-logo-ring ring-outer"></div>
+                        <div class="idle-logo-ring ring-mid"></div>
+                        <div class="idle-logo-ring ring-inner"></div>
+                        <img src="{{ url_for('static', filename='sequence-logo.png') }}" alt="Sequence BioLab logo">
+                    </div>
+
+                    <div class="idle-spark idle-spark-1"></div>
+                    <div class="idle-spark idle-spark-2"></div>
+                    <div class="idle-spark idle-spark-3"></div>
+                </div>
+                <div class="placeholder-text">
+                    <p>SEQUENCE</p>
+                </div>
+            </div>
+
             {% with messages = get_flashed_messages(with_categories=True) %}
                 {% if messages %}
                 <div class="flash-container">
@@ -210,6 +233,82 @@
     
     {% block scripts %}{% endblock %}
     <script>
+        // Global page loading overlay
+        (function() {
+            const globalLoader = document.getElementById('globalPageLoader');
+            if (!globalLoader) return;
+
+            // Show loading screen immediately on navigation
+            function showLoadingScreen() {
+                if (globalLoader) {
+                    globalLoader.classList.remove('hidden');
+                }
+            }
+
+            // Hide loading screen (called when page loads)
+            function hideLoadingScreen() {
+                if (globalLoader) {
+                    globalLoader.classList.add('hidden');
+                }
+            }
+
+            // Intercept all navigation link clicks
+            function setupNavigationInterception() {
+                const navItems = document.querySelectorAll('.nav-item[href]');
+                navItems.forEach(item => {
+                    item.addEventListener('click', function(e) {
+                        const href = this.getAttribute('href');
+                        // Only intercept internal links (not external or special links)
+                        if (href && !href.startsWith('#') && !href.startsWith('javascript:') && !href.startsWith('mailto:') && !href.startsWith('http') && href !== '') {
+                            // Show loading screen immediately
+                            showLoadingScreen();
+                            // Let the browser handle navigation normally
+                            // The loading screen will be visible until the new page loads
+                        }
+                    });
+                });
+
+                // Also intercept clicks on other navigation links (like featured cards, action cards, etc.)
+                const allNavLinks = document.querySelectorAll('a[href]');
+                allNavLinks.forEach(link => {
+                    const href = link.getAttribute('href');
+                    // Only intercept internal navigation links
+                    if (href && !href.startsWith('#') && !href.startsWith('javascript:') && !href.startsWith('mailto:') && !href.startsWith('http') && href !== '') {
+                        // Check if it's a navigation link (not a form submission or special action)
+                        if (!link.closest('form') && !link.hasAttribute('download') && !link.hasAttribute('target')) {
+                            link.addEventListener('click', function(e) {
+                                showLoadingScreen();
+                            });
+                        }
+                    }
+                });
+            }
+
+            // Hide loading screen when page is fully loaded
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() {
+                    hideLoadingScreen();
+                    setupNavigationInterception();
+                });
+            } else {
+                // Page already loaded
+                hideLoadingScreen();
+                setupNavigationInterception();
+            }
+
+            // Also hide on page visibility change (in case of back/forward navigation)
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden) {
+                    hideLoadingScreen();
+                }
+            });
+
+            // Hide on pageshow event (handles back/forward cache)
+            window.addEventListener('pageshow', function(event) {
+                hideLoadingScreen();
+            });
+        })();
+
         // Enhanced Sidebar toggle functionality with mobile support
         (function() {
             const sidebar = document.getElementById('sidebar');

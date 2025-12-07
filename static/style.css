@@ -212,7 +212,15 @@ body {
 
 /* Collapsed Sidebar State */
 .sidebar.collapsed {
-    width: 80px;
+    width: 80px !important;
+    min-width: 80px !important;
+    max-width: 80px !important;
+}
+
+/* Prevent sidebar from expanding on interaction when collapsed */
+.sidebar.collapsed .nav-item:focus,
+.sidebar.collapsed .nav-item:active {
+    outline: none;
 }
 
 .sidebar.collapsed .sidebar-title,
@@ -228,6 +236,7 @@ body {
     margin: 0;
     padding: 0;
     flex: 0 0 0;
+    transition: none !important;
 }
 
 .sidebar.collapsed .logo-container {
@@ -276,6 +285,7 @@ body {
     box-sizing: border-box;
     text-align: center;
     position: relative;
+    transition: background 0.2s ease, color 0.2s ease;
 }
 
 .sidebar.collapsed .nav-icon {
@@ -650,6 +660,23 @@ body {
 
 .nav-item:hover::before {
     opacity: 1;
+}
+
+/* Disable hover effects when sidebar is collapsed to prevent expansion on click */
+.sidebar.collapsed .nav-item:hover,
+.sidebar.collapsed .nav-item:focus,
+.sidebar.collapsed .nav-item:active {
+    transform: none !important;
+    background: rgba(255, 255, 255, 0.05);
+    border-color: transparent !important;
+    box-shadow: none !important;
+    outline: none;
+}
+
+.sidebar.collapsed .nav-item:hover::before,
+.sidebar.collapsed .nav-item:focus::before,
+.sidebar.collapsed .nav-item:active::before {
+    opacity: 0 !important;
 }
 
 .nav-item.active {
@@ -1751,6 +1778,54 @@ body[data-theme='light'] .sidebar-overlay {
     0% { transform: rotate(0deg) scale(1); opacity: 0.45; }
     50% { transform: rotate(180deg) scale(1.02); opacity: 0.7; }
     100% { transform: rotate(360deg) scale(1); opacity: 0.45; }
+}
+
+/* Global Page Loading Overlay */
+.global-page-loader {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--color-main-bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 99999;
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.global-page-loader.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.global-page-loader .idle-scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+.global-page-loader .placeholder-text {
+    position: absolute;
+    bottom: 20%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+}
+
+.global-page-loader .placeholder-text p {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    letter-spacing: 0.1em;
+    margin: 0;
 }
 
 @keyframes sparkTravel {
