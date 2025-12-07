@@ -10,8 +10,12 @@
 
 {% block content %}
 <div class="welcome-page">
-    <!-- Dot Grid Background Canvas -->
-    <canvas id="dot-grid-canvas" class="dot-grid-canvas"></canvas>
+    <!-- Orange Spheres Background -->
+    <div class="spheres-background">
+        <div class="sphere sphere-1"></div>
+        <div class="sphere sphere-2"></div>
+        <div class="sphere sphere-3"></div>
+    </div>
     
     <!-- Hero Section - Inspired by Apple AirPods Max & MNTN -->
     <section class="welcome-hero">
@@ -367,8 +371,8 @@ body {
     min-height: 100vh;
 }
 
-/* Dot Grid Background Canvas */
-.dot-grid-canvas {
+/* Orange Spheres Background */
+.spheres-background {
     position: fixed;
     top: 0;
     left: 0;
@@ -376,15 +380,60 @@ body {
     height: 100%;
     pointer-events: none;
     z-index: 0;
-    visibility: hidden;
-    opacity: 0;
-    transition: opacity 0.3s ease-in, visibility 0s linear 0.3s;
+    overflow: hidden;
+    background: var(--color-main-bg);
 }
 
-.dot-grid-canvas.ready {
-    visibility: visible;
-    opacity: 0.4;
-    transition: opacity 0.3s ease-in, visibility 0s;
+.sphere {
+    position: absolute;
+    border-radius: 50%;
+    opacity: 0.3;
+    animation: floatSphere 20s ease-in-out infinite;
+}
+
+.sphere-1 {
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(circle at 30% 30%, rgba(255, 149, 0, 0.9), rgba(255, 127, 0, 0.6));
+    top: -150px;
+    right: -100px;
+    animation-delay: 0s;
+    animation-duration: 25s;
+}
+
+.sphere-2 {
+    width: 350px;
+    height: 350px;
+    background: radial-gradient(circle at 30% 30%, rgba(255, 127, 0, 0.9), rgba(255, 149, 0, 0.6));
+    bottom: 10%;
+    left: -100px;
+    animation-delay: -8s;
+    animation-duration: 30s;
+}
+
+.sphere-3 {
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle at 30% 30%, rgba(255, 149, 0, 0.85), rgba(255, 127, 0, 0.55));
+    top: 50%;
+    right: 10%;
+    animation-delay: -15s;
+    animation-duration: 28s;
+}
+
+@keyframes floatSphere {
+    0%, 100% {
+        transform: translate(0, 0) scale(1);
+    }
+    25% {
+        transform: translate(40px, -40px) scale(1.1);
+    }
+    50% {
+        transform: translate(-30px, 30px) scale(0.9);
+    }
+    75% {
+        transform: translate(30px, 40px) scale(1.05);
+    }
 }
 
 /* Ensure all child elements respect container width */
@@ -523,8 +572,6 @@ body {
 #typing-name {
     display: inline-block;
     white-space: nowrap;
-    font-family: 'Dancing Script', cursive;
-    font-weight: 500;
     color: var(--color-accent);
     margin-left: 0.2em;
 }
@@ -648,8 +695,10 @@ body {
 }
 
 .featured-action-card {
-    background: #000000;
-    border: 1px solid var(--color-layer-border);
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 24px;
     padding: 40px;
     display: flex;
@@ -663,6 +712,13 @@ body {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+body[data-theme='light'] .featured-action-card {
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
 
 .featured-action-card::before {
@@ -677,8 +733,14 @@ body {
 
 .featured-action-card:hover {
     transform: translateY(-8px);
-    border-color: rgba(255, 127, 0, 0.4);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    border-color: rgba(255, 127, 0, 0.5);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 127, 0, 0.1);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+body[data-theme='light'] .featured-action-card:hover {
+    background: rgba(255, 255, 255, 0.8);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(255, 127, 0, 0.2);
 }
 
 .featured-action-card:hover::before {
@@ -686,8 +748,13 @@ body {
 }
 
 .featured-primary {
-    background: #000000;
-    border-color: rgba(255, 127, 0, 0.3);
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 127, 0, 0.4);
+}
+
+body[data-theme='light'] .featured-primary {
+    background: rgba(255, 255, 255, 0.75);
+    border-color: rgba(255, 127, 0, 0.5);
 }
 
 .featured-card-icon {
@@ -925,7 +992,7 @@ body {
 .all-actions-subtitle {
     margin: 0;
     font-size: 1.125rem;
-    color: var(--color-text-secondary);
+    color: var(--color-accent);
 }
 
 .all-actions-grid {
@@ -961,8 +1028,10 @@ body {
 }
 
 .action-card {
-    background: #000000;
-    border: 1px solid var(--color-layer-border);
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 20px;
     padding: 32px;
     display: flex;
@@ -978,6 +1047,13 @@ body {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+body[data-theme='light'] .action-card {
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
 
 .action-card::before {
@@ -992,8 +1068,14 @@ body {
 
 .action-card:hover {
     transform: translateY(-6px);
-    border-color: rgba(255, 127, 0, 0.4);
-    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.25);
+    border-color: rgba(255, 127, 0, 0.5);
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 127, 0, 0.1);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+body[data-theme='light'] .action-card:hover {
+    background: rgba(255, 255, 255, 0.8);
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(255, 127, 0, 0.2);
 }
 
 .action-card:hover::before {
@@ -2029,132 +2111,6 @@ document.addEventListener('DOMContentLoaded', function() {
         } else if (e.key === 'Escape') {
             dropdown.style.display = 'none';
         }
-    });
-});
-
-// Interactive Dot Grid Background
-document.addEventListener('DOMContentLoaded', function() {
-    const canvas = document.getElementById('dot-grid-canvas');
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    let mouseX = 0;
-    let mouseY = 0;
-    let dots = [];
-    let isReady = false;
-    
-    // Dot grid configuration
-    const DOT_SPACING = 30;
-    const DOT_RADIUS = 1.5;
-    const DOT_COLOR = '#000000'; // Black color for default dots
-    const HIGHLIGHT_COLOR = '#ff7f00'; // Orange highlight matching site accent color
-    const HIGHLIGHT_RADIUS = 80; // Radius of highlight effect
-    const DOT_OPACITY = 0.3;
-    const HIGHLIGHT_OPACITY = 1;
-    
-    function resizeCanvas() {
-        // Get the display size
-        const displayWidth = window.innerWidth;
-        const displayHeight = window.innerHeight;
-        
-        // Set the canvas internal size to match display size (prevents stretching)
-        if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
-            canvas.width = displayWidth;
-            canvas.height = displayHeight;
-            initDots();
-        }
-        drawDots();
-    }
-    
-    function initDots() {
-        dots = [];
-        const cols = Math.ceil(canvas.width / DOT_SPACING);
-        const rows = Math.ceil(canvas.height / DOT_SPACING);
-        
-        for (let x = 0; x < cols; x++) {
-            for (let y = 0; y < rows; y++) {
-                dots.push({
-                    x: x * DOT_SPACING,
-                    y: y * DOT_SPACING
-                });
-            }
-        }
-    }
-    
-    function drawDots() {
-        if (canvas.width === 0 || canvas.height === 0 || dots.length === 0) return;
-        
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        dots.forEach(dot => {
-            const dx = mouseX - dot.x;
-            const dy = mouseY - dot.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            let opacity = DOT_OPACITY;
-            let radius = DOT_RADIUS;
-            let color = DOT_COLOR;
-            
-            if (distance < HIGHLIGHT_RADIUS) {
-                // Calculate highlight intensity based on distance
-                const intensity = 1 - (distance / HIGHLIGHT_RADIUS);
-                opacity = DOT_OPACITY + (HIGHLIGHT_OPACITY - DOT_OPACITY) * intensity;
-                radius = DOT_RADIUS + (3 - DOT_RADIUS) * intensity;
-                color = HIGHLIGHT_COLOR;
-            }
-            
-            ctx.beginPath();
-            ctx.arc(dot.x, dot.y, radius, 0, Math.PI * 2);
-            ctx.fillStyle = color;
-            ctx.globalAlpha = opacity;
-            ctx.fill();
-        });
-        
-        ctx.globalAlpha = 1;
-        
-        // Show canvas after first successful draw
-        if (!isReady && canvas.width > 0 && canvas.height > 0 && dots.length > 0) {
-            isReady = true;
-            // Use requestAnimationFrame to ensure the draw is complete before showing
-            requestAnimationFrame(() => {
-                canvas.classList.add('ready');
-            });
-        }
-    }
-    
-    function handleMouseMove(e) {
-        mouseX = e.clientX;
-        mouseY = e.clientY;
-        if (isReady) {
-            drawDots();
-        }
-    }
-    
-    function handleMouseLeave() {
-        // Reset to center when mouse leaves
-        mouseX = canvas.width / 2;
-        mouseY = canvas.height / 2;
-        if (isReady) {
-            drawDots();
-        }
-    }
-    
-    // Initialize - wait for next frame to ensure DOM is ready
-    requestAnimationFrame(() => {
-        resizeCanvas();
-        
-        // Set initial mouse position to center
-        mouseX = canvas.width / 2;
-        mouseY = canvas.height / 2;
-        
-        // Event listeners
-        window.addEventListener('resize', function() {
-            resizeCanvas();
-            mouseX = canvas.width / 2;
-            mouseY = canvas.height / 2;
-        });
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseleave', handleMouseLeave);
     });
 });
 </script>
