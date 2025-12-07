@@ -454,7 +454,7 @@ body {
     width: 100%;
     box-sizing: border-box;
     padding: 0 16px;
-    overflow: visible;
+    overflow: hidden;
 }
 
 .hero-main-title {
@@ -481,6 +481,7 @@ body {
     font-size: 0.65em;
     min-width: 0;
     white-space: nowrap;
+    flex-shrink: 1;
 }
 
 /* Hide typing elements initially to prevent flash on page load */
@@ -509,6 +510,7 @@ body {
     font-size: 0.75em;
     min-width: 0;
     white-space: nowrap;
+    flex-shrink: 1;
 }
 
 
@@ -1792,7 +1794,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             typeLastName();
                         }, pauseBetweenNames);
                     }
-                    // If no last name, we're done
                 }
             }
         }
