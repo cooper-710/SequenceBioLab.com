@@ -1786,15 +1786,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 firstNameIndex++;
                 if (firstNameIndex <= firstName.length) {
                     setTimeout(typeFirstName, typingSpeed);
-                } else {
-                    // First name complete
-                    if (lastName && lastName.trim()) {
-                        // If there's a last name, pause then start typing it
-                        setTimeout(() => {
-                            typeLastName();
-                        }, pauseBetweenNames);
-                    }
                 }
+                // First name complete - only show first name, don't type last name
             }
         }
         
