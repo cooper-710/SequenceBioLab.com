@@ -473,11 +473,20 @@ body {
     justify-content: center;
     overflow: visible;
     padding: 20px 0;
+    min-height: 1.3em;
 }
 
 .hero-title-line {
     display: inline-block;
     font-size: 0.65em;
+    min-width: 0;
+    white-space: nowrap;
+}
+
+/* Hide typing elements initially to prevent flash on page load */
+#typing-welcome,
+#typing-name {
+    visibility: hidden;
 }
 
 .hero-title-name {
@@ -498,6 +507,8 @@ body {
     overflow: visible;
     line-height: 1.2;
     font-size: 0.75em;
+    min-width: 0;
+    white-space: nowrap;
 }
 
 
@@ -1740,13 +1751,18 @@ document.addEventListener('DOMContentLoaded', function() {
     const nameElement = document.getElementById('typing-name');
     
     if (welcomeElement && nameElement) {
-        const userName = '{{ current_user.first_name or current_user.email }}';
+        const fullName = '{{ (current_user.first_name ~ " " ~ current_user.last_name) if (current_user.first_name and current_user.last_name) else (current_user.first_name or current_user.email) }}';
+        const firstName = '{{ current_user.first_name or "" }}';
+        const lastName = '{{ current_user.last_name or "" }}';
         const welcomeText = 'Welcome,';
         let welcomeIndex = 0;
-        let nameIndex = 0;
-        const typingSpeed = 80; // milliseconds per character
-        const pauseAfterWelcome = 400; // pause after "Welcome,"
+        let firstNameIndex = 0;
+        let lastNameIndex = 0;
+        const typingSpeed = 120; // milliseconds per character (slower)
+        const pauseAfterWelcome = 500; // pause after "Welcome,"
+        const pauseBetweenNames = 300; // pause between first and last name
         
+        // Define animation functions first
         function typeWelcome() {
             if (welcomeIndex <= welcomeText.length) {
                 welcomeElement.textContent = welcomeText.substring(0, welcomeIndex);
@@ -1754,26 +1770,110 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (welcomeIndex <= welcomeText.length) {
                     setTimeout(typeWelcome, typingSpeed);
                 } else {
-                    // Welcome complete, pause then start typing name
+                    // Welcome complete, pause then start typing first name
                     setTimeout(() => {
-                        typeName();
+                        typeFirstName();
                     }, pauseAfterWelcome);
                 }
             }
         }
         
-        function typeName() {
-            if (nameIndex <= userName.length) {
-                nameElement.textContent = userName.substring(0, nameIndex);
-                nameIndex++;
-                if (nameIndex <= userName.length) {
-                    setTimeout(typeName, typingSpeed);
+        function typeFirstName() {
+            if (firstNameIndex <= firstName.length) {
+                nameElement.textContent = firstName.substring(0, firstNameIndex);
+                firstNameIndex++;
+                if (firstNameIndex <= firstName.length) {
+                    setTimeout(typeFirstName, typingSpeed);
+                } else {
+                    // First name complete
+                    if (lastName && lastName.trim()) {
+                        // If there's a last name, pause then start typing it
+                        setTimeout(() => {
+                            typeLastName();
+                        }, pauseBetweenNames);
+                    }
+                    // If no last name, we're done
                 }
             }
         }
         
-        // Start typing animation after a short delay
-        setTimeout(typeWelcome, 500);
+        function typeLastName() {
+            if (lastNameIndex <= lastName.length) {
+                // Add space and first name, then append last name
+                nameElement.textContent = firstName + (lastNameIndex > 0 ? ' ' + lastName.substring(0, lastNameIndex) : '');
+                lastNameIndex++;
+                if (lastNameIndex <= lastName.length) {
+                    setTimeout(typeLastName, typingSpeed);
+                }
+            }
+        }
+        
+        // Reserve space for BOTH words to prevent layout shifts
+        // Set full text immediately (invisible) to reserve space, then lock it
+        const titleContainer = welcomeElement.parentElement;
+        
+        // Ensure elements are hidden from the start (they should be via CSS, but double-check)
+        welcomeElement.style.visibility = 'hidden';
+        nameElement.style.visibility = 'hidden';
+        
+        // Set full text with visibility hidden to reserve space
+        welcomeElement.textContent = welcomeText;
+        nameElement.textContent = fullName;
+        
+        // Function to measure and lock the container size
+        function lockContainerSize() {
+            // Force multiple reflows to ensure accurate measurement
+            void welcomeElement.offsetHeight;
+            void nameElement.offsetHeight;
+            void titleContainer.offsetHeight;
+            
+            // Measure the actual rendered height (measure multiple times for accuracy)
+            let reservedHeight = titleContainer.offsetHeight;
+            
+            // Measure again after fonts are fully rendered
+            setTimeout(() => {
+                // Re-measure to account for font loading
+                void titleContainer.offsetHeight;
+                reservedHeight = Math.max(reservedHeight, titleContainer.offsetHeight);
+                
+                // Lock height strictly to prevent any vertical shifts
+                titleContainer.style.height = reservedHeight + 'px';
+                titleContainer.style.minHeight = reservedHeight + 'px';
+                titleContainer.style.maxHeight = reservedHeight + 'px';
+                titleContainer.style.overflow = 'visible';
+                
+                // Now clear both and make visible for animation
+                welcomeElement.textContent = '';
+                nameElement.textContent = '';
+                welcomeElement.style.visibility = 'visible';
+                nameElement.style.visibility = 'visible';
+                
+                // Start typing animation after space is reserved (with longer delay)
+                setTimeout(typeWelcome, 800);
+            }, 150);
+        }
+        
+        // Wait for fonts to load (especially the script font), then measure
+        if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(() => {
+                // Wait for next frame to ensure fonts are rendered
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        lockContainerSize();
+                    });
+                });
+            });
+        } else {
+            // Fallback if fonts API not available
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    // Extra delay to ensure fonts load
+                    setTimeout(() => {
+                        lockContainerSize();
+                    }, 400);
+                });
+            });
+        }
     }
 });
 
