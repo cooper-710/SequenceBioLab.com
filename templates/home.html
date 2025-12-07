@@ -4,48 +4,6 @@
 
 {% block content %}
 <div class="player-home">
-    <!-- Hero Section -->
-    <section class="hero-section">
-        <div class="hero-background"></div>
-        <div class="hero-content">
-            <div class="hero-avatar-wrapper">
-                {% if current_user and current_user.profile_image_path %}
-                    <img src="{{ url_for('static', filename=current_user.profile_image_path) }}?v={% if current_user.id %}{{ current_user.id }}{% else %}0{% endif %}" alt="{{ current_user.first_name }} {{ current_user.last_name }}" class="hero-avatar-img">
-                {% else %}
-                    <div class="hero-avatar-placeholder">
-                        <i class="fas fa-user"></i>
-                    </div>
-                {% endif %}
-            </div>
-            <div class="hero-text">
-                <span class="hero-badge">{{ current_user.position or "Athlete" }}</span>
-                <h1 class="hero-title">Welcome, {{ current_user.first_name or current_user.email }}</h1>
-            </div>
-            <div class="hero-logo">
-                <img src="{{ url_for('static', filename='sequence-logo.png') }}" alt="Sequence Logo" class="hero-logo-img">
-            </div>
-        </div>
-        {% if session.get('is_admin') and admin_user_options %}
-        <div class="hero-actions">
-            <form class="gameday-user-picker" method="get" action="{{ url_for('pages.home') }}" id="player-schedule-form">
-                <label class="gameday-user-picker-label" for="home-user-search">View player schedule</label>
-                <div class="player-search-wrapper" style="position: relative;">
-                    <input 
-                        type="text" 
-                        id="home-user-search" 
-                        class="gameday-user-search-input" 
-                        placeholder="Search for a player..."
-                        autocomplete="off"
-                        value="{% if selected_user_id %}{% for option in admin_user_options %}{% if option.id == selected_user_id %}{{ option.label }}{% endif %}{% endfor %}{% endif %}"
-                    >
-                    <input type="hidden" id="home-user-id" name="user_id" value="{{ selected_user_id or '' }}">
-                    <div id="home-user-dropdown" class="player-search-dropdown" style="display: none;"></div>
-                </div>
-            </form>
-        </div>
-        {% endif %}
-    </section>
-
     <!-- Key Info Cards -->
     <section class="info-grid">
         {% if next_series %}
@@ -234,7 +192,7 @@
 .player-home {
     max-width: 1400px;
     margin: 0 auto;
-    padding: 0 32px 64px;
+    padding: 40px 32px 64px;
     display: grid;
     gap: 40px;
 }
@@ -647,10 +605,14 @@
 }
 
 .info-card-featured {
-    background: linear-gradient(135deg, rgba(255, 127, 0, 0.08), rgba(255, 149, 0, 0.04));
+    background: rgba(255, 127, 0, 0.08);
     border-color: rgba(255, 127, 0, 0.3);
     flex-direction: column;
     gap: 20px;
+}
+
+.info-card-featured::before {
+    display: none;
 }
 
 .info-card-top {
@@ -1553,7 +1515,7 @@
 
 @media (max-width: 768px) {
     .player-home {
-        padding: 0 20px 48px;
+        padding: 32px 20px 48px;
         gap: 32px;
     }
 
@@ -1648,7 +1610,7 @@
 
 @media (max-width: 480px) {
     .player-home {
-        padding: 0 16px 32px;
+        padding: 24px 16px 32px;
     }
 
     .hero-section {

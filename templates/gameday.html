@@ -1000,7 +1000,7 @@
         max-width: 100% !important;
         font-size: 1rem !important;
         display: flex !important;
-        flex-wrap: wrap !important;
+        flex-wrap: nowrap !important;
         gap: 8px !important;
         align-items: center !important;
         word-break: break-word !important;
@@ -1011,6 +1011,12 @@
         width: 40px !important;
         height: 40px !important;
         flex-shrink: 0 !important;
+        white-space: nowrap !important;
+    }
+    
+    .gameday-page .matchup-badge .team-abbr-badge {
+        white-space: nowrap !important;
+        display: inline-block !important;
     }
 
     .gameday-page .matchup-time {
@@ -1271,6 +1277,13 @@
     .gameday-page .matchup-badge {
         width: 36px !important;
         height: 36px !important;
+        flex-shrink: 0 !important;
+        white-space: nowrap !important;
+    }
+    
+    .gameday-page .matchup-badge .team-abbr-badge {
+        white-space: nowrap !important;
+        display: inline-block !important;
     }
 
     .gameday-page .player-docs-item {

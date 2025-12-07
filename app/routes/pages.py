@@ -55,8 +55,65 @@ except ImportError:
 
 
 @bp.route('/')
+@login_required
 def home():
-    """Landing/home page"""
+    """Welcome screen - loads instantly."""
+    from flask import jsonify
+    viewer_user = getattr(g, "user", None)
+    if not viewer_user:
+        return redirect(url_for('auth.login'))
+    
+    admin_user_options: List[Dict[str, Any]] = []
+    selected_user_id = None
+    
+    def _format_user_label(record: Optional[Dict[str, Any]]) -> str:
+        if not record:
+            return "Unknown User"
+        first = (record.get("first_name") or "").strip()
+        last = (record.get("last_name") or "").strip()
+        full_name = f"{first} {last}".strip()
+        if full_name:
+            return full_name
+        email = (record.get("email") or "").strip()
+        if email:
+            return email
+        return f"User #{record.get('id')}"
+
+    if session.get("is_admin") and PlayerDB:
+        user_rows: List[Dict[str, Any]] = []
+        db = None
+        try:
+            db = PlayerDB()
+            user_rows = db.list_users()
+        except Exception as exc:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Warning fetching users for admin welcome selector: {exc}")
+        finally:
+            try:
+                if db:
+                    db.close()
+            except Exception:
+                pass
+
+        admin_user_options = [
+            {"id": row["id"], "label": _format_user_label(row)}
+            for row in user_rows
+        ]
+    
+    # Minimal context - no heavy data loading for instant render
+    context = {
+        "current_user": viewer_user,
+        "admin_user_options": admin_user_options,
+        "selected_user_id": selected_user_id,
+    }
+    return render_template('welcome.html', **context)
+
+
+@bp.route('/dashboard')
+@login_required
+def dashboard():
+    """Detailed dashboard with full data."""
     viewer_user = getattr(g, "user", None)
     target_user = viewer_user
     admin_user_options: List[Dict[str, Any]] = []
@@ -84,7 +141,7 @@ def home():
         except Exception as exc:
             import logging
             logger = logging.getLogger(__name__)
-            logger.warning(f"Warning fetching users for admin home selector: {exc}")
+            logger.warning(f"Warning fetching users for admin dashboard selector: {exc}")
         finally:
             try:
                 if db:
@@ -1657,3 +1714,48 @@ def contact_us():
     """Contact Us page"""
     from app.config import Config
     return render_template('contact_us.html', contact_email=Config.CONTACT_EMAIL)
+
+
+@bp.route('/api/welcome/quick-stats')
+@login_required
+def api_welcome_quick_stats():
+    """API endpoint for welcome screen quick stats."""
+    from flask import jsonify
+    viewer_user = getattr(g, "user", None)
+    if not viewer_user:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    try:
+        from app.services.page_service import load_next_series_snapshot, load_schedule_calendar, load_player_deliverables
+        
+        next_series = load_next_series_snapshot(viewer_user)
+        schedule = load_schedule_calendar(viewer_user)
+        
+        # Count upcoming games (next 30 days)
+        from datetime import datetime, timedelta
+        today = datetime.now().date()
+        thirty_days = today + timedelta(days=30)
+        upcoming_count = 0
+        for game in schedule:
+            if game.get('date'):
+                try:
+                    game_date = datetime.fromisoformat(game['date']).date()
+                    if today <= game_date <= thirty_days:
+                        upcoming_count += 1
+                except Exception:
+                    continue
+        
+        # Get deliverables count
+        _, deliverables, _ = load_player_deliverables(viewer_user)
+        reports_count = len(deliverables) if deliverables else 0
+        
+        return jsonify({
+            "next_series": next_series or {},
+            "upcoming_count": upcoming_count,
+            "reports_count": reports_count,
+        })
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error loading welcome stats: {e}")
+        return jsonify({"error": str(e)}), 500

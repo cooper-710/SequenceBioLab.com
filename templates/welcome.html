@@ -1,0 +1,1930 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome - Sequence BioLab{% endblock %}
+
+{% block extra_head %}
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Herr+Von+Muellerhoff&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="welcome-page">
+    <!-- Full Page Background Gradient -->
+    <div class="welcome-page-gradient"></div>
+    
+    <!-- Hero Section - Inspired by Apple AirPods Max & MNTN -->
+    <section class="welcome-hero">
+        <div class="hero-content-wrapper">
+            <h1 class="hero-main-title">
+                <span class="hero-title-line">Welcome,</span>
+                <span class="hero-title-line hero-title-name">{{ current_user.first_name or current_user.email }}</span>
+            </h1>
+            <a href="{{ url_for('pages.profile_settings') }}" class="hero-profile-picture">
+                {% if current_user and current_user.profile_image_path %}
+                    <img src="{{ url_for('static', filename=current_user.profile_image_path) }}?v={% if current_user.id %}{{ current_user.id }}{% else %}0{% endif %}" alt="{{ current_user.first_name }} {{ current_user.last_name }}" class="hero-profile-img">
+                {% else %}
+                    <div class="hero-profile-placeholder">
+                        <i class="fas fa-user"></i>
+                    </div>
+                {% endif %}
+            </a>
+        {% if session.get('is_admin') and admin_user_options %}
+            <div class="hero-admin-search">
+            <form class="gameday-user-picker" method="get" action="{{ url_for('pages.home') }}" id="player-schedule-form">
+                    <div class="player-search-wrapper">
+                    <input 
+                        type="text" 
+                        id="home-user-search" 
+                        class="gameday-user-search-input" 
+                        placeholder="Search for a player..."
+                        autocomplete="off"
+                        value="{% if selected_user_id %}{% for option in admin_user_options %}{% if option.id == selected_user_id %}{{ option.label }}{% endif %}{% endfor %}{% endif %}"
+                    >
+                    <input type="hidden" id="home-user-id" name="user_id" value="{{ selected_user_id or '' }}">
+                    <div id="home-user-dropdown" class="player-search-dropdown" style="display: none;"></div>
+                </div>
+            </form>
+        </div>
+        {% endif %}
+        </div>
+    </section>
+
+    <!-- Featured Quick Actions - Inspired by Enblox -->
+    <section class="welcome-featured-actions">
+        <div class="featured-actions-grid">
+            <a href="{{ url_for('pages.dashboard') }}" class="featured-action-card featured-primary">
+                <div class="featured-card-icon">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                <div class="featured-card-content">
+                    <h3 class="featured-card-title">Dashboard</h3>
+                    <p class="featured-card-desc">View your full dashboard with stats, schedule, and reports</p>
+                </div>
+                <div class="featured-card-arrow">
+                        <i class="fas fa-arrow-right"></i>
+                    </div>
+                </a>
+
+            <a href="{{ url_for('pages.gameday') }}" class="featured-action-card">
+                <div class="featured-card-icon">
+                    <i class="fas fa-trophy"></i>
+                    </div>
+                <div class="featured-card-content">
+                    <h3 class="featured-card-title">Gameday</h3>
+                    <p class="featured-card-desc">View your next opponent analysis and game preparation</p>
+                </div>
+                <div class="featured-card-arrow">
+                        <i class="fas fa-arrow-right"></i>
+                    </div>
+                </a>
+
+            <a href="{{ url_for('workouts') }}" class="featured-action-card">
+                <div class="featured-card-icon">
+                    <i class="fas fa-dumbbell"></i>
+                    </div>
+                <div class="featured-card-content">
+                    <h3 class="featured-card-title">Workouts</h3>
+                    <p class="featured-card-desc">Track and manage your workouts</p>
+                </div>
+                <div class="featured-card-arrow">
+                        <i class="fas fa-arrow-right"></i>
+                    </div>
+                </a>
+        </div>
+    </section>
+
+    <!-- Numbered Feature Sections - Inspired by MNTN -->
+    <section class="welcome-features">
+        {% if session.get('is_admin') %}
+        <!-- Admin Features -->
+        <div class="feature-section">
+            <div class="feature-number">01</div>
+            <div class="feature-content">
+                <span class="feature-label">GET STARTED</span>
+                <h2 class="feature-title">Your Command Center</h2>
+                <p class="feature-description">Access comprehensive analytics, manage users, and control data sources. Everything you need to run your organization is at your fingertips.</p>
+                <div class="feature-actions">
+                    <a href="{{ url_for('pages.dashboard') }}" class="feature-link">Dashboard <i class="fas fa-arrow-right"></i></a>
+                    <a href="{{ url_for('pages.admin_dashboard') }}" class="feature-link">Admin Panel <i class="fas fa-arrow-right"></i></a>
+                    </div>
+                    </div>
+        </div>
+
+        <div class="feature-section feature-reverse">
+            <div class="feature-content">
+                <span class="feature-label">ANALYTICS & REPORTS</span>
+                <h2 class="feature-title">Deep Dive Into Performance</h2>
+                <p class="feature-description">Generate detailed scouting reports, analyze pitcher performance, and visualize data with advanced tools. Make data-driven decisions with confidence.</p>
+                <div class="feature-actions">
+                    <a href="{{ url_for('scouting_report') }}" class="feature-link">Scouting Reports <i class="fas fa-arrow-right"></i></a>
+                    <a href="{{ url_for('visuals') }}" class="feature-link">Visuals <i class="fas fa-arrow-right"></i></a>
+                    </div>
+                    </div>
+            <div class="feature-number">02</div>
+        </div>
+
+        <div class="feature-section">
+            <div class="feature-number">03</div>
+            <div class="feature-content">
+                <span class="feature-label">GAMEDAY PREP</span>
+                <h2 class="feature-title">Prepare For Victory</h2>
+                <p class="feature-description">Get ready for your next game with opponent analysis, matchup insights, and strategic preparation tools. Know your competition before you step on the field.</p>
+                <div class="feature-actions">
+                    <a href="{{ url_for('pages.gameday') }}" class="feature-link">Gameday Prep <i class="fas fa-arrow-right"></i></a>
+                    <a href="{{ url_for('pages.matchups') }}" class="feature-link">Matchups <i class="fas fa-arrow-right"></i></a>
+                    </div>
+                    </div>
+                    </div>
+        {% else %}
+        <!-- Non-Admin Features -->
+        <div class="feature-section">
+            <div class="feature-number">01</div>
+            <div class="feature-content">
+                <span class="feature-label">GET STARTED</span>
+                <h2 class="feature-title">Your Performance Hub</h2>
+                <p class="feature-description">Track your stats, view your schedule, and access your reports. Everything you need to monitor your performance is right here.</p>
+                <div class="feature-actions">
+                    <a href="{{ url_for('pages.dashboard') }}" class="feature-link">View Dashboard <i class="fas fa-arrow-right"></i></a>
+                    </div>
+                    </div>
+                    </div>
+
+        <div class="feature-section feature-reverse">
+            <div class="feature-content">
+                <span class="feature-label">GAMEDAY PREP</span>
+                <h2 class="feature-title">Prepare For Your Next Game</h2>
+                <p class="feature-description">Analyze your next opponent, review matchup data, and get strategic insights. Walk onto the field with confidence.</p>
+                <div class="feature-actions">
+                    <a href="{{ url_for('pages.gameday') }}" class="feature-link">Gameday Analysis <i class="fas fa-arrow-right"></i></a>
+                    <a href="{{ url_for('pitchviz') }}" class="feature-link">PitchViz <i class="fas fa-arrow-right"></i></a>
+                    </div>
+                    </div>
+            <div class="feature-number">02</div>
+        </div>
+
+        <div class="feature-section">
+            <div class="feature-number">03</div>
+            <div class="feature-content">
+                <span class="feature-label">TRAINING & DEVELOPMENT</span>
+                <h2 class="feature-title">Elevate Your Game</h2>
+                <p class="feature-description">Track workouts, analyze motion capture data, and visualize pitch mechanics. Continuous improvement is the path to excellence.</p>
+                <div class="feature-actions">
+                    <a href="{{ url_for('workouts') }}" class="feature-link">Workouts <i class="fas fa-arrow-right"></i></a>
+                    <a href="{{ url_for('mocap') }}" class="feature-link">Mocap <i class="fas fa-arrow-right"></i></a>
+                    </div>
+                    </div>
+        </div>
+        {% endif %}
+    </section>
+
+    <!-- All Actions Grid - Inspired by Enblox cards -->
+    <section class="welcome-all-actions">
+        <div class="all-actions-header">
+            <h2 class="all-actions-title">Everything You Need</h2>
+            <p class="all-actions-subtitle">Access all tools and features</p>
+                    </div>
+        <div class="all-actions-grid{% if not session.get('is_admin') %} all-actions-grid-2x2{% endif %}">
+            {% if session.get('is_admin') %}
+                <!-- Admin Navigation Items -->
+                <a href="{{ url_for('pages.admin_dashboard') }}" class="action-card">
+                    <div class="action-card-icon">
+                        <i class="fas fa-shield-halved"></i>
+                    </div>
+                    <h3 class="action-card-title">Admin</h3>
+                    <p class="action-card-desc">Admin control center</p>
+                </a>
+
+                <a href="{{ url_for('pages.data_refresh') }}" class="action-card">
+                    <div class="action-card-icon">
+                        <i class="fas fa-database"></i>
+                    </div>
+                    <h3 class="action-card-title">Data Refresh</h3>
+                    <p class="action-card-desc">Update data sources</p>
+                </a>
+
+                <a href="{{ url_for('pages.schedule') }}" class="action-card">
+                    <div class="action-card-icon">
+                        <i class="fas fa-calendar-days"></i>
+                    </div>
+                    <h3 class="action-card-title">Schedule</h3>
+                    <p class="action-card-desc">View full calendar</p>
+                </a>
+
+                <a href="{{ url_for('pages.live_scores') }}" class="action-card">
+                    <div class="action-card-icon">
+                        <i class="fas fa-baseball-ball"></i>
+                    </div>
+                    <h3 class="action-card-title">Live Scores</h3>
+                    <p class="action-card-desc">Track live games</p>
+                </a>
+
+                <a href="{{ url_for('scouting_report') }}" class="action-card">
+                    <div class="action-card-icon">
+                        <i class="fas fa-clipboard-user"></i>
+                    </div>
+                    <h3 class="action-card-title">Scouting Reports</h3>
+                    <p class="action-card-desc">Generate reports</p>
+                </a>
+
+                <a href="{{ url_for('pitchers_report') }}" class="action-card">
+                    <div class="action-card-icon">
+                        <i class="fas fa-baseball"></i>
+                    </div>
+                    <h3 class="action-card-title">Pitcher's Reports</h3>
+                    <p class="action-card-desc">Pitcher analysis</p>
+                </a>
+
+                <a href="{{ url_for('player_database') }}" class="action-card">
+                    <div class="action-card-icon">
+                        <i class="fas fa-magnifying-glass"></i>
+                    </div>
+                    <h3 class="action-card-title">Stats</h3>
+                    <p class="action-card-desc">Search player stats</p>
+                </a>
+
+                <a href="{{ url_for('visuals') }}" class="action-card">
+                    <div class="action-card-icon">
+                        <i class="fas fa-chart-line"></i>
+                    </div>
+                    <h3 class="action-card-title">Visuals</h3>
+                    <p class="action-card-desc">Data visualizations</p>
+                </a>
+
+                <a href="{{ url_for('pitchviz') }}" class="action-card">
+                    <div class="action-card-icon">
+                        <i class="fas fa-wave-square"></i>
+                    </div>
+                    <h3 class="action-card-title">PitchViz</h3>
+                    <p class="action-card-desc">Pitch visualization</p>
+                </a>
+
+                <a href="{{ url_for('mocap') }}" class="action-card">
+                    <div class="action-card-icon">
+                        <i class="fas fa-person-running"></i>
+                    </div>
+                    <h3 class="action-card-title">Mocap</h3>
+                    <p class="action-card-desc">Motion capture</p>
+                </a>
+
+                <a href="{{ url_for('journaling') }}" class="action-card">
+                    <div class="action-card-icon">
+                        <i class="fas fa-pen-to-square"></i>
+                    </div>
+                    <h3 class="action-card-title">Journaling</h3>
+                    <p class="action-card-desc">Journal entries</p>
+                </a>
+
+                <a href="{{ url_for('pages.matchups') }}" class="action-card">
+                    <div class="action-card-icon">
+                        <i class="fas fa-crosshairs"></i>
+                    </div>
+                    <h3 class="action-card-title">Matchups</h3>
+                    <p class="action-card-desc">Analyze matchups</p>
+                </a>
+
+                <a href="{{ url_for('contractviz') }}" class="action-card">
+                    <div class="action-card-icon">
+                        <i class="fas fa-file-contract"></i>
+                    </div>
+                    <h3 class="action-card-title">ContractViz</h3>
+                    <p class="action-card-desc">Contract data</p>
+                </a>
+
+                <a href="{{ url_for('pages.profile_settings') }}" class="action-card">
+                    <div class="action-card-icon">
+                        <i class="fas fa-user-gear"></i>
+                    </div>
+                    <h3 class="action-card-title">Settings</h3>
+                    <p class="action-card-desc">Profile settings</p>
+                </a>
+            {% else %}
+                <!-- Non-Admin Navigation Items -->
+                <a href="{{ url_for('pages.tools') }}" class="action-card">
+                    <div class="action-card-icon">
+                        <i class="fas fa-tools"></i>
+                    </div>
+                    <h3 class="action-card-title">Tools</h3>
+                    <p class="action-card-desc">Helpful utilities</p>
+                </a>
+
+                <a href="{{ url_for('pages.video') }}" class="action-card">
+                    <div class="action-card-icon">
+                        <i class="fas fa-video"></i>
+                    </div>
+                    <h3 class="action-card-title">Video</h3>
+                    <p class="action-card-desc">Video content</p>
+                </a>
+
+                <a href="{{ url_for('pages.matchups') }}" class="action-card">
+                    <div class="action-card-icon">
+                        <i class="fas fa-crosshairs"></i>
+                    </div>
+                    <h3 class="action-card-title">Matchups</h3>
+                    <p class="action-card-desc">Analyze matchups</p>
+                </a>
+
+                <a href="{{ url_for('player_database') }}" class="action-card">
+                    <div class="action-card-icon">
+                        <i class="fas fa-magnifying-glass"></i>
+                    </div>
+                    <h3 class="action-card-title">Stats</h3>
+                    <p class="action-card-desc">Search player stats</p>
+                </a>
+            {% endif %}
+        </div>
+    </section>
+
+    <!-- Quick Stats Section -->
+    <section class="welcome-stats" id="welcome-stats">
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+/* Prevent horizontal scroll globally - must be first */
+html {
+    overflow-x: hidden;
+    max-width: 100vw;
+    width: 100%;
+}
+
+body {
+    overflow-x: hidden;
+    max-width: 100vw;
+    width: 100%;
+    position: relative;
+}
+
+/* Welcome Page Container */
+.welcome-page {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 0;
+    animation: welcomeFadeIn 0.8s ease-out;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+    box-sizing: border-box;
+    position: relative;
+    min-height: 100vh;
+}
+
+/* Full Page Background Gradient */
+.welcome-page-gradient {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100vw;
+    height: 100%;
+    min-height: 100vh;
+    background: 
+        radial-gradient(circle at 20% 30%, rgba(255, 127, 0, 0.15) 0%, transparent 50%),
+        radial-gradient(circle at 80% 70%, rgba(255, 149, 0, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 50% 50%, rgba(255, 127, 0, 0.05) 0%, transparent 70%);
+    pointer-events: none;
+    animation: heroGlow 8s ease-in-out infinite alternate;
+    z-index: 0;
+    overflow: hidden;
+}
+
+/* Ensure all child elements respect container width */
+.welcome-page * {
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+/* Allow script font decorative elements to extend */
+.hero-title-name {
+    max-width: none;
+}
+
+/* Prevent images and media from overflowing */
+.welcome-page img,
+.welcome-page video,
+.welcome-page iframe,
+.welcome-page svg {
+    max-width: 100%;
+    height: auto;
+}
+
+@keyframes welcomeFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Hero Section - Inspired by Apple & MNTN */
+.welcome-hero {
+    position: relative;
+    min-height: 70vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 120px 48px 80px;
+    overflow: visible;
+    background: transparent;
+    width: 100%;
+    max-width: 100vw;
+    box-sizing: border-box;
+    z-index: 1;
+}
+
+.welcome-hero * {
+    overflow: visible;
+}
+
+@keyframes heroGlow {
+    0% {
+        opacity: 0.6;
+    }
+    100% {
+        opacity: 1;
+    }
+}
+
+.hero-content-wrapper {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    max-width: min(900px, 100%);
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0 16px;
+    overflow: visible;
+}
+
+.hero-main-title {
+    margin: 0;
+    font-size: clamp(5.5rem, 12vw, 11rem);
+    font-weight: 300;
+    line-height: 1.3;
+    letter-spacing: -0.04em;
+    color: var(--color-text-primary);
+    margin-bottom: 32px;
+    display: flex;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.3em;
+    flex-wrap: wrap;
+    justify-content: center;
+    overflow: visible;
+    padding: 20px 0;
+}
+
+.hero-title-line {
+    display: inline;
+    font-size: 0.65em;
+}
+
+.hero-title-name {
+    background: linear-gradient(135deg, var(--color-accent), var(--color-accent-bright));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: 400;
+    font-family: 'Herr Von Muellerhoff', cursive;
+    font-style: normal;
+    letter-spacing: 0.05em;
+    text-transform: none;
+    position: relative;
+    display: inline-block;
+    transition: all 0.4s ease;
+    padding: 10px 15px;
+    margin: -10px -15px;
+    overflow: visible;
+    line-height: 1.2;
+    font-size: 0.75em;
+}
+
+.hero-profile-picture {
+    margin: 0 auto 48px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-decoration: none;
+    cursor: pointer;
+    width: fit-content;
+    overflow: visible;
+    border-radius: 50%;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hero-profile-picture:hover {
+    transform: scale(1.1);
+}
+
+.hero-profile-img {
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    object-fit: cover;
+    object-position: center center;
+    border: 4px solid rgba(255, 127, 0, 0.3);
+    transition: border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    display: block;
+    aspect-ratio: 1 / 1;
+    flex-shrink: 0;
+    overflow: hidden;
+    box-sizing: border-box;
+    cursor: pointer;
+}
+
+.hero-profile-picture:hover .hero-profile-img {
+    border-color: var(--color-accent);
+    border-width: 5px;
+}
+
+.hero-profile-placeholder {
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(255, 127, 0, 0.2), rgba(255, 149, 0, 0.1));
+    border: 4px solid rgba(255, 127, 0, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-accent);
+    font-size: 4rem;
+    transition: border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), border-width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.hero-profile-picture:hover .hero-profile-placeholder {
+    border-color: var(--color-accent);
+    border-width: 5px;
+}
+
+.hero-admin-search {
+    margin-top: 48px;
+}
+
+.hero-admin-search .player-search-wrapper {
+    max-width: 400px;
+    width: 100%;
+    margin: 0 auto;
+    box-sizing: border-box;
+}
+
+.hero-admin-search .gameday-user-search-input {
+    background: var(--color-layer-card);
+    border: 1px solid var(--color-layer-border);
+    color: var(--color-text-primary);
+    font-size: 1rem;
+    padding: 16px 20px;
+    border-radius: 12px;
+    transition: all 0.3s ease;
+}
+
+.hero-admin-search .gameday-user-search-input:focus {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 4px rgba(255, 127, 0, 0.1);
+    outline: none;
+}
+
+/* Featured Actions - Inspired by Enblox */
+.welcome-featured-actions {
+    padding: 80px 48px;
+    background: transparent;
+    width: 100%;
+    max-width: 100vw;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    position: relative;
+    z-index: 1;
+}
+
+.featured-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+    gap: 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.featured-action-card {
+    background: #000000;
+    border: 1px solid var(--color-layer-border);
+    border-radius: 24px;
+    padding: 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.featured-action-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255, 127, 0, 0.1), transparent);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+}
+
+.featured-action-card:hover {
+    transform: translateY(-8px);
+    border-color: rgba(255, 127, 0, 0.4);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+.featured-action-card:hover::before {
+    opacity: 1;
+}
+
+.featured-primary {
+    background: #000000;
+    border-color: rgba(255, 127, 0, 0.3);
+}
+
+.featured-card-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(255, 127, 0, 0.2), rgba(255, 149, 0, 0.1));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-accent);
+    font-size: 1.75rem;
+    border: 1px solid rgba(255, 127, 0, 0.3);
+    flex-shrink: 0;
+}
+
+.featured-primary .featured-card-icon {
+    background: linear-gradient(135deg, var(--color-accent), var(--color-accent-bright));
+    color: var(--color-text-inverse);
+    border-color: var(--color-accent);
+}
+
+.featured-card-content {
+    flex: 1;
+    display: grid;
+    gap: 12px;
+}
+
+.featured-card-title {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    line-height: 1.2;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.featured-card-desc {
+    margin: 0;
+    font-size: 0.95rem;
+    color: var(--color-text-secondary);
+    line-height: 1.6;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.featured-card-arrow {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--color-layer-soft);
+    border: 1px solid var(--color-layer-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-subtle);
+    transition: all 0.4s ease;
+    align-self: flex-start;
+}
+
+.featured-action-card:hover .featured-card-arrow {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: var(--color-text-inverse);
+    transform: translateX(4px);
+}
+
+/* Feature Sections - Inspired by MNTN */
+.welcome-features {
+    padding: 120px 48px;
+    background: transparent;
+    display: grid;
+    gap: 120px;
+    width: 100%;
+    max-width: 100vw;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    position: relative;
+    z-index: 1;
+}
+
+.feature-section {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 80px;
+    align-items: center;
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 0;
+    overflow-x: hidden;
+}
+
+.feature-section > * {
+    min-width: 0;
+}
+
+.feature-reverse {
+    grid-template-columns: 1fr auto;
+}
+
+.feature-reverse .feature-number {
+    order: 2;
+}
+
+.feature-reverse .feature-content {
+    order: 1;
+}
+
+.feature-number {
+    font-size: clamp(8rem, 15vw, 14rem);
+    font-weight: 300;
+    line-height: 1;
+    color: var(--color-text-subtle);
+    opacity: 0.15;
+    letter-spacing: -0.05em;
+    user-select: none;
+    max-width: 100%;
+    overflow: hidden;
+    word-break: keep-all;
+    flex-shrink: 0;
+    min-width: 0;
+    white-space: nowrap;
+}
+
+.feature-content {
+    display: grid;
+    gap: 24px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.feature-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    color: var(--color-accent);
+    display: block;
+    margin-bottom: 8px;
+}
+
+.feature-title {
+    margin: 0;
+    font-size: clamp(2.5rem, 5vw, 4rem);
+    font-weight: 300;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+    color: var(--color-text-primary);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.feature-description {
+    margin: 0;
+    font-size: 1.125rem;
+    color: var(--color-text-secondary);
+    line-height: 1.7;
+    max-width: 600px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.feature-actions {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+
+.feature-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--color-accent);
+    font-weight: 600;
+    font-size: 1rem;
+    text-decoration: none;
+    padding: 12px 24px;
+    border-radius: 12px;
+    background: rgba(255, 127, 0, 0.1);
+    border: 1px solid rgba(255, 127, 0, 0.2);
+    transition: all 0.3s ease;
+}
+
+.feature-link:hover {
+    background: rgba(255, 127, 0, 0.2);
+    border-color: var(--color-accent);
+    transform: translateX(4px);
+}
+
+.feature-link i {
+    font-size: 0.875rem;
+    transition: transform 0.3s ease;
+}
+
+.feature-link:hover i {
+    transform: translateX(4px);
+}
+
+/* All Actions Grid - Inspired by Enblox */
+.welcome-all-actions {
+    padding: 120px 48px;
+    background: transparent;
+    width: 100%;
+    max-width: 100vw;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    position: relative;
+    z-index: 1;
+}
+
+.all-actions-header {
+    text-align: center;
+    margin-bottom: 64px;
+    max-width: min(800px, 100%);
+    margin-left: auto;
+    margin-right: auto;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0 16px;
+}
+
+.all-actions-title {
+    margin: 0 0 16px;
+    font-size: clamp(2.5rem, 5vw, 3.5rem);
+    font-weight: 300;
+    letter-spacing: -0.02em;
+    color: var(--color-text-primary);
+}
+
+.all-actions-subtitle {
+    margin: 0;
+    font-size: 1.125rem;
+    color: var(--color-text-secondary);
+}
+
+.all-actions-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
+    gap: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+/* 2x2 grid for non-admin (4 items) */
+.all-actions-grid-2x2 {
+    grid-template-columns: repeat(2, 1fr);
+    max-width: 600px;
+}
+
+/* Keep 2x2 grid on all screen sizes */
+@media (max-width: 480px) {
+    .all-actions-grid-2x2 {
+        grid-template-columns: repeat(2, 1fr);
+        max-width: 100%;
+    }
+}
+
+@media (max-width: 360px) {
+    .all-actions-grid-2x2 {
+        grid-template-columns: repeat(2, 1fr);
+        max-width: 100%;
+    }
+}
+
+.action-card {
+    background: #000000;
+    border: 1px solid var(--color-layer-border);
+    border-radius: 20px;
+    padding: 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 20px;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.action-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255, 127, 0, 0.08), transparent);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    pointer-events: none;
+}
+
+.action-card:hover {
+    transform: translateY(-6px);
+    border-color: rgba(255, 127, 0, 0.4);
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.25);
+}
+
+.action-card:hover::before {
+    opacity: 1;
+}
+
+.action-card-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(255, 127, 0, 0.2), rgba(255, 149, 0, 0.1));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-accent);
+    font-size: 1.5rem;
+    border: 1px solid rgba(255, 127, 0, 0.3);
+    transition: all 0.4s ease;
+}
+
+.action-card:hover .action-card-icon {
+    background: linear-gradient(135deg, var(--color-accent), var(--color-accent-bright));
+    color: var(--color-text-inverse);
+    border-color: var(--color-accent);
+    transform: scale(1.1);
+}
+
+.action-card-title {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    line-height: 1.2;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.action-card-desc {
+    margin: 0;
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* Stats Section */
+.welcome-stats {
+    padding: 80px 48px;
+    background: transparent;
+    width: 100%;
+    max-width: 100vw;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    position: relative;
+    z-index: 1;
+}
+
+.welcome-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+    gap: 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.welcome-stat-card {
+    background: #000000;
+    border: 1px solid var(--color-layer-border);
+    border-radius: 24px;
+    padding: 32px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 20px;
+    align-items: center;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.welcome-stat-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255, 127, 0, 0.05), transparent);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+.welcome-stat-card:hover {
+    border-color: rgba(255, 127, 0, 0.4);
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+}
+
+.welcome-stat-card:hover::before {
+    opacity: 1;
+}
+
+.welcome-stat-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(255, 127, 0, 0.2), rgba(255, 149, 0, 0.1));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-accent);
+    font-size: 1.75rem;
+    border: 1px solid rgba(255, 127, 0, 0.3);
+    flex-shrink: 0;
+}
+
+.welcome-stat-content {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+}
+
+.welcome-stat-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-subtle);
+}
+
+.welcome-stat-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--color-text-primary);
+    line-height: 1;
+}
+
+.welcome-stat-sublabel {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+}
+
+.welcome-stat-link {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: rgba(255, 127, 0, 0.1);
+    border: 1px solid rgba(255, 127, 0, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-accent);
+    text-decoration: none;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+}
+
+.welcome-stat-link:hover {
+    background: var(--color-accent);
+    color: var(--color-text-inverse);
+    transform: translateX(4px);
+}
+
+/* Player Search Dropdown */
+.player-search-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--color-layer-card);
+    border: 1px solid var(--color-layer-border);
+    border-top: none;
+    border-radius: 0 0 12px 12px;
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 99999;
+    margin-top: 2px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.player-search-dropdown-item {
+    padding: 12px 20px;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    transition: background 0.2s ease;
+    border-bottom: 1px solid var(--color-layer-border);
+    font-size: 0.95rem;
+}
+
+.player-search-dropdown-item:hover {
+    background: rgba(255, 127, 0, 0.1);
+    color: var(--color-accent);
+}
+
+.player-search-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+.player-search-dropdown-item.selected {
+    background: rgba(255, 127, 0, 0.15);
+    color: var(--color-accent);
+    font-weight: 600;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+    .welcome-hero {
+        min-height: 60vh;
+        padding: 80px clamp(16px, 4vw, 32px) 60px;
+        max-width: 100vw;
+    }
+
+    .hero-main-title {
+        font-size: clamp(4rem, 10vw, 7rem);
+    }
+
+    .hero-profile-picture {
+        margin-bottom: 32px;
+    }
+
+    .hero-profile-img,
+    .hero-profile-placeholder {
+        width: 140px;
+        height: 140px;
+    }
+
+    .hero-profile-placeholder {
+        font-size: 3.5rem;
+    }
+
+    .welcome-featured-actions,
+    .welcome-features,
+    .welcome-all-actions,
+    .welcome-stats {
+        padding-left: clamp(16px, 4vw, 32px);
+        padding-right: clamp(16px, 4vw, 32px);
+        max-width: 100vw;
+    }
+
+    .welcome-featured-actions {
+        padding-top: 60px;
+        padding-bottom: 60px;
+    }
+
+    .featured-actions-grid {
+        grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+        gap: 20px;
+    }
+
+    .featured-action-card {
+        padding: 32px;
+    }
+
+    .welcome-features {
+        padding-top: 80px;
+        padding-bottom: 80px;
+        gap: 80px;
+    }
+
+    .feature-section {
+        grid-template-columns: 1fr;
+        gap: 32px;
+        text-align: center;
+        justify-items: center;
+    }
+
+    .feature-reverse {
+        grid-template-columns: 1fr;
+    }
+
+    .feature-reverse .feature-number {
+        order: 1;
+    }
+
+    .feature-reverse .feature-content {
+        order: 2;
+    }
+
+    .feature-number {
+        font-size: clamp(5rem, 12vw, 8rem);
+        line-height: 1;
+    }
+
+    .feature-content {
+        max-width: 100%;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .feature-title {
+        font-size: clamp(2rem, 5vw, 3rem);
+    }
+
+    .feature-description {
+        font-size: clamp(0.95rem, 2vw, 1.125rem);
+        max-width: 700px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .feature-actions {
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-left: auto;
+        margin-right: auto;
+    }
+
+    .welcome-all-actions {
+        padding-top: 80px;
+        padding-bottom: 80px;
+    }
+
+    .all-actions-grid {
+        grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr));
+        gap: 20px;
+    }
+
+    .action-card {
+        padding: 28px 24px;
+    }
+}
+
+@media (max-width: 768px) {
+    .welcome-hero {
+        min-height: auto;
+        padding: 60px clamp(16px, 4vw, 24px) 40px;
+        max-width: 100vw;
+    }
+
+    .hero-content-wrapper {
+        padding: 0;
+    }
+
+    .hero-main-title {
+        font-size: clamp(3.5rem, 10vw, 6rem);
+        margin-bottom: 24px;
+        gap: 0.25em;
+    }
+
+    .hero-profile-picture {
+        margin-bottom: 32px;
+    }
+
+    .hero-profile-img,
+    .hero-profile-placeholder {
+        width: 130px;
+        height: 130px;
+    }
+
+    .hero-profile-placeholder {
+        font-size: 3rem;
+    }
+
+    .hero-admin-search {
+        margin-top: 32px;
+    }
+
+    .hero-admin-search .player-search-wrapper {
+        max-width: 100%;
+        padding: 0 16px;
+    }
+
+    .hero-admin-search .gameday-user-search-input {
+        font-size: 0.95rem;
+        padding: 14px 18px;
+    }
+
+    .welcome-featured-actions {
+        padding: 50px clamp(16px, 4vw, 24px);
+        max-width: 100vw;
+    }
+
+    .featured-actions-grid {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+
+    .featured-action-card {
+        padding: 32px 28px;
+        gap: 20px;
+    }
+
+    .featured-card-icon {
+    width: 56px;
+    height: 56px;
+    font-size: 1.5rem;
+    }
+
+    .featured-card-title {
+        font-size: 1.25rem;
+    }
+
+    .featured-card-desc {
+        font-size: 0.9rem;
+    }
+
+    .welcome-features {
+        padding: 60px clamp(16px, 4vw, 24px);
+        gap: 60px;
+        max-width: 100vw;
+    }
+
+    .feature-section {
+        gap: 24px;
+    }
+
+    .feature-number {
+        font-size: clamp(4rem, 15vw, 6rem);
+    }
+
+    .feature-title {
+        font-size: clamp(1.75rem, 6vw, 2.5rem);
+    }
+
+    .feature-description {
+        font-size: clamp(0.9rem, 2.5vw, 1rem);
+    line-height: 1.6;
+    }
+
+    .feature-actions {
+        gap: 16px;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .feature-link {
+        width: 100%;
+    justify-content: center;
+        padding: 14px 24px;
+        font-size: 0.95rem;
+    }
+
+    .welcome-all-actions {
+        padding: 60px clamp(16px, 4vw, 24px);
+        max-width: 100vw;
+    }
+
+    .all-actions-header {
+        margin-bottom: 40px;
+    }
+
+    .all-actions-title {
+        font-size: clamp(2rem, 6vw, 2.5rem);
+        margin-bottom: 12px;
+    }
+
+    .all-actions-subtitle {
+        font-size: 1rem;
+    }
+
+    .all-actions-grid {
+        grid-template-columns: repeat(auto-fill, minmax(min(160px, 100%), 1fr));
+        gap: 16px;
+    }
+
+    .all-actions-grid-2x2 {
+        grid-template-columns: repeat(2, 1fr);
+        max-width: 100%;
+    }
+
+    .action-card {
+        padding: 24px 20px;
+        gap: 16px;
+    }
+
+    .action-card-icon {
+        width: 48px;
+        height: 48px;
+        font-size: 1.25rem;
+    }
+
+    .action-card-title {
+        font-size: 1rem;
+    }
+
+    .action-card-desc {
+        font-size: 0.8rem;
+    }
+
+.welcome-stats {
+        padding: 50px clamp(16px, 4vw, 24px);
+        max-width: 100vw;
+    }
+
+    .welcome-stats-grid {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+
+    .welcome-stat-card {
+        padding: 28px 24px;
+    }
+
+    .welcome-stat-icon {
+        width: 56px;
+        height: 56px;
+        font-size: 1.5rem;
+    }
+
+    .welcome-stat-value {
+        font-size: 1.75rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .welcome-hero {
+        padding: 40px clamp(16px, 4vw, 20px) 32px;
+        min-height: auto;
+        max-width: 100vw;
+    }
+
+    .hero-content-wrapper {
+        padding: 0;
+    }
+
+    .hero-main-title {
+        font-size: clamp(3rem, 12vw, 5rem);
+        line-height: 1.15;
+        margin-bottom: 24px;
+        gap: 0.25em;
+    }
+
+    .hero-profile-picture {
+        margin-bottom: 28px;
+    }
+
+    .hero-profile-img,
+    .hero-profile-placeholder {
+        width: 120px;
+        height: 120px;
+    }
+
+    .hero-profile-placeholder {
+        font-size: 2.5rem;
+    }
+
+    .hero-admin-search {
+        margin-top: 24px;
+    }
+
+    .hero-admin-search .gameday-user-search-input {
+        font-size: 0.9rem;
+        padding: 12px 16px;
+    }
+
+    .welcome-featured-actions {
+        padding: 40px clamp(16px, 4vw, 20px);
+        max-width: 100vw;
+    }
+
+    .featured-action-card {
+        padding: 28px 24px;
+        border-radius: 20px;
+    }
+
+    .featured-card-icon {
+        width: 52px;
+        height: 52px;
+        font-size: 1.4rem;
+    }
+
+    .featured-card-title {
+        font-size: 1.15rem;
+    }
+
+    .featured-card-desc {
+        font-size: 0.85rem;
+    }
+
+    .featured-card-arrow {
+        width: 40px;
+        height: 40px;
+    }
+
+    .welcome-features {
+        padding: 50px clamp(16px, 4vw, 20px);
+        gap: 50px;
+        max-width: 100vw;
+    }
+
+    .feature-section {
+        gap: 20px;
+    }
+
+    .feature-number {
+        font-size: clamp(3.5rem, 20vw, 5rem);
+    }
+
+    .feature-label {
+        font-size: 0.7rem;
+        letter-spacing: 0.15em;
+    }
+
+    .feature-title {
+        font-size: clamp(1.5rem, 7vw, 2rem);
+        line-height: 1.2;
+    }
+
+    .feature-description {
+        font-size: 0.9rem;
+        line-height: 1.6;
+    }
+
+    .feature-link {
+        padding: 12px 20px;
+        font-size: 0.9rem;
+    }
+
+    .welcome-all-actions {
+        padding: 50px clamp(16px, 4vw, 20px);
+        max-width: 100vw;
+    }
+
+    .all-actions-title {
+        font-size: clamp(1.75rem, 7vw, 2.25rem);
+    }
+
+    .all-actions-subtitle {
+        font-size: 0.95rem;
+    }
+
+    .all-actions-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+
+    .action-card {
+        padding: 20px 16px;
+        border-radius: 16px;
+        gap: 14px;
+        min-height: 140px;
+    }
+
+    .action-card-icon {
+        width: 44px;
+        height: 44px;
+        font-size: 1.15rem;
+        border-radius: 12px;
+    }
+
+    .action-card-title {
+        font-size: 0.95rem;
+        line-height: 1.3;
+    }
+
+    .action-card-desc {
+        font-size: 0.75rem;
+        line-height: 1.4;
+    }
+
+    .welcome-stats {
+        padding: 40px clamp(16px, 4vw, 20px);
+        max-width: 100vw;
+    }
+
+    .welcome-stat-card {
+        padding: 24px 20px;
+        border-radius: 20px;
+        gap: 16px;
+    }
+
+    .welcome-stat-icon {
+        width: 52px;
+        height: 52px;
+        font-size: 1.4rem;
+    }
+
+    .welcome-stat-label {
+        font-size: 0.8rem;
+    }
+
+    .welcome-stat-value {
+        font-size: 1.5rem;
+    }
+
+    .welcome-stat-sublabel {
+        font-size: 0.8rem;
+    }
+
+    .welcome-stat-link {
+        width: 40px;
+        height: 40px;
+    }
+}
+
+/* Extra small devices */
+@media (max-width: 360px) {
+    .welcome-hero {
+        padding: 32px 16px 24px;
+        max-width: 100vw;
+    }
+
+    .hero-main-title {
+        font-size: clamp(2.5rem, 10vw, 4rem);
+        margin-bottom: 20px;
+        gap: 0.25em;
+    }
+
+    .hero-profile-picture {
+        margin-bottom: 24px;
+    }
+
+    .hero-profile-img,
+    .hero-profile-placeholder {
+        width: 110px;
+        height: 110px;
+    }
+
+    .hero-profile-placeholder {
+        font-size: 2rem;
+    }
+
+    .welcome-featured-actions,
+    .welcome-features,
+    .welcome-all-actions,
+    .welcome-stats {
+        padding-left: 16px;
+        padding-right: 16px;
+        max-width: 100vw;
+    }
+
+    .all-actions-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .action-card {
+        min-height: auto;
+    }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+    .featured-action-card:hover,
+    .action-card:hover,
+    .feature-link:hover,
+    .welcome-stat-card:hover {
+        transform: none;
+    }
+
+    .featured-action-card:active,
+    .action-card:active {
+        transform: scale(0.98);
+    }
+
+    .feature-link:active {
+        transform: scale(0.97);
+    }
+
+    /* Ensure touch targets are at least 44x44px */
+    .featured-card-arrow,
+    .welcome-stat-link,
+    .action-card {
+        min-height: 44px;
+    }
+}
+
+/* Landscape mobile optimization */
+@media (max-width: 768px) and (orientation: landscape) {
+    .welcome-hero {
+        min-height: auto;
+        padding: 40px 24px 32px;
+    }
+
+    .hero-main-title {
+        font-size: clamp(3.5rem, 10vw, 6rem);
+    }
+
+    .welcome-features {
+        gap: 40px;
+    }
+}
+</style>
+
+<script>
+// Handle player schedule search functionality (for admin)
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('home-user-search');
+    const hiddenInput = document.getElementById('home-user-id');
+    const dropdown = document.getElementById('home-user-dropdown');
+    const playerForm = document.getElementById('player-schedule-form');
+    
+    if (!searchInput || !hiddenInput || !dropdown || !playerForm) {
+        return;
+    }
+    
+    // Get user options from the page
+    const userOptions = [
+        {% for option in admin_user_options %}
+        {id: {{ option.id }}, label: "{{ option.label|e }}"}{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ];
+    
+    let selectedUserId = {{ selected_user_id or 'null' }};
+    let filteredOptions = [];
+    
+    function filterOptions(query) {
+        if (!query || query.trim() === '') {
+            return userOptions;
+        }
+        const lowerQuery = query.toLowerCase();
+        return userOptions.filter(option => 
+            option.label.toLowerCase().includes(lowerQuery)
+        );
+    }
+    
+    function renderDropdown(options) {
+        if (options.length === 0) {
+            dropdown.innerHTML = '<div class="player-search-dropdown-item">No players found</div>';
+            dropdown.style.display = 'block';
+            return;
+        }
+        
+        dropdown.innerHTML = options.map(option => {
+            const isSelected = option.id === selectedUserId;
+            return `<div class="player-search-dropdown-item ${isSelected ? 'selected' : ''}" 
+                        data-id="${option.id}" 
+                        data-label="${option.label}">
+                    ${option.label}
+                </div>`;
+        }).join('');
+        
+        dropdown.style.display = 'block';
+        
+        // Add click handlers
+        dropdown.querySelectorAll('.player-search-dropdown-item').forEach(item => {
+            item.addEventListener('click', function() {
+                const id = parseInt(this.dataset.id);
+                const label = this.dataset.label;
+                selectedUserId = id;
+                hiddenInput.value = id;
+                searchInput.value = label;
+                dropdown.style.display = 'none';
+                playerForm.submit();
+            });
+        });
+    }
+    
+    // Handle input changes
+    searchInput.addEventListener('input', function() {
+        const query = this.value;
+        filteredOptions = filterOptions(query);
+        renderDropdown(filteredOptions);
+    });
+    
+    // Handle focus
+    searchInput.addEventListener('focus', function() {
+        if (this.value.trim() === '') {
+            filteredOptions = userOptions;
+        } else {
+            filteredOptions = filterOptions(this.value);
+        }
+        renderDropdown(filteredOptions);
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+        const wrapper = searchInput.closest('.player-search-wrapper');
+        if (wrapper && !wrapper.contains(e.target)) {
+            dropdown.style.display = 'none';
+        }
+    });
+    
+    // Handle keyboard navigation
+    searchInput.addEventListener('keydown', function(e) {
+        const items = dropdown.querySelectorAll('.player-search-dropdown-item');
+        const currentIndex = Array.from(items).findIndex(item => item.classList.contains('selected'));
+        
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            const nextIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
+            items.forEach(item => item.classList.remove('selected'));
+            if (items[nextIndex]) {
+                items[nextIndex].classList.add('selected');
+                items[nextIndex].scrollIntoView({ block: 'nearest' });
+            }
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            const prevIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
+            items.forEach(item => item.classList.remove('selected'));
+            if (items[prevIndex]) {
+                items[prevIndex].classList.add('selected');
+                items[prevIndex].scrollIntoView({ block: 'nearest' });
+            }
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            const selectedItem = dropdown.querySelector('.player-search-dropdown-item.selected');
+            if (selectedItem) {
+                selectedItem.click();
+            } else if (items.length > 0) {
+                items[0].click();
+            }
+        } else if (e.key === 'Escape') {
+            dropdown.style.display = 'none';
+        }
+    });
+    
+    // Load quick stats asynchronously
+    fetch('/api/welcome/quick-stats')
+        .then(r => r.json())
+        .then(data => {
+            const statsContainer = document.getElementById('welcome-stats');
+            if (data.next_series || data.upcoming_count !== undefined || data.reports_count !== undefined) {
+                let statsHTML = '<div class="welcome-stats-grid">';
+                
+                if (data.next_series && data.next_series.opponent_name) {
+                    statsHTML += `
+                        <div class="welcome-stat-card">
+                            <div class="welcome-stat-icon"><i class="fas fa-calendar-star"></i></div>
+                            <div class="welcome-stat-content">
+                                <div class="welcome-stat-label">Next Game</div>
+                                <div class="welcome-stat-value">${data.next_series.opponent_name}</div>
+                                <div class="welcome-stat-sublabel">${data.next_series.start_date || 'Upcoming'}</div>
+                            </div>
+                            <a href="{{ url_for('pages.dashboard') }}" class="welcome-stat-link">
+                                <i class="fas fa-arrow-right"></i>
+                            </a>
+                        </div>
+                    `;
+                }
+                
+                if (data.upcoming_count !== undefined) {
+                    statsHTML += `
+                        <div class="welcome-stat-card">
+                            <div class="welcome-stat-icon"><i class="fas fa-calendar-days"></i></div>
+                            <div class="welcome-stat-content">
+                                <div class="welcome-stat-label">Upcoming Games</div>
+                                <div class="welcome-stat-value">${data.upcoming_count}</div>
+                                <div class="welcome-stat-sublabel">Next 30 days</div>
+                            </div>
+                            <a href="{{ url_for('pages.schedule') }}" class="welcome-stat-link">
+                                <i class="fas fa-arrow-right"></i>
+                            </a>
+                        </div>
+                    `;
+                }
+                
+                if (data.reports_count !== undefined) {
+                    statsHTML += `
+                        <div class="welcome-stat-card">
+                            <div class="welcome-stat-icon"><i class="fas fa-file-chart-line"></i></div>
+                            <div class="welcome-stat-content">
+                                <div class="welcome-stat-label">Recent Reports</div>
+                                <div class="welcome-stat-value">${data.reports_count}</div>
+                                <div class="welcome-stat-sublabel">Available now</div>
+                            </div>
+                            <a href="{{ url_for('pages.dashboard') }}" class="welcome-stat-link">
+                                <i class="fas fa-arrow-right"></i>
+                            </a>
+                        </div>
+                    `;
+                }
+                
+                statsHTML += '</div>';
+                statsContainer.innerHTML = statsHTML;
+            } else {
+                statsContainer.innerHTML = '';
+            }
+        })
+        .catch(err => {
+            console.error('Error loading stats:', err);
+            document.getElementById('welcome-stats').innerHTML = '';
+        });
+});
+</script>
+{% endblock %}
