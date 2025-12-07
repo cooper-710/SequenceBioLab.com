@@ -459,11 +459,13 @@ body {
 .sidebar-nav {
     flex: 1;
     padding: 20px 16px;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
     display: flex;
     flex-direction: column;
     min-height: 0;
     gap: 4px;
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
 }
 
 /* Enable scrolling for admin users who have more navigation items */
