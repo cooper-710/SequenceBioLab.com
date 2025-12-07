@@ -523,18 +523,12 @@ body {
     color: rgba(255, 255, 255, 1);
     font-weight: 600;
     border: 2px solid rgba(255, 127, 0, 0.6);
-    box-shadow: 
-        0 4px 12px rgba(255, 127, 0, 0.2),
-        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    box-shadow: none;
     transform: translateX(0);
 }
 
 .nav-item.active::before {
-    opacity: 1;
-    background: linear-gradient(90deg, 
-        transparent, 
-        rgba(255, 127, 0, 0.3), 
-        transparent);
+    opacity: 0;
 }
 
 .nav-item.active .nav-icon,
