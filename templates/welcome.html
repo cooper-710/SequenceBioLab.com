@@ -17,8 +17,8 @@
     <section class="welcome-hero">
         <div class="hero-content-wrapper">
             <h1 class="hero-main-title">
-                <span class="hero-title-line">Welcome,</span>
-                <span class="hero-title-line hero-title-name">{{ current_user.first_name or current_user.email }}</span>
+                <span class="hero-title-line" id="typing-welcome"></span>
+                <span class="hero-title-line hero-title-name" id="typing-name"></span>
             </h1>
             <a href="{{ url_for('pages.profile_settings') }}" class="hero-profile-picture">
                 {% if current_user and current_user.profile_image_path %}
@@ -334,10 +334,6 @@
             {% endif %}
         </div>
     </section>
-
-    <!-- Quick Stats Section -->
-    <section class="welcome-stats" id="welcome-stats">
-    </section>
 </div>
 {% endblock %}
 
@@ -480,7 +476,7 @@ body {
 }
 
 .hero-title-line {
-    display: inline;
+    display: inline-block;
     font-size: 0.65em;
 }
 
@@ -503,6 +499,7 @@ body {
     line-height: 1.2;
     font-size: 0.75em;
 }
+
 
 .hero-profile-picture {
     margin: 0 auto 48px;
@@ -1737,6 +1734,49 @@ body {
 </style>
 
 <script>
+// Typing animation for hero title
+document.addEventListener('DOMContentLoaded', function() {
+    const welcomeElement = document.getElementById('typing-welcome');
+    const nameElement = document.getElementById('typing-name');
+    
+    if (welcomeElement && nameElement) {
+        const userName = '{{ current_user.first_name or current_user.email }}';
+        const welcomeText = 'Welcome,';
+        let welcomeIndex = 0;
+        let nameIndex = 0;
+        const typingSpeed = 80; // milliseconds per character
+        const pauseAfterWelcome = 400; // pause after "Welcome,"
+        
+        function typeWelcome() {
+            if (welcomeIndex <= welcomeText.length) {
+                welcomeElement.textContent = welcomeText.substring(0, welcomeIndex);
+                welcomeIndex++;
+                if (welcomeIndex <= welcomeText.length) {
+                    setTimeout(typeWelcome, typingSpeed);
+                } else {
+                    // Welcome complete, pause then start typing name
+                    setTimeout(() => {
+                        typeName();
+                    }, pauseAfterWelcome);
+                }
+            }
+        }
+        
+        function typeName() {
+            if (nameIndex <= userName.length) {
+                nameElement.textContent = userName.substring(0, nameIndex);
+                nameIndex++;
+                if (nameIndex <= userName.length) {
+                    setTimeout(typeName, typingSpeed);
+                }
+            }
+        }
+        
+        // Start typing animation after a short delay
+        setTimeout(typeWelcome, 500);
+    }
+});
+
 // Handle player schedule search functionality (for admin)
 document.addEventListener('DOMContentLoaded', function() {
     const searchInput = document.getElementById('home-user-search');
@@ -1858,73 +1898,6 @@ document.addEventListener('DOMContentLoaded', function() {
             dropdown.style.display = 'none';
         }
     });
-    
-    // Load quick stats asynchronously
-    fetch('/api/welcome/quick-stats')
-        .then(r => r.json())
-        .then(data => {
-            const statsContainer = document.getElementById('welcome-stats');
-            if (data.next_series || data.upcoming_count !== undefined || data.reports_count !== undefined) {
-                let statsHTML = '<div class="welcome-stats-grid">';
-                
-                if (data.next_series && data.next_series.opponent_name) {
-                    statsHTML += `
-                        <div class="welcome-stat-card">
-                            <div class="welcome-stat-icon"><i class="fas fa-calendar-star"></i></div>
-                            <div class="welcome-stat-content">
-                                <div class="welcome-stat-label">Next Game</div>
-                                <div class="welcome-stat-value">${data.next_series.opponent_name}</div>
-                                <div class="welcome-stat-sublabel">${data.next_series.start_date || 'Upcoming'}</div>
-                            </div>
-                            <a href="{{ url_for('pages.dashboard') }}" class="welcome-stat-link">
-                                <i class="fas fa-arrow-right"></i>
-                            </a>
-                        </div>
-                    `;
-                }
-                
-                if (data.upcoming_count !== undefined) {
-                    statsHTML += `
-                        <div class="welcome-stat-card">
-                            <div class="welcome-stat-icon"><i class="fas fa-calendar-days"></i></div>
-                            <div class="welcome-stat-content">
-                                <div class="welcome-stat-label">Upcoming Games</div>
-                                <div class="welcome-stat-value">${data.upcoming_count}</div>
-                                <div class="welcome-stat-sublabel">Next 30 days</div>
-                            </div>
-                            <a href="{{ url_for('pages.schedule') }}" class="welcome-stat-link">
-                                <i class="fas fa-arrow-right"></i>
-                            </a>
-                        </div>
-                    `;
-                }
-                
-                if (data.reports_count !== undefined) {
-                    statsHTML += `
-                        <div class="welcome-stat-card">
-                            <div class="welcome-stat-icon"><i class="fas fa-file-chart-line"></i></div>
-                            <div class="welcome-stat-content">
-                                <div class="welcome-stat-label">Recent Reports</div>
-                                <div class="welcome-stat-value">${data.reports_count}</div>
-                                <div class="welcome-stat-sublabel">Available now</div>
-                            </div>
-                            <a href="{{ url_for('pages.dashboard') }}" class="welcome-stat-link">
-                                <i class="fas fa-arrow-right"></i>
-                            </a>
-                        </div>
-                    `;
-                }
-                
-                statsHTML += '</div>';
-                statsContainer.innerHTML = statsHTML;
-            } else {
-                statsContainer.innerHTML = '';
-            }
-        })
-        .catch(err => {
-            console.error('Error loading stats:', err);
-            document.getElementById('welcome-stats').innerHTML = '';
-        });
 });
 </script>
 {% endblock %}

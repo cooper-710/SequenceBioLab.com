@@ -483,20 +483,61 @@ body {
     overflow-y: auto;
 }
 
-/* Desktop: Never show scrollbar */
+/* Desktop: Optimize spacing to fit all items */
 @media (min-width: 1025px) {
-    .sidebar-nav,
-    .sidebar-nav-admin {
+    .sidebar-nav {
         overflow-y: hidden !important;
         overflow-x: hidden !important;
+        padding: 16px 14px 40px 14px !important;
+        gap: 2px !important;
+    }
+    
+    /* Admin sidebar always scrollable on desktop */
+    .sidebar-nav-admin {
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        padding: 16px 14px 40px 14px !important;
+        gap: 2px !important;
+    }
+    
+    .sidebar-nav .nav-item,
+    .sidebar-nav-admin .nav-item {
+        padding: 10px 14px !important;
+        gap: 12px !important;
+    }
+    
+    .sidebar-header {
+        padding: 20px 60px 20px 20px !important;
+    }
+    
+    .sidebar-header .logo-container {
+        margin-bottom: 8px !important;
+    }
+    
+    .sidebar-header .logo {
+        height: 42px !important;
+    }
+    
+    .sidebar-title {
+        font-size: 1.2rem !important;
+    }
+    
+    .sidebar-greeting {
+        margin-top: 6px !important;
+        font-size: 0.85rem !important;
     }
 }
 
 /* Mobile/Tablet Portrait: No scrollbar, fit all items */
 @media (max-width: 1024px) and (orientation: portrait) {
-    .sidebar-nav,
-    .sidebar-nav-admin {
+    .sidebar-nav {
         overflow-y: hidden !important;
+        overflow-x: hidden !important;
+    }
+    
+    /* Admin sidebar always scrollable on mobile portrait */
+    .sidebar-nav-admin {
+        overflow-y: auto !important;
         overflow-x: hidden !important;
     }
     
