@@ -1407,6 +1407,11 @@ body[data-theme='light'] .action-card:hover {
 }
 
 @media (max-width: 768px) {
+    /* Hide one sphere on mobile - show 2 circles */
+    .sphere-3 {
+        display: none;
+    }
+
     .welcome-hero {
         min-height: auto;
         padding: 60px clamp(16px, 4vw, 24px) 20px;
