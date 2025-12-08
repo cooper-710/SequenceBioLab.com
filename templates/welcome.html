@@ -2280,9 +2280,9 @@ document.addEventListener('DOMContentLoaded', function() {
         positions[i3 + 2] = (Math.random() - 0.5) * 1200;
         
         const variation = 0.5 + Math.random() * 0.5;
-        colors[i3] = color.r * variation;
-        colors[i3 + 1] = color.g * variation;
-        colors[i3 + 2] = color.b * variation;
+        colors[i3] = 1.0 * variation;      // White (R)
+        colors[i3 + 1] = 1.0 * variation;  // White (G)
+        colors[i3 + 2] = 1.0 * variation;  // White (B)
     }
     
     particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -2295,11 +2295,11 @@ document.addEventListener('DOMContentLoaded', function() {
         canvas.height = 64;
         const ctx = canvas.getContext('2d');
         
-        // Draw a circle with gradient
+        // Draw a circle with gradient - using orange for true orange particles
         const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-        gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.8)');
-        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        gradient.addColorStop(0, 'rgba(255, 127, 0, 1)');
+        gradient.addColorStop(0.5, 'rgba(255, 127, 0, 0.8)');
+        gradient.addColorStop(1, 'rgba(255, 127, 0, 0)');
         
         ctx.fillStyle = gradient;
         ctx.beginPath();
@@ -2520,9 +2520,9 @@ document.addEventListener('DOMContentLoaded', function() {
         positions[i3 + 2] = (Math.random() - 0.5) * 1200;
         
         const variation = 0.5 + Math.random() * 0.5;
-        colors[i3] = color.r * variation;
-        colors[i3 + 1] = color.g * variation;
-        colors[i3 + 2] = color.b * variation;
+        colors[i3] = 1.0 * variation;      // White (R)
+        colors[i3 + 1] = 1.0 * variation;  // White (G)
+        colors[i3 + 2] = 1.0 * variation;  // White (B)
     }
     
     particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -2535,11 +2535,11 @@ document.addEventListener('DOMContentLoaded', function() {
         canvas.height = 64;
         const ctx = canvas.getContext('2d');
         
-        // Draw a circle with gradient
+        // Draw a circle with gradient - using orange for true orange particles
         const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-        gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.8)');
-        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        gradient.addColorStop(0, 'rgba(255, 127, 0, 1)');
+        gradient.addColorStop(0.5, 'rgba(255, 127, 0, 0.8)');
+        gradient.addColorStop(1, 'rgba(255, 127, 0, 0)');
         
         ctx.fillStyle = gradient;
         ctx.beginPath();
