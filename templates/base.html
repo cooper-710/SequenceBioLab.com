@@ -242,6 +242,9 @@
             function showLoadingScreen() {
                 if (globalLoader) {
                     globalLoader.classList.remove('hidden');
+                    // Force reflow to ensure the class change is applied immediately
+                    globalLoader.style.display = 'flex';
+                    void globalLoader.offsetWidth;
                 }
             }
 
@@ -249,45 +252,78 @@
             function hideLoadingScreen() {
                 if (globalLoader) {
                     globalLoader.classList.add('hidden');
+                    // Reset display style
+                    globalLoader.style.display = '';
                 }
             }
 
             // Intercept all navigation link clicks
+            let navigationHandlersAttached = false;
             function setupNavigationInterception() {
+                // Only set up once to avoid duplicate listeners
+                if (navigationHandlersAttached) return;
+                navigationHandlersAttached = true;
+                
+                // Helper function to check if a link should show loading screen
+                function shouldShowLoader(link) {
+                    if (!link) return false;
+                    const href = link.getAttribute('href');
+                    if (!href) return false;
+                    
+                    // Only intercept internal links
+                    const isInternalLink = !href.startsWith('#') && 
+                                         !href.startsWith('javascript:') && 
+                                         !href.startsWith('mailto:') && 
+                                         !href.startsWith('http') && 
+                                         href !== '';
+                    
+                    if (!isInternalLink) return false;
+                    
+                    // Check if it's a navigation link (not a form submission or special action)
+                    return !link.closest('form') && 
+                           !link.hasAttribute('download') && 
+                           !link.hasAttribute('target');
+                }
+                
+                // Attach listeners directly to nav items for immediate response
                 const navItems = document.querySelectorAll('.nav-item[href]');
                 navItems.forEach(item => {
-                    item.addEventListener('click', function(e) {
-                        const href = this.getAttribute('href');
-                        // Only intercept internal links (not external or special links)
-                        if (href && !href.startsWith('#') && !href.startsWith('javascript:') && !href.startsWith('mailto:') && !href.startsWith('http') && href !== '') {
-                            // Show loading screen immediately
-                            showLoadingScreen();
-                            // Let the browser handle navigation normally
-                            // The loading screen will be visible until the new page loads
-                        }
-                    });
-                });
-
-                // Also intercept clicks on other navigation links (like featured cards, action cards, etc.)
-                const allNavLinks = document.querySelectorAll('a[href]');
-                allNavLinks.forEach(link => {
-                    const href = link.getAttribute('href');
-                    // Only intercept internal navigation links
-                    if (href && !href.startsWith('#') && !href.startsWith('javascript:') && !href.startsWith('mailto:') && !href.startsWith('http') && href !== '') {
-                        // Check if it's a navigation link (not a form submission or special action)
-                        if (!link.closest('form') && !link.hasAttribute('download') && !link.hasAttribute('target')) {
-                            link.addEventListener('click', function(e) {
+                    if (!item.dataset.loaderAttached) {
+                        item.dataset.loaderAttached = 'true';
+                        // Use both mousedown (early) and click (actual navigation)
+                        item.addEventListener('mousedown', function(e) {
+                            if (shouldShowLoader(this)) {
                                 showLoadingScreen();
-                            });
-                        }
+                            }
+                        }, { passive: true });
+                        item.addEventListener('click', function(e) {
+                            if (shouldShowLoader(this)) {
+                                showLoadingScreen();
+                            }
+                        }, { passive: true });
                     }
                 });
+                
+                // Use event delegation for other navigation links
+                function handleNavigation(e) {
+                    const link = e.target.closest('a[href]');
+                    if (shouldShowLoader(link)) {
+                        showLoadingScreen();
+                    }
+                }
+                
+                // Listen to click events on document for other links
+                document.addEventListener('click', handleNavigation, true);
             }
+
+            // Set up navigation interception immediately
+            setupNavigationInterception();
 
             // Hide loading screen when page is fully loaded
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', function() {
                     hideLoadingScreen();
+                    // Re-setup after DOM is ready to catch any dynamically added links
                     setupNavigationInterception();
                 });
             } else {

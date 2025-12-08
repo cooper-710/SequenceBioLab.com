@@ -10,19 +10,15 @@
 
 {% block content %}
 <div class="welcome-page">
-    <!-- Orange Spheres Background -->
-    <div class="spheres-background">
-        <div class="sphere sphere-1"></div>
-        <div class="sphere sphere-2"></div>
-        <div class="sphere sphere-3"></div>
-    </div>
+    <!-- Liquid Glass Background - Theme-based -->
+    <div class="welcome-background"></div>
     
     <!-- Hero Section - Inspired by Apple AirPods Max & MNTN -->
     <section class="welcome-hero">
         <div class="hero-content-wrapper">
             <div class="hero-profile-picture">
                 {% if current_user and current_user.profile_image_path %}
-                    <img src="{{ url_for('static', filename=current_user.profile_image_path) }}?v={% if current_user.id %}{{ current_user.id }}{% else %}0{% endif %}" alt="{{ current_user.first_name }} {{ current_user.last_name }}" class="hero-profile-img">
+                    <img src="{{ url_for('static', filename=current_user.profile_image_path) }}?v={% if current_user.id %}{{ current_user.id }}{% else %}0{% endif %}" alt="{{ current_user.first_name }} {{ current_user.last_name }}" class="hero-profile-img" loading="eager" fetchpriority="high">
                 {% else %}
                     <div class="hero-profile-placeholder">
                         <i class="fas fa-user"></i>
@@ -357,22 +353,48 @@ body {
     position: relative;
 }
 
+/* Ensure all welcome page elements are visible immediately on initial load */
+.welcome-page .welcome-background {
+    visibility: visible;
+    opacity: 1;
+    display: block;
+}
+
+.welcome-page .hero-profile-picture,
+.welcome-page .hero-profile-img,
+.welcome-page .hero-profile-placeholder {
+    visibility: visible;
+    opacity: 1;
+    display: flex;
+}
+
+.welcome-page .featured-action-card,
+.welcome-page .action-card,
+.welcome-page .feature-section {
+    visibility: visible;
+    opacity: 1;
+}
+
 /* Welcome Page Container */
 .welcome-page {
     max-width: 1600px;
     margin: 0 auto;
     padding: 0;
-    animation: welcomeFadeIn 0.8s ease-out;
+    animation: welcomeFadeIn 0.3s ease-out;
     width: 100%;
     max-width: 100vw;
     overflow-x: hidden;
     box-sizing: border-box;
     position: relative;
     min-height: 100vh;
+    /* Ensure page renders immediately */
+    opacity: 1;
+    visibility: visible;
+    transform: translateZ(0);
 }
 
-/* Orange Spheres Background */
-.spheres-background {
+/* Liquid Glass Background - Theme-based */
+.welcome-background {
     position: fixed;
     top: 0;
     left: 0;
@@ -382,63 +404,22 @@ body {
     z-index: 0;
     overflow: hidden;
     background: var(--color-main-bg);
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
     visibility: visible;
     opacity: 1;
-}
-
-.sphere {
-    position: absolute;
-    border-radius: 50%;
-    opacity: 0.3;
-    animation: floatSphere 20s ease-in-out infinite;
-    will-change: transform;
+    /* Force immediate rendering */
     transform: translateZ(0);
-    backface-visibility: hidden;
+    will-change: auto;
+    /* Dark mode - black liquid glass image */
+    background-image: url("{{ url_for('static', filename='ChatGPT Image Dec 7, 2025, 06_52_30 PM.png') }}");
 }
 
-.sphere-1 {
-    width: 400px;
-    height: 400px;
-    background: radial-gradient(circle at 30% 30%, rgba(255, 149, 0, 0.9), rgba(255, 127, 0, 0.6));
-    top: -150px;
-    right: -100px;
-    animation-delay: 0s;
-    animation-duration: 25s;
-}
-
-.sphere-2 {
-    width: 350px;
-    height: 350px;
-    background: radial-gradient(circle at 30% 30%, rgba(255, 127, 0, 0.9), rgba(255, 149, 0, 0.6));
-    bottom: 10%;
-    left: -100px;
-    animation-delay: -8s;
-    animation-duration: 30s;
-}
-
-.sphere-3 {
-    width: 300px;
-    height: 300px;
-    background: radial-gradient(circle at 30% 30%, rgba(255, 149, 0, 0.85), rgba(255, 127, 0, 0.55));
-    top: 50%;
-    right: 10%;
-    animation-delay: -15s;
-    animation-duration: 28s;
-}
-
-@keyframes floatSphere {
-    0%, 100% {
-        transform: translate(0, 0) scale(1);
-    }
-    25% {
-        transform: translate(40px, -40px) scale(1.1);
-    }
-    50% {
-        transform: translate(-30px, 30px) scale(0.9);
-    }
-    75% {
-        transform: translate(30px, 40px) scale(1.05);
-    }
+/* Light mode - white liquid glass image */
+body[data-theme='light'] .welcome-background {
+    background-image: url("{{ url_for('static', filename='WhiteBG.png') }}");
 }
 
 /* Ensure all child elements respect container width */
@@ -486,6 +467,10 @@ body {
     max-width: 100vw;
     box-sizing: border-box;
     z-index: 1;
+    /* Ensure hero renders immediately */
+    opacity: 1;
+    visibility: visible;
+    transform: translateZ(0);
 }
 
 .welcome-hero * {
@@ -536,6 +521,10 @@ body {
     min-height: auto;
     height: auto;
     white-space: nowrap;
+    /* Ensure title renders immediately */
+    opacity: 1;
+    visibility: visible;
+    transform: translateZ(0);
 }
 
 .hero-title-line {
@@ -553,6 +542,9 @@ body {
     font-weight: 300;
     animation: blink 1s infinite;
     color: var(--color-text-primary);
+    /* Ensure cursor is visible immediately */
+    opacity: 1;
+    visibility: visible;
 }
 
 .typing-cursor.stop-blinking {
@@ -572,6 +564,9 @@ body {
 #typing-welcome {
     display: inline-block;
     white-space: nowrap;
+    /* Ensure visible immediately */
+    opacity: 1;
+    visibility: visible;
 }
 
 #typing-name {
@@ -579,6 +574,9 @@ body {
     white-space: nowrap;
     color: var(--color-accent);
     margin-left: 0.2em;
+    /* Ensure visible immediately */
+    opacity: 1;
+    visibility: visible;
 }
 
 .hero-title-name {
@@ -630,6 +628,10 @@ body {
     flex-shrink: 0;
     overflow: hidden;
     box-sizing: border-box;
+    /* Ensure image renders immediately */
+    opacity: 1;
+    visibility: visible;
+    transform: translateZ(0);
 }
 
 .hero-profile-placeholder {
@@ -643,6 +645,10 @@ body {
     color: var(--color-accent);
     font-size: 4rem;
     box-sizing: border-box;
+    /* Ensure placeholder renders immediately */
+    opacity: 1;
+    visibility: visible;
+    transform: translateZ(0);
 }
 
 .hero-admin-search {
@@ -685,6 +691,10 @@ body {
     overflow-y: visible;
     position: relative;
     z-index: 1;
+    /* Ensure section renders immediately */
+    opacity: 1;
+    visibility: visible;
+    transform: translateZ(0);
 }
 
 .featured-actions-grid {
@@ -718,6 +728,17 @@ body {
     max-width: 100%;
     box-sizing: border-box;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    /* Ensure cards render immediately */
+    opacity: 1;
+    visibility: visible;
+    transform: translateZ(0);
+    /* Fix for backdrop-filter glitches during fast scrolling */
+    will-change: transform;
+    isolation: isolate;
+    contain: layout style paint;
+    /* Stronger fallback background in case backdrop-filter fails */
+    background: rgba(18, 18, 18, 0.95);
+    background: rgba(255, 255, 255, 0.05);
 }
 
 body[data-theme='light'] .featured-action-card {
@@ -811,12 +832,12 @@ body[data-theme='light'] .featured-primary {
     width: 44px;
     height: 44px;
     border-radius: 12px;
-    background: var(--color-layer-soft);
-    border: 1px solid var(--color-layer-border);
+    background: var(--color-accent);
+    border: 1px solid var(--color-accent);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: var(--color-text-subtle);
+    color: var(--color-text-inverse);
     transition: all 0.4s ease;
     align-self: flex-start;
 }
@@ -840,6 +861,10 @@ body[data-theme='light'] .featured-primary {
     overflow-x: hidden;
     position: relative;
     z-index: 1;
+    /* Ensure section renders immediately */
+    opacity: 1;
+    visibility: visible;
+    transform: translateZ(0);
 }
 
 .feature-section {
@@ -973,6 +998,10 @@ body[data-theme='light'] .featured-primary {
     overflow-x: hidden;
     position: relative;
     z-index: 1;
+    /* Ensure section renders immediately */
+    opacity: 1;
+    visibility: visible;
+    transform: translateZ(0);
 }
 
 .all-actions-header {
@@ -1053,6 +1082,17 @@ body[data-theme='light'] .featured-primary {
     max-width: 100%;
     box-sizing: border-box;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    /* Ensure cards render immediately */
+    opacity: 1;
+    visibility: visible;
+    transform: translateZ(0);
+    /* Fix for backdrop-filter glitches during fast scrolling */
+    will-change: transform;
+    isolation: isolate;
+    contain: layout style paint;
+    /* Stronger fallback background in case backdrop-filter fails */
+    background: rgba(18, 18, 18, 0.95);
+    background: rgba(255, 255, 255, 0.05);
 }
 
 body[data-theme='light'] .action-card {
@@ -1407,11 +1447,6 @@ body[data-theme='light'] .action-card:hover {
 }
 
 @media (max-width: 768px) {
-    /* Hide one sphere on mobile - show 2 circles */
-    .sphere-3 {
-        display: none;
-    }
-
     .welcome-hero {
         min-height: auto;
         padding: 60px clamp(16px, 4vw, 24px) 20px;
@@ -1926,6 +1961,19 @@ body[data-theme='light'] .action-card:hover {
         z-index: 1;
     }
 }
+
+/* Disable backdrop-filter during fast scrolling to prevent glitches */
+body.fast-scrolling .featured-action-card,
+body.fast-scrolling .action-card {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(18, 18, 18, 0.95) !important;
+}
+
+body[data-theme='light'].fast-scrolling .featured-action-card,
+body[data-theme='light'].fast-scrolling .action-card {
+    background: rgba(255, 255, 255, 0.95) !important;
+}
 </style>
 
 <script>
@@ -1939,32 +1987,26 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
     
-    // Hide the elements initially
-    welcomeElement.style.opacity = '0';
-    nameElement.style.opacity = '0';
-    cursorElement.style.opacity = '0';
-    
     const firstName = '{{ current_user.first_name or "" }}';
     const welcomeText = 'Welcome, ';
     
+    // Ensure elements are visible immediately
+    welcomeElement.style.opacity = '1';
+    nameElement.style.opacity = '1';
+    cursorElement.style.opacity = '1';
+    
+    // Start typing animation with 1 second delay
     let welcomeIndex = 0;
     let nameIndex = 0;
-    const typingSpeed = 100; // milliseconds per character
+    const typingSpeed = 120; // milliseconds per character (slower typing speed)
     
-    // Wait for fonts to load
     function startTyping() {
-        // Show elements and start typing
-        welcomeElement.style.opacity = '1';
-        nameElement.style.opacity = '1';
-        cursorElement.style.opacity = '1';
-        
         function typeWelcome() {
             if (welcomeIndex < welcomeText.length) {
                 welcomeElement.textContent = welcomeText.substring(0, welcomeIndex + 1);
                 welcomeIndex++;
                 setTimeout(typeWelcome, typingSpeed);
             } else {
-                // Welcome complete, start typing name
                 typeName();
             }
         }
@@ -1975,33 +2017,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 nameIndex++;
                 setTimeout(typeName, typingSpeed);
             } else {
-                // Animation complete - hide cursor after 3 seconds (but keep space to prevent layout shift)
+                // Animation complete - hide cursor after 2 seconds
                 setTimeout(() => {
                     cursorElement.style.visibility = 'hidden';
-                }, 3000);
+                }, 2000);
             }
         }
         
-        // Start typing immediately after fonts are ready
+        // Start typing
         typeWelcome();
     }
     
     // Delay animation start by 1 second after page load
-    setTimeout(function() {
-        if (document.fonts && document.fonts.ready) {
-            document.fonts.ready.then(() => {
-                requestAnimationFrame(() => {
-                    requestAnimationFrame(() => {
-                        startTyping();
-                    });
-                });
-            });
-        } else {
-            setTimeout(() => {
-                startTyping();
-            }, 400);
-        }
-    }, 1000); // 1 second delay from page load
+    setTimeout(() => {
+        requestAnimationFrame(() => {
+            startTyping();
+        });
+    }, 1000); // 1 second delay
 });
 
 // Handle player schedule search functionality (for admin)
@@ -2126,5 +2158,43 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+// Fix for backdrop-filter glitches during fast scrolling
+(function() {
+    let scrollTimeout;
+    let isScrolling = false;
+    let lastScrollTop = 0;
+    let scrollVelocity = 0;
+
+    function handleScroll() {
+        const currentScrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const scrollDelta = Math.abs(currentScrollTop - lastScrollTop);
+        const timeDelta = 16; // Approximate frame time
+        
+        // Calculate scroll velocity
+        scrollVelocity = scrollDelta / timeDelta;
+        
+        // If scrolling fast (velocity > 5 pixels per frame), disable backdrop-filter
+        if (scrollVelocity > 5) {
+            if (!isScrolling) {
+                isScrolling = true;
+                document.body.classList.add('fast-scrolling');
+            }
+        }
+        
+        lastScrollTop = currentScrollTop;
+        
+        // Clear timeout and reset after scrolling stops
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(function() {
+            isScrolling = false;
+            scrollVelocity = 0;
+            document.body.classList.remove('fast-scrolling');
+        }, 150);
+    }
+    
+    // Use passive listener for better performance
+    window.addEventListener('scroll', handleScroll, { passive: true });
+})();
 </script>
 {% endblock %}
