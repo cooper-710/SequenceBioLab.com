@@ -242,7 +242,7 @@
             let loadingTimeout = null;
             let showLoaderTimeout = null; // Timer to delay showing the loader
 
-            // Show loading screen after delay (only if page is still loading)
+            // Show loading screen immediately
             function showLoadingScreen() {
                 if (globalLoader && !isLoading) {
                     isLoading = true;
@@ -281,19 +281,16 @@
                 }
             }
 
-            // Schedule loading screen to show after delay (only if page hasn't loaded)
+            // Show loading screen immediately when navigation starts
             function scheduleLoadingScreen() {
                 // Cancel any existing timer
                 if (showLoaderTimeout) {
                     clearTimeout(showLoaderTimeout);
                 }
                 
-                // Only schedule if not already loading
+                // Show immediately when navigation is triggered
                 if (!isLoading) {
-                    // Show loading screen after 500ms delay (only if page hasn't loaded by then)
-                    showLoaderTimeout = setTimeout(() => {
-                        showLoadingScreen();
-                    }, 500); // 500ms delay before showing loader
+                    showLoadingScreen();
                 }
             }
 
@@ -354,34 +351,73 @@
             // Set up navigation interception immediately
             setupNavigationInterception();
 
-            // Hide loading screen when page is fully loaded
+            // Hide loading screen when page is fully loaded (use window.load, not DOMContentLoaded)
+            // DOMContentLoaded fires too early - before images, stylesheets, etc. are loaded
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', function() {
-                    hideLoadingScreen();
+                // Wait for full page load, not just DOM ready
+                window.addEventListener('load', function() {
+                    // Small delay to ensure everything is rendered
+                    setTimeout(() => {
+                        hideLoadingScreen();
+                    }, 100);
                     // Re-setup after DOM is ready to catch any dynamically added links
                     setupNavigationInterception();
                 });
-            } else {
-                // Page already loaded
+                
+                // Also hide on DOMContentLoaded as a fallback for fast pages
+                document.addEventListener('DOMContentLoaded', function() {
+                    // Only hide if page seems to be loading quickly (give it a moment)
+                    setTimeout(() => {
+                        if (document.readyState === 'complete') {
+                            hideLoadingScreen();
+                        }
+                    }, 300);
+                    setupNavigationInterception();
+                });
+            } else if (document.readyState === 'complete') {
+                // Page already fully loaded
                 hideLoadingScreen();
+                setupNavigationInterception();
+            } else {
+                // Page is interactive but not complete
+                window.addEventListener('load', function() {
+                    setTimeout(() => {
+                        hideLoadingScreen();
+                    }, 100);
+                });
                 setupNavigationInterception();
             }
 
             // Also hide on page visibility change (in case of back/forward navigation)
             document.addEventListener('visibilitychange', function() {
                 if (!document.hidden) {
-                    hideLoadingScreen();
+                    // Small delay to allow page to render
+                    setTimeout(() => {
+                        hideLoadingScreen();
+                    }, 100);
                 }
             });
 
             // Hide on pageshow event (handles back/forward cache)
             window.addEventListener('pageshow', function(event) {
-                hideLoadingScreen();
+                // If page was loaded from cache, hide immediately
+                // Otherwise wait for load event
+                if (event.persisted) {
+                    hideLoadingScreen();
+                } else {
+                    // New page load, wait for it to complete
+                    window.addEventListener('load', function() {
+                        setTimeout(() => {
+                            hideLoadingScreen();
+                        }, 100);
+                    }, { once: true });
+                }
             });
 
             // Hide on beforeunload to prevent stuck loading screen
             window.addEventListener('beforeunload', function() {
-                hideLoadingScreen();
+                // Don't hide on beforeunload - let it persist to next page
+                // This ensures smooth transition
             });
         })();
 
