@@ -6,12 +6,17 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Herr+Von+Muellerhoff&family=Dancing+Script:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 {% endblock %}
 
 {% block content %}
 <div class="welcome-page">
     <!-- Liquid Glass Background - Theme-based -->
     <div class="welcome-background"></div>
+    
+    <!-- 3D Graphics Layer - Three.js WebGL Scene -->
+    <canvas id="threejs-canvas"></canvas>
+    <canvas id="threejs-canvas-2"></canvas>
     
     <!-- Hero Section - Inspired by Apple AirPods Max & MNTN -->
     <section class="welcome-hero">
@@ -422,6 +427,29 @@ body[data-theme='light'] .welcome-background {
     background-image: url("{{ url_for('static', filename='WhiteBG.png') }}");
 }
 
+/* 3D Graphics Layer - Three.js Canvas */
+#threejs-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.7;
+}
+
+#threejs-canvas-2 {
+    position: fixed;
+    top: 100vh;
+    left: 0;
+    width: 100%;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.7;
+}
+
+
 /* Ensure all child elements respect container width */
 .welcome-page * {
     max-width: 100%;
@@ -466,7 +494,7 @@ body[data-theme='light'] .welcome-background {
     width: 100%;
     max-width: 100vw;
     box-sizing: border-box;
-    z-index: 1;
+    z-index: 2;
     /* Ensure hero renders immediately */
     opacity: 1;
     visibility: visible;
@@ -622,7 +650,7 @@ body[data-theme='light'] .welcome-background {
     border-radius: 50%;
     object-fit: cover;
     object-position: center center;
-    border: 4px solid rgba(255, 127, 0, 0.4);
+    border: 4px solid var(--color-accent);
     display: block;
     aspect-ratio: 1 / 1;
     flex-shrink: 0;
@@ -710,10 +738,10 @@ body[data-theme='light'] .welcome-background {
 }
 
 .featured-action-card {
-    background: rgba(255, 255, 255, 0.05);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.001);
+    backdrop-filter: blur(8px) saturate(120%);
+    -webkit-backdrop-filter: blur(8px) saturate(120%);
+    border: 1px solid rgba(255, 255, 255, 0.02);
     border-radius: 24px;
     padding: 40px;
     display: flex;
@@ -727,7 +755,7 @@ body[data-theme='light'] .welcome-background {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
     /* Ensure cards render immediately */
     opacity: 1;
     visibility: visible;
@@ -737,14 +765,14 @@ body[data-theme='light'] .welcome-background {
     isolation: isolate;
     contain: layout style paint;
     /* Stronger fallback background in case backdrop-filter fails */
-    background: rgba(18, 18, 18, 0.95);
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(18, 18, 18, 0.3);
+    background: rgba(255, 255, 255, 0.001);
 }
 
 body[data-theme='light'] .featured-action-card {
-    background: rgba(255, 255, 255, 0.7);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
 }
 
 .featured-action-card::before {
@@ -759,14 +787,14 @@ body[data-theme='light'] .featured-action-card {
 
 .featured-action-card:hover {
     transform: translateY(-8px);
-    border-color: rgba(255, 127, 0, 0.5);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 127, 0, 0.1);
-    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 127, 0, 0.25);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(255, 127, 0, 0.06);
+    background: rgba(255, 255, 255, 0.002);
 }
 
 body[data-theme='light'] .featured-action-card:hover {
-    background: rgba(255, 255, 255, 0.8);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(255, 127, 0, 0.2);
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(255, 127, 0, 0.12);
 }
 
 .featured-action-card:hover::before {
@@ -774,13 +802,13 @@ body[data-theme='light'] .featured-action-card:hover {
 }
 
 .featured-primary {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 127, 0, 0.4);
+    background: rgba(255, 255, 255, 0.002);
+    border-color: rgba(255, 127, 0, 0.15);
 }
 
 body[data-theme='light'] .featured-primary {
-    background: rgba(255, 255, 255, 0.75);
-    border-color: rgba(255, 127, 0, 0.5);
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 127, 0, 0.18);
 }
 
 .featured-card-icon {
@@ -1062,10 +1090,10 @@ body[data-theme='light'] .featured-primary {
 }
 
 .action-card {
-    background: rgba(255, 255, 255, 0.05);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.001);
+    backdrop-filter: blur(8px) saturate(120%);
+    -webkit-backdrop-filter: blur(8px) saturate(120%);
+    border: 1px solid rgba(255, 255, 255, 0.02);
     border-radius: 20px;
     padding: 32px;
     display: flex;
@@ -1081,7 +1109,7 @@ body[data-theme='light'] .featured-primary {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
     /* Ensure cards render immediately */
     opacity: 1;
     visibility: visible;
@@ -1091,14 +1119,14 @@ body[data-theme='light'] .featured-primary {
     isolation: isolate;
     contain: layout style paint;
     /* Stronger fallback background in case backdrop-filter fails */
-    background: rgba(18, 18, 18, 0.95);
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(18, 18, 18, 0.3);
+    background: rgba(255, 255, 255, 0.001);
 }
 
 body[data-theme='light'] .action-card {
-    background: rgba(255, 255, 255, 0.7);
-    border: 1px solid rgba(255, 255, 255, 0.3);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
 }
 
 .action-card::before {
@@ -1113,14 +1141,14 @@ body[data-theme='light'] .action-card {
 
 .action-card:hover {
     transform: translateY(-6px);
-    border-color: rgba(255, 127, 0, 0.5);
-    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(255, 127, 0, 0.1);
-    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 127, 0, 0.25);
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(255, 127, 0, 0.06);
+    background: rgba(255, 255, 255, 0.002);
 }
 
 body[data-theme='light'] .action-card:hover {
-    background: rgba(255, 255, 255, 0.8);
-    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(255, 127, 0, 0.2);
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(255, 127, 0, 0.12);
 }
 
 .action-card:hover::before {
@@ -1967,12 +1995,12 @@ body.fast-scrolling .featured-action-card,
 body.fast-scrolling .action-card {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
-    background: rgba(18, 18, 18, 0.95) !important;
+    background: rgba(18, 18, 18, 0.15) !important;
 }
 
 body[data-theme='light'].fast-scrolling .featured-action-card,
 body[data-theme='light'].fast-scrolling .action-card {
-    background: rgba(255, 255, 255, 0.95) !important;
+    background: rgba(255, 255, 255, 0.1) !important;
 }
 </style>
 
@@ -2196,5 +2224,479 @@ document.addEventListener('DOMContentLoaded', function() {
     // Use passive listener for better performance
     window.addEventListener('scroll', handleScroll, { passive: true });
 })();
+
+// Three.js 3D Scene - Elite Background
+document.addEventListener('DOMContentLoaded', function() {
+    const canvas = document.getElementById('threejs-canvas');
+    if (!canvas || typeof THREE === 'undefined') return;
+    
+    // Scene setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+    const renderer = new THREE.WebGLRenderer({ 
+        canvas: canvas, 
+        alpha: true, 
+        antialias: true 
+    });
+    
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0x000000, 0);
+    
+    // Camera position
+    camera.position.z = 300;
+    camera.position.y = 100;
+    
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+    scene.add(ambientLight);
+    
+    const pointLight1 = new THREE.PointLight(0xff7f00, 1, 1000);
+    pointLight1.position.set(200, 200, 200);
+    scene.add(pointLight1);
+    
+    const pointLight2 = new THREE.PointLight(0xff9500, 0.8, 1000);
+    pointLight2.position.set(-200, -200, 200);
+    scene.add(pointLight2);
+    
+    const directionalLight = new THREE.DirectionalLight(0xff7f00, 0.5);
+    directionalLight.position.set(0, 300, 500);
+    scene.add(directionalLight);
+    
+    // Create particle system (particles only, no large shapes)
+    const particleCount = 300;
+    const particles = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+    
+    // Create orange particles
+    const color = new THREE.Color(0xff7f00);
+    
+    for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        
+        positions[i3] = (Math.random() - 0.5) * 1200;
+        positions[i3 + 1] = (Math.random() - 0.5) * 1200;
+        positions[i3 + 2] = (Math.random() - 0.5) * 1200;
+        
+        const variation = 0.5 + Math.random() * 0.5;
+        colors[i3] = color.r * variation;
+        colors[i3 + 1] = color.g * variation;
+        colors[i3 + 2] = color.b * variation;
+    }
+    
+    particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    
+    // Create circular texture for particles
+    const circleTexture = (() => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        
+        // Draw a circle with gradient
+        const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.8)');
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(32, 32, 32, 0, Math.PI * 2);
+        ctx.fill();
+        
+        return new THREE.CanvasTexture(canvas);
+    })();
+    
+    const particleMaterial = new THREE.PointsMaterial({
+        size: 6,
+        map: circleTexture,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.8,
+        blending: THREE.AdditiveBlending,
+        sizeAttenuation: true,
+        alphaTest: 0.001
+    });
+    
+    const particleSystem = new THREE.Points(particles, particleMaterial);
+    scene.add(particleSystem);
+    
+    // Store initial particle positions and velocities for smooth cursor following
+    const initialPositions = new Float32Array(positions);
+    const particlePositions = particles.getAttribute('position');
+    const particleVelocities = [];
+    
+    // Initialize velocities and movement properties for each particle
+    const particleProperties = [];
+    for (let i = 0; i < particleCount; i++) {
+        particleVelocities.push({
+            x: 0,
+            y: 0,
+            z: 0
+        });
+        // Store unique movement properties for each particle
+        particleProperties.push({
+            speed: 0.1 + Math.random() * 0.15,
+            amplitude: 15 + Math.random() * 25,
+            phase: Math.random() * Math.PI * 2,
+            orbitRadius: 20 + Math.random() * 40,
+            orbitSpeed: 0.05 + Math.random() * 0.1,
+            floatSpeed: 0.15 + Math.random() * 0.2
+        });
+    }
+    
+    // Mouse tracking for cursor following
+    let mouseX = 0;
+    let mouseY = 0;
+    let targetMouseX = 0;
+    let targetMouseY = 0;
+    let mouseVelocityX = 0;
+    let mouseVelocityY = 0;
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+    
+    // Attach mouse listener to window for better tracking
+    window.addEventListener('mousemove', (event) => {
+        // Normalize mouse position to -1 to 1 range
+        const newMouseX = (event.clientX / window.innerWidth) * 2 - 1;
+        const newMouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+        
+        // Calculate mouse velocity for more dynamic response
+        mouseVelocityX = (newMouseX - lastMouseX) * 10;
+        mouseVelocityY = (newMouseY - lastMouseY) * 10;
+        
+        targetMouseX = newMouseX;
+        targetMouseY = newMouseY;
+        lastMouseX = newMouseX;
+        lastMouseY = newMouseY;
+    });
+    
+    // Animation
+    let time = 0;
+    function animate() {
+        requestAnimationFrame(animate);
+        time += 0.002;
+        
+        // Smoothly interpolate mouse position with faster response
+        mouseX += (targetMouseX - mouseX) * 0.15;
+        mouseY += (targetMouseY - mouseY) * 0.15;
+        
+        // Decay mouse velocity
+        mouseVelocityX *= 0.95;
+        mouseVelocityY *= 0.95;
+        
+        // Rotate camera slightly
+        camera.position.x = Math.sin(time * 0.02) * 100;
+        camera.lookAt(0, 0, 0);
+        
+        // Update particle positions with cursor following
+        const baseInfluence = 50; // Base cursor influence (increased for visibility)
+        const velocityInfluence = 25; // Additional influence from mouse velocity
+        
+        for (let i = 0; i < particleCount; i++) {
+            const i3 = i * 3;
+            const vel = particleVelocities[i];
+            const props = particleProperties[i];
+            const particleTime = time * props.speed + props.phase;
+            
+            // Enhanced floating animation with varied patterns (Y-axis)
+            const floatY = Math.sin(particleTime * props.floatSpeed) * props.amplitude +
+                          Math.cos(particleTime * props.floatSpeed * 0.7) * (props.amplitude * 0.5);
+            
+            // Orbital movement around initial position (subtle)
+            const orbitX = Math.cos(particleTime * props.orbitSpeed) * props.orbitRadius;
+            const orbitZ = Math.sin(particleTime * props.orbitSpeed) * props.orbitRadius;
+            
+            // Calculate base position with orbital movement
+            const baseX = initialPositions[i3] + orbitX;
+            const baseZ = initialPositions[i3 + 2] + orbitZ;
+            
+            // Calculate cursor influence (all particles follow cursor) - inverted for correct direction
+            const cursorOffsetX = -mouseX * baseInfluence;
+            const cursorOffsetZ = -mouseY * baseInfluence;
+            const velocityOffsetX = -mouseVelocityX * velocityInfluence;
+            const velocityOffsetZ = -mouseVelocityY * velocityInfluence;
+            
+            // Target position combines base + orbital + cursor
+            const targetX = baseX + cursorOffsetX + velocityOffsetX;
+            const targetZ = baseZ + cursorOffsetZ + velocityOffsetZ;
+            
+            // Direct movement toward cursor with smooth interpolation
+            const followSpeed = 0.15; // How fast particles follow cursor
+            
+            // Calculate direction to target
+            const dx = targetX - particlePositions.array[i3];
+            const dz = targetZ - particlePositions.array[i3 + 2];
+            
+            // Move directly toward target
+            particlePositions.array[i3] += dx * followSpeed;
+            particlePositions.array[i3 + 2] += dz * followSpeed;
+            particlePositions.array[i3 + 1] = initialPositions[i3 + 1] + floatY;
+        }
+        particlePositions.needsUpdate = true;
+        
+        // Rotate particle system slightly
+        particleSystem.rotation.y += 0.0001;
+        particleSystem.rotation.x += 0.00005;
+        
+        renderer.render(scene, camera);
+    }
+    
+    // Handle window resize
+    function handleResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+    
+    window.addEventListener('resize', handleResize);
+    
+    // Start animation
+    animate();
+});
+
+// Three.js 3D Scene - Elite Background (Second Canvas)
+document.addEventListener('DOMContentLoaded', function() {
+    const canvas = document.getElementById('threejs-canvas-2');
+    if (!canvas || typeof THREE === 'undefined') return;
+    
+    // Calculate height to cover remaining page
+    function getCanvasHeight() {
+        const docHeight = Math.max(document.documentElement.scrollHeight, document.documentElement.clientHeight);
+        return Math.max(docHeight - window.innerHeight, window.innerHeight);
+    }
+    
+    // Scene setup
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 2000);
+    const renderer = new THREE.WebGLRenderer({ 
+        canvas: canvas, 
+        alpha: true, 
+        antialias: true 
+    });
+    
+    const canvasHeight = getCanvasHeight();
+    renderer.setSize(window.innerWidth, canvasHeight);
+    canvas.style.height = canvasHeight + 'px';
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0x000000, 0);
+    
+    // Camera position
+    camera.position.z = 300;
+    camera.position.y = 100;
+    
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+    scene.add(ambientLight);
+    
+    const pointLight1 = new THREE.PointLight(0xff7f00, 1, 1000);
+    pointLight1.position.set(200, 200, 200);
+    scene.add(pointLight1);
+    
+    const pointLight2 = new THREE.PointLight(0xff9500, 0.8, 1000);
+    pointLight2.position.set(-200, -200, 200);
+    scene.add(pointLight2);
+    
+    const directionalLight = new THREE.DirectionalLight(0xff7f00, 0.5);
+    directionalLight.position.set(0, 300, 500);
+    scene.add(directionalLight);
+    
+    // Create particle system (particles only, no large shapes) - same as top
+    const particleCount = 800;
+    const particles = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+    
+    // Create orange particles
+    const color = new THREE.Color(0xff7f00);
+    
+    for (let i = 0; i < particleCount; i++) {
+        const i3 = i * 3;
+        
+        positions[i3] = (Math.random() - 0.5) * 1200;
+        positions[i3 + 1] = (Math.random() - 0.5) * 1200;
+        positions[i3 + 2] = (Math.random() - 0.5) * 1200;
+        
+        const variation = 0.5 + Math.random() * 0.5;
+        colors[i3] = color.r * variation;
+        colors[i3 + 1] = color.g * variation;
+        colors[i3 + 2] = color.b * variation;
+    }
+    
+    particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    
+    // Create circular texture for particles
+    const circleTexture = (() => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        
+        // Draw a circle with gradient
+        const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+        gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.8)');
+        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(32, 32, 32, 0, Math.PI * 2);
+        ctx.fill();
+        
+        return new THREE.CanvasTexture(canvas);
+    })();
+    
+    const particleMaterial = new THREE.PointsMaterial({
+        size: 3.5,
+        map: circleTexture,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.8,
+        blending: THREE.AdditiveBlending,
+        sizeAttenuation: true,
+        alphaTest: 0.001
+    });
+    
+    const particleSystem = new THREE.Points(particles, particleMaterial);
+    scene.add(particleSystem);
+    
+    // Store initial particle positions and velocities for smooth cursor following
+    const initialPositions = new Float32Array(positions);
+    const particlePositions = particles.getAttribute('position');
+    const particleVelocities = [];
+    
+    // Initialize velocities and movement properties for each particle
+    const particleProperties = [];
+    for (let i = 0; i < particleCount; i++) {
+        particleVelocities.push({
+            x: 0,
+            y: 0,
+            z: 0
+        });
+        // Store unique movement properties for each particle
+        particleProperties.push({
+            speed: 0.1 + Math.random() * 0.15,
+            amplitude: 15 + Math.random() * 25,
+            phase: Math.random() * Math.PI * 2,
+            orbitRadius: 20 + Math.random() * 40,
+            orbitSpeed: 0.05 + Math.random() * 0.1,
+            floatSpeed: 0.15 + Math.random() * 0.2
+        });
+    }
+    
+    // Mouse tracking for cursor following
+    let mouseX = 0;
+    let mouseY = 0;
+    let targetMouseX = 0;
+    let targetMouseY = 0;
+    let mouseVelocityX = 0;
+    let mouseVelocityY = 0;
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+    
+    // Attach mouse listener to window for better tracking
+    window.addEventListener('mousemove', (event) => {
+        // Normalize mouse position to -1 to 1 range
+        const newMouseX = (event.clientX / window.innerWidth) * 2 - 1;
+        const newMouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+        
+        // Calculate mouse velocity for more dynamic response
+        mouseVelocityX = (newMouseX - lastMouseX) * 10;
+        mouseVelocityY = (newMouseY - lastMouseY) * 10;
+        
+        targetMouseX = newMouseX;
+        targetMouseY = newMouseY;
+        lastMouseX = newMouseX;
+        lastMouseY = newMouseY;
+    });
+    
+    // Animation
+    let time = 0;
+    function animate() {
+        requestAnimationFrame(animate);
+        time += 0.002;
+        
+        // Smoothly interpolate mouse position with faster response
+        mouseX += (targetMouseX - mouseX) * 0.15;
+        mouseY += (targetMouseY - mouseY) * 0.15;
+        
+        // Decay mouse velocity
+        mouseVelocityX *= 0.95;
+        mouseVelocityY *= 0.95;
+        
+        // Rotate camera slightly
+        camera.position.x = Math.sin(time * 0.02) * 100;
+        camera.lookAt(0, 0, 0);
+        
+        // Update particle positions with cursor following
+        const baseInfluence = 50; // Base cursor influence (increased for visibility)
+        const velocityInfluence = 25; // Additional influence from mouse velocity
+        
+        for (let i = 0; i < particleCount; i++) {
+            const i3 = i * 3;
+            const vel = particleVelocities[i];
+            const props = particleProperties[i];
+            const particleTime = time * props.speed + props.phase;
+            
+            // Enhanced floating animation with varied patterns (Y-axis)
+            const floatY = Math.sin(particleTime * props.floatSpeed) * props.amplitude +
+                          Math.cos(particleTime * props.floatSpeed * 0.7) * (props.amplitude * 0.5);
+            
+            // Orbital movement around initial position (subtle)
+            const orbitX = Math.cos(particleTime * props.orbitSpeed) * props.orbitRadius;
+            const orbitZ = Math.sin(particleTime * props.orbitSpeed) * props.orbitRadius;
+            
+            // Calculate base position with orbital movement
+            const baseX = initialPositions[i3] + orbitX;
+            const baseZ = initialPositions[i3 + 2] + orbitZ;
+            
+            // Calculate cursor influence (all particles follow cursor) - inverted for correct direction
+            const cursorOffsetX = -mouseX * baseInfluence;
+            const cursorOffsetZ = -mouseY * baseInfluence;
+            const velocityOffsetX = -mouseVelocityX * velocityInfluence;
+            const velocityOffsetZ = -mouseVelocityY * velocityInfluence;
+            
+            // Target position combines base + orbital + cursor
+            const targetX = baseX + cursorOffsetX + velocityOffsetX;
+            const targetZ = baseZ + cursorOffsetZ + velocityOffsetZ;
+            
+            // Direct movement toward cursor with smooth interpolation
+            const followSpeed = 0.15; // How fast particles follow cursor
+            
+            // Calculate direction to target
+            const dx = targetX - particlePositions.array[i3];
+            const dz = targetZ - particlePositions.array[i3 + 2];
+            
+            // Move directly toward target
+            particlePositions.array[i3] += dx * followSpeed;
+            particlePositions.array[i3 + 2] += dz * followSpeed;
+            particlePositions.array[i3 + 1] = initialPositions[i3 + 1] + floatY;
+        }
+        particlePositions.needsUpdate = true;
+        
+        // Rotate particle system slightly
+        particleSystem.rotation.y += 0.0001;
+        particleSystem.rotation.x += 0.00005;
+        
+        renderer.render(scene, camera);
+    }
+    
+    // Handle window resize
+    function handleResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        const canvasHeight = getCanvasHeight();
+        renderer.setSize(window.innerWidth, canvasHeight);
+        canvas.style.height = canvasHeight + 'px';
+    }
+    
+    window.addEventListener('resize', handleResize);
+    
+    // Start animation
+    animate();
+});
 </script>
 {% endblock %}
