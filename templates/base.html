@@ -238,22 +238,62 @@
             const globalLoader = document.getElementById('globalPageLoader');
             if (!globalLoader) return;
 
-            // Show loading screen immediately on navigation
+            let isLoading = false;
+            let loadingTimeout = null;
+            let showLoaderTimeout = null; // Timer to delay showing the loader
+
+            // Show loading screen after delay (only if page is still loading)
             function showLoadingScreen() {
-                if (globalLoader) {
+                if (globalLoader && !isLoading) {
+                    isLoading = true;
                     globalLoader.classList.remove('hidden');
                     // Force reflow to ensure the class change is applied immediately
                     globalLoader.style.display = 'flex';
                     void globalLoader.offsetWidth;
+                    
+                    // Fallback timeout to ensure loading screen doesn't get stuck
+                    if (loadingTimeout) {
+                        clearTimeout(loadingTimeout);
+                    }
+                    loadingTimeout = setTimeout(() => {
+                        hideLoadingScreen();
+                    }, 10000); // 10 second fallback
                 }
             }
 
             // Hide loading screen (called when page loads)
             function hideLoadingScreen() {
-                if (globalLoader) {
+                // Cancel any pending show timer
+                if (showLoaderTimeout) {
+                    clearTimeout(showLoaderTimeout);
+                    showLoaderTimeout = null;
+                }
+                
+                if (globalLoader && isLoading) {
+                    isLoading = false;
+                    if (loadingTimeout) {
+                        clearTimeout(loadingTimeout);
+                        loadingTimeout = null;
+                    }
                     globalLoader.classList.add('hidden');
                     // Reset display style
                     globalLoader.style.display = '';
+                }
+            }
+
+            // Schedule loading screen to show after delay (only if page hasn't loaded)
+            function scheduleLoadingScreen() {
+                // Cancel any existing timer
+                if (showLoaderTimeout) {
+                    clearTimeout(showLoaderTimeout);
+                }
+                
+                // Only schedule if not already loading
+                if (!isLoading) {
+                    // Show loading screen after 500ms delay (only if page hasn't loaded by then)
+                    showLoaderTimeout = setTimeout(() => {
+                        showLoadingScreen();
+                    }, 500); // 500ms delay before showing loader
                 }
             }
 
@@ -290,25 +330,20 @@
                 navItems.forEach(item => {
                     if (!item.dataset.loaderAttached) {
                         item.dataset.loaderAttached = 'true';
-                        // Use both mousedown (early) and click (actual navigation)
-                        item.addEventListener('mousedown', function(e) {
-                            if (shouldShowLoader(this)) {
-                                showLoadingScreen();
-                            }
-                        }, { passive: true });
+                        // Use click event only (mousedown can cause issues)
                         item.addEventListener('click', function(e) {
                             if (shouldShowLoader(this)) {
-                                showLoadingScreen();
+                                scheduleLoadingScreen();
                             }
                         }, { passive: true });
                     }
                 });
                 
-                // Use event delegation for other navigation links
+                // Use event delegation for other navigation links (but skip nav-items to avoid double-firing)
                 function handleNavigation(e) {
                     const link = e.target.closest('a[href]');
-                    if (shouldShowLoader(link)) {
-                        showLoadingScreen();
+                    if (link && !link.classList.contains('nav-item') && shouldShowLoader(link)) {
+                        scheduleLoadingScreen();
                     }
                 }
                 
@@ -341,6 +376,11 @@
 
             // Hide on pageshow event (handles back/forward cache)
             window.addEventListener('pageshow', function(event) {
+                hideLoadingScreen();
+            });
+
+            // Hide on beforeunload to prevent stuck loading screen
+            window.addEventListener('beforeunload', function() {
                 hideLoadingScreen();
             });
         })();
