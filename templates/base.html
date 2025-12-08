@@ -336,15 +336,16 @@
                     }
                 });
                 
-                // Use event delegation for other navigation links (but skip nav-items to avoid double-firing)
+                // Use event delegation for ALL navigation links (including nav-items for mobile)
+                // This ensures it works even after nav items are cloned in mobile view
                 function handleNavigation(e) {
                     const link = e.target.closest('a[href]');
-                    if (link && !link.classList.contains('nav-item') && shouldShowLoader(link)) {
+                    if (link && shouldShowLoader(link)) {
                         scheduleLoadingScreen();
                     }
                 }
                 
-                // Listen to click events on document for other links
+                // Listen to click events on document for all links
                 document.addEventListener('click', handleNavigation, true);
             }
 
@@ -585,6 +586,8 @@
                             }, 150);
                         });
                     });
+                    // Note: Loading screen listeners are handled by event delegation
+                    // which works even after nav items are cloned
                 }
             }
             setupMobileNavClose();
