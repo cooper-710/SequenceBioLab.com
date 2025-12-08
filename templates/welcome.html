@@ -2312,10 +2312,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const particleMaterial = new THREE.PointsMaterial({
         size: 6,
         map: circleTexture,
-        vertexColors: true,
+        vertexColors: false,  // Disable vertex colors for pure orange
         transparent: true,
         opacity: 0.8,
-        blending: THREE.AdditiveBlending,
+        blending: THREE.NormalBlending,  // Use normal blending instead of additive
         sizeAttenuation: true,
         alphaTest: 0.001
     });
@@ -2552,10 +2552,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const particleMaterial = new THREE.PointsMaterial({
         size: 3.5,
         map: circleTexture,
-        vertexColors: true,
+        vertexColors: false,  // Disable vertex colors for pure orange
         transparent: true,
         opacity: 0.8,
-        blending: THREE.AdditiveBlending,
+        blending: THREE.NormalBlending,  // Use normal blending instead of additive
         sizeAttenuation: true,
         alphaTest: 0.001
     });
