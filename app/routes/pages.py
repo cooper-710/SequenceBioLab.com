@@ -3,7 +3,7 @@ Page routes
 """
 from flask import Blueprint, render_template, request, session, g, redirect, url_for
 from datetime import datetime, timedelta
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, quote
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 import sys
@@ -1150,7 +1150,33 @@ def matchups():
 @login_required
 def video():
     """Video page"""
-    return render_template('video.html')
+    # Determine iframe URL based on user role
+    is_admin = session.get("is_admin", False)
+    
+    if is_admin:
+        video_url = "https://sequence-video.vercel.app/admin#admin"
+    else:
+        # Get player name from session or g.user
+        first_name = session.get("first_name", "")
+        last_name = session.get("last_name", "")
+        
+        # Fallback to g.user if session doesn't have names
+        if not first_name or not last_name:
+            user = g.user or {}
+            first_name = user.get("first_name", "")
+            last_name = user.get("last_name", "")
+        
+        # Construct player name and URL encode it
+        player_name = f"{first_name} {last_name}".strip()
+        if player_name:
+            # Use quote instead of quote_plus for path segments (encodes space as %20, not +)
+            encoded_name = quote(player_name)
+            video_url = f"https://sequence-video.vercel.app/player/{encoded_name}#user"
+        else:
+            # Fallback if no name available
+            video_url = "https://sequence-video.vercel.app/admin#admin"
+    
+    return render_template('video.html', video_url=video_url)
 
 
 @bp.route('/tools')
