@@ -4,6 +4,12 @@
 
 {% block extra_head %}
 <style>
+    /* Fix black bar at top of main-content on video page only */
+    .main-content {
+        margin-top: 0 !important;
+        border-top: none !important;
+    }
+    
     /* Override page-container for fullscreen video */
     .page-container {
         max-width: 100% !important;
@@ -78,11 +84,32 @@
 
 {% block scripts %}
 <script>
+    // Auto-scroll to bottom when page loads
+    window.addEventListener('load', function() {
+        window.scrollTo({
+            top: document.body.scrollHeight,
+            behavior: 'smooth'
+        });
+    });
+    
+    // Also scroll after a short delay to ensure content is fully rendered
+    setTimeout(function() {
+        window.scrollTo({
+            top: document.body.scrollHeight,
+            behavior: 'smooth'
+        });
+    }, 100);
+    
     // Handle iframe loading
     const iframe = document.getElementById('video-iframe');
     if (iframe) {
         iframe.addEventListener('load', function() {
             console.log('Video iframe loaded');
+            // Scroll to bottom after iframe loads
+            window.scrollTo({
+                top: document.body.scrollHeight,
+                behavior: 'smooth'
+            });
         });
         
         iframe.addEventListener('error', function() {
