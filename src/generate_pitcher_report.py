@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse, io, json, re, urllib.request, os, uuid, warnings
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -394,42 +393,46 @@ def _collect_hitter_assets_for_lineup(opponent_id: int, season_start: str, game_
     if not hitters:
         return assets
     
-    with ProcessPoolExecutor(max_workers=max(1, workers)) as ex:
-        futs = [ex.submit(_build_all_for_hitter, h, season_start, game_date) for h in hitters]
-        for f in as_completed(futs):
-            try:
-                res = f.result()
-                hname = res["name"]
-                checkin = res.get("checkin", {})
+    # NOTE: We intentionally process hitters sequentially (no ProcessPoolExecutor).
+    # On 2GB Render instances, multiple heavy worker processes plus Chromium can OOM.
+    for h in hitters:
+        try:
+            res = _build_all_for_hitter(h, season_start, game_date)
+            hname = res["name"]
+            checkin = res.get("checkin", {})
+            
+            # Check if hitter has minimum data (at least 15 batted balls)
+            # This is checked in build_hitter_checkin, but verify here too
+            # Also check if hitter has at least one valid checkin visualization
+            has_rhp = checkin.get("RHP") is not None and checkin.get("RHP") != ""
+            has_lhp = checkin.get("LHP") is not None and checkin.get("LHP") != ""
+            has_advanced_viz = (
+                checkin.get("xslg_bar") or
+                checkin.get("xwoba_heatmaps") or 
+                checkin.get("xslg_whiff_spray") or
+                checkin.get("spray_chart")
+            )
+            
+            # Only include hitter if they have at least one valid visualization AND enough data
+            # The build_hitter_checkin function already filters for minimum data, so if checkin is empty
+            # or has no visualizations, it means insufficient data
+            if (has_rhp or has_lhp or has_advanced_viz) and checkin.get("overall_metrics"):
+                # Convert paths to URIs - checkin already has URIs from build_hitter_checkin
+                # But we need to ensure they're properly formatted
+                checkin_copy = res["checkin"].copy()
+                # These should already be URIs from build_hitter_checkin, but verify
+                for key in ["RHP", "LHP", "sw_visual_url", "xslg_bar", "xwoba_heatmaps", "xslg_whiff_spray", "spray_chart"]:
+                    if checkin_copy.get(key) and not checkin_copy[key].startswith("file://"):
+                        # If it's a path, convert to URI
+                        if isinstance(checkin_copy[key], str) and Path(checkin_copy[key]).exists():
+                            checkin_copy[key] = _to_uri(checkin_copy[key])
                 
-                # Check if hitter has minimum data (at least 15 batted balls)
-                # This is checked in build_hitter_checkin, but verify here too
-                # Also check if hitter has at least one valid checkin visualization
-                has_rhp = checkin.get("RHP") is not None and checkin.get("RHP") != ""
-                has_lhp = checkin.get("LHP") is not None and checkin.get("LHP") != ""
-                has_advanced_viz = (checkin.get("xslg_bar") or checkin.get("xwoba_heatmaps") or 
-                                   checkin.get("xslg_whiff_spray") or checkin.get("spray_chart"))
-                
-                # Only include hitter if they have at least one valid visualization AND enough data
-                # The build_hitter_checkin function already filters for minimum data, so if checkin is empty
-                # or has no visualizations, it means insufficient data
-                if (has_rhp or has_lhp or has_advanced_viz) and checkin.get("overall_metrics"):
-                    # Convert paths to URIs - checkin already has URIs from build_hitter_checkin
-                    # But we need to ensure they're properly formatted
-                    checkin_copy = res["checkin"].copy()
-                    # These should already be URIs from build_hitter_checkin, but verify
-                    for key in ["RHP", "LHP", "sw_visual_url", "xslg_bar", "xwoba_heatmaps", "xslg_whiff_spray", "spray_chart"]:
-                        if checkin_copy.get(key) and not checkin_copy[key].startswith("file://"):
-                            # If it's a path, convert to URI
-                            if isinstance(checkin_copy[key], str) and Path(checkin_copy[key]).exists():
-                                checkin_copy[key] = _to_uri(checkin_copy[key])
-                    
-                    assets["oppo_hitter_checkins"].append({
-                        "name": hname,
-                        "checkin": checkin_copy,
-                    })
-            except Exception:
-                continue
+                assets["oppo_hitter_checkins"].append({
+                    "name": hname,
+                    "checkin": checkin_copy,
+                })
+        except Exception:
+            continue
     
     return assets
 

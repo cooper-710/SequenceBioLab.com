@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse, io, json, re, urllib.request, os, uuid, warnings
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -284,7 +283,8 @@ def _build_all_for_pitcher(p: Dict, season_start: str, game_date: str, want_stan
 def _collect_pitcher_assets_for_staff(opponent_id: int, season_start: str, game_date: str, want_stand: Optional[str], workers: int) -> Dict:
     assets = { "oppo_heatmaps": [], "oppo_pitch_tables": [], "oppo_pitch_movement": [], "oppo_pitch_mix_by_count": [] }
     staff = _opponent_active_pitchers(opponent_id)
-    if not staff: return assets
+    if not staff:
+        return assets
     
     # Fetch opponent logo for charts (convert URI to file path if needed)
     opponent_logo_path = None
@@ -300,29 +300,32 @@ def _collect_pitcher_assets_for_staff(opponent_id: int, season_start: str, game_
     except Exception:
         pass
     
-    with ProcessPoolExecutor(max_workers=max(1, workers)) as ex:
-        futs = [ex.submit(_build_all_for_pitcher, p, season_start, game_date, want_stand, opponent_logo_path) for p in staff]
-        for f in as_completed(futs):
-            try:
-                res = f.result(); pname = res["name"]
-                
-                # Require the full visualization set so we don't render blank panels
-                has_heatmap = res["heat"].get("path") is not None and res["heat"].get("path") != ""
-                has_table = ((res["tables"].get("RHH") is not None and res["tables"].get("RHH") != "") or 
-                            (res["tables"].get("LHH") is not None and res["tables"].get("LHH") != ""))
-                has_movement = res["move"].get("path") is not None and res["move"].get("path") != ""
-                has_mix = res["mix"].get("path") is not None and res["mix"].get("path") != ""
-                
-                # Only include pitcher if every visualization is available
-                if has_heatmap and has_table and has_movement and has_mix:
-                    # Only add entries with valid paths (not None or empty)
-                    # Include stats in heatmaps entry so they're accessible in templates
-                    assets["oppo_heatmaps"].append({ "name": pname, **res["heat"], "stats": res.get("stats", {}) })
-                    assets["oppo_pitch_tables"].append({ "name": pname, **res["tables"] })
-                    assets["oppo_pitch_movement"].append({ "name": pname, **res["move"] })
-                    assets["oppo_pitch_mix_by_count"].append({ "name": pname, **res["mix"] })
-            except Exception:
-                continue
+    # NOTE: We intentionally process pitchers sequentially (no ProcessPoolExecutor).
+    # On 2GB Render instances, multiple heavy worker processes plus Chromium can OOM.
+    for p in staff:
+        try:
+            res = _build_all_for_pitcher(p, season_start, game_date, want_stand, opponent_logo_path)
+            pname = res["name"]
+            
+            # Require the full visualization set so we don't render blank panels
+            has_heatmap = res["heat"].get("path") is not None and res["heat"].get("path") != ""
+            has_table = (
+                (res["tables"].get("RHH") is not None and res["tables"].get("RHH") != "") or 
+                (res["tables"].get("LHH") is not None and res["tables"].get("LHH") != "")
+            )
+            has_movement = res["move"].get("path") is not None and res["move"].get("path") != ""
+            has_mix = res["mix"].get("path") is not None and res["mix"].get("path") != ""
+            
+            # Only include pitcher if every visualization is available
+            if has_heatmap and has_table and has_movement and has_mix:
+                # Only add entries with valid paths (not None or empty)
+                # Include stats in heatmaps entry so they're accessible in templates
+                assets["oppo_heatmaps"].append({ "name": pname, **res["heat"], "stats": res.get("stats", {}) })
+                assets["oppo_pitch_tables"].append({ "name": pname, **res["tables"] })
+                assets["oppo_pitch_movement"].append({ "name": pname, **res["move"] })
+                assets["oppo_pitch_mix_by_count"].append({ "name": pname, **res["mix"] })
+        except Exception:
+            continue
     for key in assets:
         for it in assets[key]:
             for sub in ("path","RHH","LHH"):
