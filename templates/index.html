@@ -295,6 +295,28 @@
             statusInterval = setInterval(async () => {
                 try {
                     const response = await fetch(`/status/${jobId}`);
+
+                    // Handle 404 or other non-OK statuses explicitly so we don't poll forever
+                    if (response.status === 404) {
+                        let data = null;
+                        try {
+                            data = await response.json();
+                        } catch (e) {
+                            // ignore JSON parse errors for 404
+                        }
+                        const msg = (data && (data.message || data.error)) || 'Report job not found. The server may have restarted. Please try again.';
+                        clearInterval(statusInterval);
+                        showError(msg);
+                        resetForm();
+                        return;
+                    }
+
+                    if (!response.ok) {
+                        clearInterval(statusInterval);
+                        showError(`Status check failed (HTTP ${response.status})`);
+                        resetForm();
+                        return;
+                    }
                     
                     // Check if response is JSON
                     const contentType = response.headers.get('content-type');
@@ -321,7 +343,7 @@
                         resetForm();
                     } else if (data.status === 'error') {
                         clearInterval(statusInterval);
-                        showError(data.message);
+                        showError(data.message || 'Error generating report');
                         resetForm();
                     }
                 } catch (error) {
