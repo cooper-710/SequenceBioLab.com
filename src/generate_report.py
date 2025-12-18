@@ -459,7 +459,8 @@ def main():
     ap.add_argument("--template", default="templates/hitter_report.html")
     ap.add_argument("--pdf_name", default=None)
     ap.add_argument("--pdf_date", default=None)
-    ap.add_argument("--workers", type=int, default=4)
+    # Default to a single worker to keep memory usage low on small instances (e.g., 2GB RAM)
+    ap.add_argument("--workers", type=int, default=1)
     ap.add_argument("--use-next-series", action="store_true")
     args = ap.parse_args()
 

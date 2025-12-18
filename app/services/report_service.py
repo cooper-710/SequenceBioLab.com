@@ -47,7 +47,8 @@ def generate_single_report(
             "--hitter", hitter_name,
             "--season_start", season_start,
             "--out", str(Config.PDF_OUTPUT_DIR),
-            "--template", str(template_path)
+            "--template", str(template_path),
+            "--workers", "1",
         ]
         
         if pdf_name:
@@ -323,7 +324,8 @@ def generate_single_pitcher_report(
             "--pitcher", pitcher_name,
             "--season_start", season_start,
             "--out", str(Config.PDF_OUTPUT_DIR),
-            "--template", str(template_path)
+            "--template", str(template_path),
+            "--workers", "1",
         ]
 
         if opponent_team and opponent_team.strip():
