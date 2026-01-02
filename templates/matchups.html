@@ -819,9 +819,11 @@
             </div>
             
             <div class="form-group">
-                <label>Season (optional - leave empty for last 3 years)</label>
+                <label>Season</label>
                 <div class="season-selector-wrapper">
-                    <div class="season-checkboxes" id="seasonCheckboxes"></div>
+                    <select id="seasonSelect" name="season" class="form-control" required>
+                        <option value="">Select a season...</option>
+                    </select>
                 </div>
             </div>
             
@@ -1057,18 +1059,18 @@ let seasonsUpdateTimeout = null; // Debounce timer for season updates
 async function updateAvailableSeasons() {
     const player1Name = document.getElementById('playerName').value.trim();
     const player2Name = document.getElementById('opponentName').value.trim();
-    const seasonCheckboxes = document.getElementById('seasonCheckboxes');
+    const seasonSelect = document.getElementById('seasonSelect');
     
     // Only fetch available seasons if both players are selected and detected
     if (!player1Name || !player2Name || !player1Type || !player2Type) {
         // Reset to show all seasons if players not selected
-        initializeSeasonCheckboxes();
+        initializeSeasonSelect();
         return;
     }
     
     // Check for same type error - don't fetch seasons in this case
     if (player1Type === player2Type) {
-        initializeSeasonCheckboxes();
+        initializeSeasonSelect();
         return;
     }
     
@@ -1078,7 +1080,8 @@ async function updateAvailableSeasons() {
     }
     
     // Show loading state immediately when both players are detected
-    seasonCheckboxes.innerHTML = '<div style="padding: 1rem; text-align: center; color: var(--color-text-secondary); font-style: italic;">Loading available seasons...</div>';
+    seasonSelect.innerHTML = '<option value="">Loading available seasons...</option>';
+    seasonSelect.disabled = true;
     
     // Fetch immediately - no debounce needed since we're checking for both types being detected
     // This ensures it updates as soon as the second player type is detected
@@ -1104,28 +1107,31 @@ async function updateAvailableSeasons() {
             if (response.ok) {
                 const data = await response.json();
                 if (data.seasons && data.seasons.length > 0) {
-                    initializeSeasonCheckboxes(data.seasons);
+                    initializeSeasonSelect(data.seasons);
                 } else {
                     // No matchup data found - show message instead of all seasons
-                    seasonCheckboxes.innerHTML = '<div style="padding: 1rem; text-align: center; color: var(--color-text-secondary); font-style: italic;">No matchup data found between these players</div>';
+                    seasonSelect.innerHTML = '<option value="">No matchup data found between these players</option>';
+                    seasonSelect.disabled = true;
                 }
             } else {
                 // Error fetching seasons - show message
-                seasonCheckboxes.innerHTML = '<div style="padding: 1rem; text-align: center; color: var(--color-text-secondary); font-style: italic;">Unable to check available seasons</div>';
+                seasonSelect.innerHTML = '<option value="">Unable to check available seasons</option>';
+                seasonSelect.disabled = true;
             }
         } catch (error) {
             console.warn('Error fetching available seasons:', error);
             // On error, show message
-            seasonCheckboxes.innerHTML = '<div style="padding: 1rem; text-align: center; color: var(--color-text-secondary); font-style: italic;">Unable to check available seasons</div>';
+            seasonSelect.innerHTML = '<option value="">Unable to check available seasons</option>';
+            seasonSelect.disabled = true;
         }
     }, 100); // Small 100ms delay to ensure state is settled, but fast enough to feel immediate
 }
 
-// Initialize season checkboxes
-function initializeSeasonCheckboxes(availableSeasons = null) {
+// Initialize season select dropdown
+function initializeSeasonSelect(availableSeasons = null) {
     const currentYear = {{ current_year }};
     const startYear = 2015;
-    const seasonCheckboxes = document.getElementById('seasonCheckboxes');
+    const seasonSelect = document.getElementById('seasonSelect');
     
     let seasonsToShow = [];
     
@@ -1141,18 +1147,14 @@ function initializeSeasonCheckboxes(availableSeasons = null) {
         }
     }
     
-    // Generate radio buttons for each season (single selection only)
-    let html = '';
+    // Generate select options for each season
+    let html = '<option value="">Select a season...</option>';
     for (const year of seasonsToShow) {
-        html += `
-            <div class="season-checkbox-item">
-                <input type="radio" id="season-${year}" name="season" value="${year}" class="season-radio">
-                <label for="season-${year}" class="season-label">${year}</label>
-            </div>
-        `;
+        html += `<option value="${year}">${year}</option>`;
     }
     
-    seasonCheckboxes.innerHTML = html;
+    seasonSelect.innerHTML = html;
+    seasonSelect.disabled = false;
 }
 
 function updateRoleInfo() {
@@ -1254,9 +1256,9 @@ document.addEventListener('click', (e) => {
     }
 });
 
-// Initialize season checkboxes on page load
+// Initialize season select on page load
 document.addEventListener('DOMContentLoaded', () => {
-    initializeSeasonCheckboxes();
+    initializeSeasonSelect();
 });
 
 document.getElementById('matchupForm').addEventListener('submit', async (e) => {
@@ -1296,19 +1298,23 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
     // Determine role based on player 1's type
     const role = player1Type; // 'pitcher' or 'batter'
     
-    // Get selected season from radio buttons (single selection only)
-    const selectedSeasonRadio = document.querySelector('input[name="season"]:checked');
-    const selectedSeason = selectedSeasonRadio ? selectedSeasonRadio.value : null;
+    // Get selected season from dropdown (required)
+    const seasonSelect = document.getElementById('seasonSelect');
+    const selectedSeason = seasonSelect ? seasonSelect.value : null;
+    
+    // Validate season is selected
+    if (!selectedSeason) {
+        const errorDiv = document.getElementById('errorMessage');
+        errorDiv.textContent = 'Please select a season.';
+        errorDiv.style.display = 'block';
+        return;
+    }
     
     const params = new URLSearchParams();
     params.append('player', player1Name);
     params.append('opponent', player2Name);
     params.append('role', role);
-    
-    // Add season - if one selected, use season param; if none, API defaults to last 3 years
-    if (selectedSeason) {
-        params.append('season', selectedSeason);
-    }
+    params.append('season', selectedSeason);
     
     const resultsDiv = document.getElementById('results');
     const loadingDiv = document.getElementById('loading');

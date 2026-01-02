@@ -137,14 +137,6 @@
                         <span class="nav-icon"><i class="fas fa-person-running"></i></span>
                         <span class="nav-text">Mocap</span>
                     </a>
-                    <a href="{{ url_for('pages.tools') }}" class="nav-item {% if request.endpoint == 'pages.tools' %}active{% endif %}">
-                        <span class="nav-icon"><i class="fas fa-tools"></i></span>
-                        <span class="nav-text">Tools</span>
-                    </a>
-                    <a href="{{ url_for('pages.video') }}" class="nav-item {% if request.endpoint == 'pages.video' %}active{% endif %}">
-                        <span class="nav-icon"><i class="fas fa-video"></i></span>
-                        <span class="nav-text">Video</span>
-                    </a>
                     <a href="{{ url_for('pitchviz') }}" class="nav-item {% if request.endpoint == 'pitchviz' or request.endpoint == 'pages.pitchviz' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-wave-square"></i></span>
                         <span class="nav-text">PitchViz</span>
