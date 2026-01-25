@@ -104,7 +104,7 @@
                     <a href="{{ url_for('pages.profile_settings') }}" class="nav-item {% if request.endpoint == 'pages.profile_settings' %}active{% endif %}">
                         <span class="nav-icon">
                             {% if current_user and current_user.profile_image_path %}
-                                <img src="{{ url_for('static', filename=current_user.profile_image_path) }}?v={% if current_user.id %}{{ current_user.id }}{% else %}0{% endif %}" alt="{{ current_user.first_name }} {{ current_user.last_name }}" class="nav-profile-picture">
+                                <img src="{% if avatar_url is defined %}{{ avatar_url(current_user) }}{% else %}{{ url_for('static', filename=current_user.profile_image_path) }}{% endif %}" alt="{{ current_user.first_name }} {{ current_user.last_name }}" class="nav-profile-picture">
                             {% else %}
                                 <i class="fas fa-user-gear"></i>
                             {% endif %}
@@ -152,7 +152,7 @@
                     <a href="{{ url_for('pages.profile_settings') }}" class="nav-item {% if request.endpoint == 'pages.profile_settings' %}active{% endif %}">
                         <span class="nav-icon">
                             {% if current_user and current_user.profile_image_path %}
-                                <img src="{{ url_for('static', filename=current_user.profile_image_path) }}?v={% if current_user.id %}{{ current_user.id }}{% else %}0{% endif %}" alt="{{ current_user.first_name }} {{ current_user.last_name }}" class="nav-profile-picture">
+                                <img src="{% if avatar_url is defined %}{{ avatar_url(current_user) }}{% else %}{{ url_for('static', filename=current_user.profile_image_path) }}{% endif %}" alt="{{ current_user.first_name }} {{ current_user.last_name }}" class="nav-profile-picture">
                             {% else %}
                                 <i class="fas fa-user-gear"></i>
                             {% endif %}

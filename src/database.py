@@ -647,6 +647,35 @@ class PlayerDB:
         """)
         self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_staff_notes_team ON staff_notes(team_abbr)")
         self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_staff_notes_pinned ON staff_notes(pinned)")
+
+        # Persistent application cache (shared across workers/instances)
+        self._execute(cursor, f"""
+            CREATE TABLE IF NOT EXISTS app_cache (
+                cache_name {text_type} NOT NULL,
+                cache_key {text_type} NOT NULL,
+                value {text_type} NOT NULL,
+                expires_at {real_type} NOT NULL,
+                created_at {real_type} NOT NULL,
+                updated_at {real_type} NOT NULL,
+                PRIMARY KEY (cache_name, cache_key)
+            )
+        """)
+        try:
+            self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_app_cache_expires ON app_cache(expires_at)")
+        except Exception:
+            pass
+
+        # User avatars stored in DB (fixes Render ephemeral filesystem 404s)
+        blob_type = "BYTEA" if self.is_postgres else "BLOB"
+        self._execute(cursor, f"""
+            CREATE TABLE IF NOT EXISTS user_avatars (
+                user_id INTEGER PRIMARY KEY,
+                content_type {text_type} NOT NULL,
+                data {blob_type} NOT NULL,
+                updated_at {real_type} NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
         
         self.conn.commit()
     
@@ -931,6 +960,130 @@ class PlayerDB:
         self._execute(cursor, query, tuple(params))
         result = cursor.fetchone()
         return result['count'] if self.is_postgres else result[0]
+
+    # ---------------------------
+    # Persistent cache helpers
+    # ---------------------------
+
+    def cache_get(self, cache_name: str, cache_key: str) -> Optional[str]:
+        """Get raw cached value (JSON string) if present and not expired."""
+        cursor = self.conn.cursor()
+        now_ts = datetime.now().timestamp()
+        self._execute(
+            cursor,
+            """
+            SELECT value
+            FROM app_cache
+            WHERE cache_name = ?
+              AND cache_key = ?
+              AND expires_at > ?
+            LIMIT 1
+            """,
+            (cache_name, cache_key, float(now_ts)),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        try:
+            return row["value"]
+        except Exception:
+            try:
+                return row[0]
+            except Exception:
+                return None
+
+    def cache_set(self, cache_name: str, cache_key: str, value: str, ttl_seconds: int = 300) -> None:
+        """Upsert raw cached value (JSON string) with TTL."""
+        cursor = self.conn.cursor()
+        now_ts = float(datetime.now().timestamp())
+        expires_at = now_ts + float(max(int(ttl_seconds or 0), 1))
+
+        if self.is_postgres:
+            self._execute(
+                cursor,
+                """
+                INSERT INTO app_cache (cache_name, cache_key, value, expires_at, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (cache_name, cache_key) DO UPDATE SET
+                    value = EXCLUDED.value,
+                    expires_at = EXCLUDED.expires_at,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (cache_name, cache_key, value, expires_at, now_ts, now_ts),
+            )
+        else:
+            self._execute(
+                cursor,
+                """
+                INSERT OR REPLACE INTO app_cache (cache_name, cache_key, value, expires_at, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (cache_name, cache_key, value, expires_at, now_ts, now_ts),
+            )
+        self.conn.commit()
+
+    # ---------------------------
+    # Avatar helpers (DB-backed)
+    # ---------------------------
+
+    def get_user_avatar(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """Fetch avatar bytes and content type for user."""
+        cursor = self.conn.cursor()
+        self._execute(
+            cursor,
+            """
+            SELECT user_id, content_type, data, updated_at
+            FROM user_avatars
+            WHERE user_id = ?
+            """,
+            (int(user_id),),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        try:
+            return dict(row)
+        except Exception:
+            return {
+                "user_id": row[0],
+                "content_type": row[1],
+                "data": row[2],
+                "updated_at": row[3] if len(row) > 3 else None,
+            }
+
+    def upsert_user_avatar(self, user_id: int, content_type: str, data: bytes) -> None:
+        """Insert/update avatar for user."""
+        cursor = self.conn.cursor()
+        now_ts = float(datetime.now().timestamp())
+        if self.is_postgres:
+            self._execute(
+                cursor,
+                """
+                INSERT INTO user_avatars (user_id, content_type, data, updated_at)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    content_type = EXCLUDED.content_type,
+                    data = EXCLUDED.data,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (int(user_id), (content_type or "image/jpeg"), data, now_ts),
+            )
+        else:
+            self._execute(
+                cursor,
+                """
+                INSERT OR REPLACE INTO user_avatars (user_id, content_type, data, updated_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (int(user_id), (content_type or "image/jpeg"), data, now_ts),
+            )
+        self.conn.commit()
+
+    def delete_user_avatar(self, user_id: int) -> None:
+        """Remove avatar for user (best-effort)."""
+        cursor = self.conn.cursor()
+        self._execute(cursor, "DELETE FROM user_avatars WHERE user_id = ?", (int(user_id),))
+        self.conn.commit()
     
     def close(self):
         """Close database connection or return to pool"""

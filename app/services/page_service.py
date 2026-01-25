@@ -19,6 +19,7 @@ from app.utils.formatters import coerce_utc_datetime
 from app.services.player_service import determine_user_team
 from app.services.schedule_service import collect_series_for_team, team_abbr_from_id
 from app.services.cache_service import cache_service, CACHE_UPCOMING_GAMES, CACHE_PLAYER_NEWS
+from app.services.persistent_cache import get_json as persistent_cache_get_json, set_json as persistent_cache_set_json
 
 # Import PlayerDB and next_games if available
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
@@ -196,8 +197,14 @@ def load_schedule_calendar(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                         "venue": "TBD",
                     })
         elif next_games:
-            # Get 365 days of games to show all upcoming games (same as gameday hub)
-            games = next_games(team_abbr, days_ahead=365, include_started=True)
+            # Reuse the full-season schedule loader (now persistently cached)
+            today = datetime.now().date()
+            end_date = today + timedelta(days=365)
+            games = load_full_season_schedule(
+                user,
+                start_date=today.isoformat(),
+                end_date=end_date.isoformat(),
+            )
         else:
             return []
         
@@ -253,6 +260,17 @@ def load_full_season_schedule(user: Dict[str, Any], start_date: Optional[str] = 
         if not end_date:
             current_year = datetime.now().year
             end_date = f"{current_year}-10-31"
+
+        # Persistent cache (Supabase/Postgres) to avoid repeated MLB API calls in production
+        cache_key_payload = {
+            "team_abbr": (team_abbr or "").upper(),
+            "start_date": start_date,
+            "end_date": end_date,
+            "use_mock": bool(use_mock),
+        }
+        cached = persistent_cache_get_json("full_season_schedule", cache_key_payload)
+        if isinstance(cached, list):
+            return cached
         
         # Calculate days between dates
         start_dt = datetime.fromisoformat(start_date).date()
@@ -344,6 +362,13 @@ def load_full_season_schedule(user: Dict[str, Any], start_date: Optional[str] = 
                 except Exception:
                     continue
         
+        # Cache results (long TTL for schedule; short TTL for empty to avoid stampede)
+        try:
+            ttl = 6 * 60 * 60 if filtered_games else 60
+            persistent_cache_set_json("full_season_schedule", cache_key_payload, filtered_games, ttl_seconds=ttl)
+        except Exception:
+            pass
+
         return filtered_games
     except Exception as e:
         logger.warning(f"Warning loading full season schedule: {e}")
@@ -1109,6 +1134,13 @@ def load_player_news(user: Dict[str, Any]) -> List[Dict[str, Any]]:
     
     # Check cache first (5 minute TTL for fast repeated loads)
     cache_key = f"news_{player_name}"
+    persistent_key_payload = {"player_name": player_name}
+    persistent_cached = persistent_cache_get_json("player_news", persistent_key_payload)
+    if isinstance(persistent_cached, list):
+        # Also warm the in-memory cache for this worker
+        cache_service.set(CACHE_PLAYER_NEWS, cache_key, persistent_cached, 300)
+        return persistent_cached
+
     cached = cache_service.get(CACHE_PLAYER_NEWS, cache_key)
     if cached is not None:
         return cached
@@ -1525,6 +1557,11 @@ def load_player_news(user: Dict[str, Any]) -> List[Dict[str, Any]]:
     
     # Cache the result for 5 minutes (300 seconds) for fast repeated loads
     cache_service.set(CACHE_PLAYER_NEWS, cache_key, result, 300)
+    try:
+        # Persist in DB to survive restarts and share across workers
+        persistent_cache_set_json("player_news", persistent_key_payload, result, ttl_seconds=300)
+    except Exception:
+        pass
     
     return result
 

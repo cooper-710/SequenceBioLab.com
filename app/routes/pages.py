@@ -1,12 +1,13 @@
 """
 Page routes
 """
-from flask import Blueprint, render_template, request, session, g, redirect, url_for
+from flask import Blueprint, render_template, request, session, g, redirect, url_for, send_file
 from datetime import datetime, timedelta
 from urllib.parse import quote_plus, quote
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 import sys
+from io import BytesIO
 
 from app.middleware.auth import login_required, admin_required
 from app.config import Config
@@ -796,7 +797,8 @@ def gameday():
             
             # Load full season schedule to check what series are actually displayed
             # (The displayed series are: one past, one current, one upcoming)
-            full_schedule_games = load_full_season_schedule(
+            # Reuse the already-loaded schedule for this request (and avoid a second API hit)
+            full_schedule_games = raw_games if raw_games is not None else load_full_season_schedule(
                 target_user,
                 start_date=today.isoformat(),
                 end_date=(today + timedelta(days=365)).isoformat()
@@ -1664,25 +1666,26 @@ def profile_settings():
                                     data = jpeg_data
                                     extension = ".jpg"
                                     detected_type = "jpeg"
-                                
-                                # Ensure upload directory exists
-                                Config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-                                
-                                unique_name = f"user-{viewer['id']}-{uuid.uuid4().hex}{extension}"
-                                destination = Config.UPLOAD_DIR / unique_name
-                                with destination.open("wb") as fh:
-                                    fh.write(data)
 
-                                # Remove previous avatar if one exists
-                                previous = viewer.get("profile_image_path")
-                                if previous:
-                                    old_path = Config.ROOT_DIR / "static" / previous
-                                    try:
-                                        old_path.unlink()
-                                    except FileNotFoundError:
-                                        pass
-                                rel_path = f"uploads/profile_photos/{unique_name}"
-                                db.update_user_profile(viewer["id"], profile_image_path=rel_path)
+                                # Store avatar in DB (Supabase/Postgres) to avoid Render ephemeral filesystem 404s
+                                content_type = {
+                                    "jpeg": "image/jpeg",
+                                    "png": "image/png",
+                                    "gif": "image/gif",
+                                    "webp": "image/webp",
+                                }.get(detected_type, "image/jpeg")
+
+                                try:
+                                    db.upsert_user_avatar(viewer["id"], content_type=content_type, data=data)
+                                except Exception as exc:
+                                    import logging
+                                    logger = logging.getLogger(__name__)
+                                    logger.warning(f"Warning: failed to store avatar in DB: {exc}")
+                                    flash("Unable to save profile photo. Please try again.", "error")
+                                    return redirect(url_for("pages.profile_settings"))
+
+                                # Mark user as having a DB-backed avatar
+                                db.update_user_profile(viewer["id"], profile_image_path="avatar")
                                 
                                 # Invalidate and refresh cache to show updated image immediately
                                 invalidate_user_cache(viewer["id"])
@@ -1713,6 +1716,51 @@ def profile_settings():
         notification_prefs=notification_prefs,
         timezones=common_timezones
     )
+
+
+@bp.route("/media/avatar/<int:user_id>")
+@login_required
+def user_avatar(user_id: int):
+    """Serve DB-backed user avatar (fixes missing files on Render)."""
+    viewer = g.user or {}
+    viewer_id = viewer.get("id")
+    is_admin = bool(session.get("is_admin")) or bool(viewer.get("is_admin"))
+
+    # Only allow users to fetch their own avatar unless admin
+    if not viewer_id or (not is_admin and int(viewer_id) != int(user_id)):
+        abort(403)
+
+    if not PlayerDB:
+        abort(404)
+
+    db = None
+    try:
+        db = PlayerDB()
+        avatar = db.get_user_avatar(int(user_id))
+    finally:
+        try:
+            if db:
+                db.close()
+        except Exception:
+            pass
+
+    if not avatar or not avatar.get("data"):
+        # Fallback to default logo so legacy users don't get broken images.
+        try:
+            default_path = Config.ROOT_DIR / "static" / "sequence-logo.png"
+            resp = send_file(str(default_path), mimetype="image/png", download_name="avatar-default.png")
+            resp.headers["Cache-Control"] = "private, max-age=86400"
+            return resp
+        except Exception:
+            abort(404)
+
+    data = avatar.get("data")
+    content_type = (avatar.get("content_type") or "image/jpeg").strip()
+
+    resp = send_file(BytesIO(data), mimetype=content_type, download_name=f"user-{user_id}-avatar")
+    # Cache aggressively; templates include a version query param for busting.
+    resp.headers["Cache-Control"] = "private, max-age=86400"
+    return resp
 
 
 @bp.route('/terms-of-service')

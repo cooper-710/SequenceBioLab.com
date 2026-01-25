@@ -22,7 +22,7 @@
                 <div class="profile-avatar-shell">
                     <div class="profile-avatar-preview">
                         <img
-                            src="{% if current_user and current_user.profile_image_path %}{{ url_for('static', filename=current_user.profile_image_path) }}?v={% if current_user.id %}{{ current_user.id }}{% else %}0{% endif %}{% else %}{{ url_for('static', filename='sequence-logo.png') }}{% endif %}"
+                            src="{% if current_user and current_user.profile_image_path %}{% if avatar_url is defined %}{{ avatar_url(current_user) }}{% else %}{{ url_for('static', filename=current_user.profile_image_path) }}{% endif %}{% else %}{{ url_for('static', filename='sequence-logo.png') }}{% endif %}"
                             alt="Profile avatar"
                         >
                     </div>

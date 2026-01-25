@@ -23,7 +23,7 @@
         <div class="hero-content-wrapper">
             <div class="hero-profile-picture">
                 {% if current_user and current_user.profile_image_path %}
-                    <img src="{{ url_for('static', filename=current_user.profile_image_path) }}?v={% if current_user.id %}{{ current_user.id }}{% else %}0{% endif %}" alt="{{ current_user.first_name }} {{ current_user.last_name }}" class="hero-profile-img" loading="eager" fetchpriority="high">
+                    <img src="{% if avatar_url is defined %}{{ avatar_url(current_user) }}{% else %}{{ url_for('static', filename=current_user.profile_image_path) }}{% endif %}" alt="{{ current_user.first_name }} {{ current_user.last_name }}" class="hero-profile-img" loading="eager" fetchpriority="high">
                 {% else %}
                     <div class="hero-profile-placeholder">
                         <i class="fas fa-user"></i>
