@@ -314,29 +314,41 @@
                            !link.hasAttribute('target');
                 }
                 
-                // Attach listeners directly to nav items for immediate response
-                const navItems = document.querySelectorAll('.nav-item[href]');
-                navItems.forEach(item => {
-                    if (!item.dataset.loaderAttached) {
-                        item.dataset.loaderAttached = 'true';
-                        // Use click in capture phase so the loader shows,
-                        // without blocking navigation (pointerdown can cover the link
-                        // before the click default action runs on some browsers).
-                        item.addEventListener('click', function(e) {
-                            if (shouldShowLoader(this)) {
-                                scheduleLoadingScreen();
-                            }
-                        }, { passive: true, capture: true });
-                    }
-                });
-                
                 // Use event delegation for ALL navigation links (including nav-items for mobile)
                 // This ensures it works even after nav items are cloned in mobile view
+                let lastNavHref = null;
+                let lastNavAt = 0;
                 function handleNavigation(e) {
                     const link = e.target.closest('a[href]');
-                    if (link && shouldShowLoader(link)) {
-                        scheduleLoadingScreen();
+                    if (!link || !shouldShowLoader(link)) return;
+
+                    // Respect new-tab / modified clicks
+                    if (e.defaultPrevented) return;
+                    if (e.button && e.button !== 0) return; // left click only
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+
+                    const href = link.getAttribute('href');
+                    if (!href) return;
+
+                    // Debounce accidental double clicks
+                    const now = Date.now();
+                    if (lastNavHref === href && (now - lastNavAt) < 800) {
+                        e.preventDefault();
+                        return;
                     }
+                    lastNavHref = href;
+                    lastNavAt = now;
+
+                    // Ensure loader paints: prevent default navigation, show loader, then navigate.
+                    e.preventDefault();
+                    scheduleLoadingScreen();
+                    setTimeout(() => {
+                        try {
+                            window.location.href = link.href;
+                        } catch (err) {
+                            window.location.href = href;
+                        }
+                    }, 50);
                 }
 
                 // Listen to click events on document for all links

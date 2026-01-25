@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from app.config import Config
 from app.constants import TEAM_ABBR_TO_ID, DIVISION_OPTIONS, LEAGUE_OPTIONS, LEADER_CATEGORY_ABBR
 from app.services.cache_service import cache_service, CACHE_LEAGUE_LEADERS, CACHE_STANDINGS, CACHE_TEAM_METADATA
+from app.services.persistent_cache import get_or_set_json as persistent_get_or_set_json
 
 logger = logging.getLogger(__name__)
 
@@ -24,26 +25,33 @@ def get_team_metadata(team_abbr: Optional[str]) -> Dict[str, Any]:
     cached = cache_service.get(CACHE_TEAM_METADATA, cache_key)
     if cached is not None:
         return cached
-    try:
-        team_payload = statsapi.get("team", {"teamId": team_id})
-        team_info = (team_payload.get("teams") or [{}])[0]
-        division = team_info.get("division") or {}
-        league = team_info.get("league") or {}
-        payload = {
-            "team_id": team_id,
-            "team_name": team_info.get("name"),
-            "division_id": division.get("id"),
-            "division_name": division.get("name"),
-            "league_id": league.get("id"),
-            "league_name": league.get("name")
-        }
-        cache_service.set(CACHE_TEAM_METADATA, cache_key, payload, ttl_seconds=3600)
-        return payload
-    except Exception as exc:
-        logger.warning(f"Warning fetching team metadata: {exc}")
-        payload = {"team_id": team_id}
-        cache_service.set(CACHE_TEAM_METADATA, cache_key, payload, ttl_seconds=900)
-        return payload
+
+    def _build():
+        try:
+            team_payload = statsapi.get("team", {"teamId": team_id})
+            team_info = (team_payload.get("teams") or [{}])[0]
+            division = team_info.get("division") or {}
+            league = team_info.get("league") or {}
+            return {
+                "team_id": team_id,
+                "team_name": team_info.get("name"),
+                "division_id": division.get("id"),
+                "division_name": division.get("name"),
+                "league_id": league.get("id"),
+                "league_name": league.get("name")
+            }
+        except Exception as exc:
+            logger.warning(f"Warning fetching team metadata: {exc}")
+            return {"team_id": team_id}
+
+    payload = persistent_get_or_set_json(
+        "team_metadata",
+        {"team_abbr": cache_key, "team_id": team_id},
+        ttl_seconds=3600,
+        builder=_build,
+    ) or {"team_id": team_id}
+    cache_service.set(CACHE_TEAM_METADATA, cache_key, payload, ttl_seconds=3600)
+    return payload
 
 
 def parse_leader_lines(raw_text: str, max_entries: int = 5) -> List[Dict[str, Any]]:
@@ -135,40 +143,49 @@ def collect_league_leaders() -> List[Dict[str, Any]]:
     if cached is not None:
         return cached
 
-    groups = [
-        ("Hitting Leaders", [
-            ("homeRuns", "Home Runs"),
-            ("runsBattedIn", "Runs Batted In"),
-            ("battingAverage", "Batting Average"),
-        ]),
-        ("Pitching Leaders", [
-            ("era", "Earned Run Average"),
-            ("strikeouts", "Strikeouts"),
-            ("whip", "WHIP"),
-        ])
-    ]
+    def _build():
+        groups = [
+            ("Hitting Leaders", [
+                ("homeRuns", "Home Runs"),
+                ("runsBattedIn", "Runs Batted In"),
+                ("battingAverage", "Batting Average"),
+            ]),
+            ("Pitching Leaders", [
+                ("era", "Earned Run Average"),
+                ("strikeouts", "Strikeouts"),
+                ("whip", "WHIP"),
+            ])
+        ]
 
-    result = []
-    for group_label, categories in groups:
-        category_entries = []
-        for stat_code, label in categories:
-            stat_group = "hitting" if group_label.startswith("Hitting") else "pitching"
-            entries = fetch_leader_entries(stat_code, stat_group)
-            if group_label.startswith("Hitting"):
-                entries = filter_leader_entries(entries, include_pitchers=False)
-            else:
-                entries = filter_leader_entries(entries, include_pitchers=True)
-            if entries:
-                category_entries.append({
-                    "label": label,
-                    "abbr": LEADER_CATEGORY_ABBR.get(stat_code, "Value"),
-                    "entries": entries
+        result = []
+        for group_label, categories in groups:
+            category_entries = []
+            for stat_code, label in categories:
+                stat_group = "hitting" if group_label.startswith("Hitting") else "pitching"
+                entries = fetch_leader_entries(stat_code, stat_group)
+                if group_label.startswith("Hitting"):
+                    entries = filter_leader_entries(entries, include_pitchers=False)
+                else:
+                    entries = filter_leader_entries(entries, include_pitchers=True)
+                if entries:
+                    category_entries.append({
+                        "label": label,
+                        "abbr": LEADER_CATEGORY_ABBR.get(stat_code, "Value"),
+                        "entries": entries
+                    })
+            if category_entries:
+                result.append({
+                    "group": group_label,
+                    "categories": category_entries
                 })
-        if category_entries:
-            result.append({
-                "group": group_label,
-                "categories": category_entries
-            })
+        return result
+
+    result = persistent_get_or_set_json(
+        "league_leaders",
+        {"key": "default", "season": datetime.now().year},
+        ttl_seconds=600,
+        builder=_build,
+    ) or []
 
     cache_service.set(CACHE_LEAGUE_LEADERS, "default", result, ttl_seconds=600)
     return result
@@ -191,53 +208,63 @@ def collect_standings_data(
         cached = cache_service.get(CACHE_STANDINGS, cache_key)
         if cached is not None:
             return cached
-        try:
-            standings_payload = statsapi.get("standings", {
-                "leagueId": league_id,
-                "season": season,
-                "standingsType": "wildCard"
-            })
-        except Exception as exc:
-            logger.warning(f"Warning fetching wildcard standings: {exc}")
-            return None
 
-        team_records = []
-        for record in standings_payload.get("records", []):
-            if record.get("league", {}).get("id") == league_id:
-                team_records.extend(record.get("teamRecords", []))
-
-        if not team_records:
-            return None
-
-        def rank_key(entry):
+        def _build_wildcard():
             try:
-                return int(entry.get("wildCardRank", 999))
-            except (TypeError, ValueError):
-                return 999
+                standings_payload = statsapi.get("standings", {
+                    "leagueId": league_id,
+                    "season": season,
+                    "standingsType": "wildCard"
+                })
+            except Exception as exc:
+                logger.warning(f"Warning fetching wildcard standings: {exc}")
+                return None
 
-        team_records.sort(key=rank_key)
+            team_records = []
+            for record in standings_payload.get("records", []):
+                if record.get("league", {}).get("id") == league_id:
+                    team_records.extend(record.get("teamRecords", []))
 
-        rows = []
-        for entry in team_records:
-            gb = entry.get("wildCardGamesBack")
-            if gb in (None, "-", ""):
-                gb = "0"
-            rows.append({
-                "team": entry.get("team", {}).get("name"),
-                "wins": entry.get("wins"),
-                "losses": entry.get("losses"),
-                "games_back": gb,
-                "is_user_team": entry.get("team", {}).get("id") == team_id
-            })
+            if not team_records:
+                return None
 
-        payload = {
-            "title": f"{next((l['name'] for l in LEAGUE_OPTIONS if l['id'] == league_id), 'League')} Wild Card",
-            "rows": rows,
-            "view": "wildcard",
-            "division_id": None,
-            "league_id": league_id
-        }
-        cache_service.set(CACHE_STANDINGS, cache_key, payload, ttl_seconds=600)
+            def rank_key(entry):
+                try:
+                    return int(entry.get("wildCardRank", 999))
+                except (TypeError, ValueError):
+                    return 999
+
+            team_records.sort(key=rank_key)
+
+            rows = []
+            for entry in team_records:
+                gb = entry.get("wildCardGamesBack")
+                if gb in (None, "-", ""):
+                    gb = "0"
+                rows.append({
+                    "team": entry.get("team", {}).get("name"),
+                    "wins": entry.get("wins"),
+                    "losses": entry.get("losses"),
+                    "games_back": gb,
+                    "is_user_team": entry.get("team", {}).get("id") == team_id
+                })
+
+            return {
+                "title": f"{next((l['name'] for l in LEAGUE_OPTIONS if l['id'] == league_id), 'League')} Wild Card",
+                "rows": rows,
+                "view": "wildcard",
+                "division_id": None,
+                "league_id": league_id
+            }
+
+        payload = persistent_get_or_set_json(
+            "standings",
+            {"view": "wildcard", "team_id": team_id, "league_id": league_id, "season": season},
+            ttl_seconds=600,
+            builder=_build_wildcard,
+        )
+        if payload is not None:
+            cache_service.set(CACHE_STANDINGS, cache_key, payload, ttl_seconds=600)
         return payload
 
     # Division view
@@ -258,45 +285,54 @@ def collect_standings_data(
     if cached is not None:
         return cached
 
-    try:
-        standings_payload = statsapi.get("standings", {
-            "leagueId": league_id,
-            "season": season
-        })
-    except Exception as exc:
-        logger.warning(f"Warning fetching division standings: {exc}")
-        return None
+    def _build_division():
+        try:
+            standings_payload = statsapi.get("standings", {
+                "leagueId": league_id,
+                "season": season
+            })
+        except Exception as exc:
+            logger.warning(f"Warning fetching division standings: {exc}")
+            return None
 
-    division_record = None
-    for record in standings_payload.get("records", []):
-        if record.get("division", {}).get("id") == division_id:
-            division_record = record
-            break
+        division_record = None
+        for record in standings_payload.get("records", []):
+            if record.get("division", {}).get("id") == division_id:
+                division_record = record
+                break
 
-    if not division_record:
-        return None
+        if not division_record:
+            return None
 
-    rows = []
-    for entry in division_record.get("teamRecords", []):
-        gb = entry.get("gamesBack")
-        if gb in (None, "-", ""):
-            gb = "0"
-        rows.append({
-            "team": entry.get("team", {}).get("name"),
-            "wins": entry.get("wins"),
-            "losses": entry.get("losses"),
-            "games_back": gb,
-            "is_user_team": entry.get("team", {}).get("id") == team_id
-        })
+        rows = []
+        for entry in division_record.get("teamRecords", []):
+            gb = entry.get("gamesBack")
+            if gb in (None, "-", ""):
+                gb = "0"
+            rows.append({
+                "team": entry.get("team", {}).get("name"),
+                "wins": entry.get("wins"),
+                "losses": entry.get("losses"),
+                "games_back": gb,
+                "is_user_team": entry.get("team", {}).get("id") == team_id
+            })
 
-    payload = {
-        "title": division_record.get("division", {}).get("name", "Division"),
-        "rows": rows,
-        "view": "division",
-        "division_id": division_id,
-        "league_id": league_id
-    }
-    cache_service.set(CACHE_STANDINGS, cache_key, payload, ttl_seconds=600)
+        return {
+            "title": division_record.get("division", {}).get("name", "Division"),
+            "rows": rows,
+            "view": "division",
+            "division_id": division_id,
+            "league_id": league_id
+        }
+
+    payload = persistent_get_or_set_json(
+        "standings",
+        {"view": "division", "team_id": team_id, "division_id": division_id, "league_id": league_id, "season": season},
+        ttl_seconds=600,
+        builder=_build_division,
+    )
+    if payload is not None:
+        cache_service.set(CACHE_STANDINGS, cache_key, payload, ttl_seconds=600)
     return payload
 
 

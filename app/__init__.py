@@ -2,7 +2,8 @@
 Flask application factory for SequenceBioLab
 """
 import logging
-from flask import Flask
+import time
+from flask import Flask, g, request
 from app.config import Config
 from app.middleware.auth import setup_auth_middleware, ensure_default_admin
 from app.middleware.context import setup_context_processors
@@ -75,5 +76,24 @@ def create_app(config=None):
         logger = logging.getLogger(__name__)
         logger.error(f"Internal server error: {error}", exc_info=True)
         return render_template('errors/500.html'), 500
+
+    # Basic request timing for key pages (helps diagnose production slowness)
+    @app.before_request
+    def _start_timer():
+        g._request_start = time.time()
+
+    @app.after_request
+    def _log_timing(response):
+        try:
+            start = getattr(g, "_request_start", None)
+            if start is None:
+                return response
+            dur_ms = (time.time() - start) * 1000.0
+            path = request.path or ""
+            if path in {"/dashboard", "/gameday"}:
+                logging.getLogger("perf").info(f"{request.method} {path} -> {response.status_code} in {dur_ms:.0f}ms")
+        except Exception:
+            pass
+        return response
     
     return app

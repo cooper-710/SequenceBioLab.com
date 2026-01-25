@@ -1557,6 +1557,14 @@ def build_player_home_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if not user:
         return {}
 
+    # Short TTL dashboard cache to reduce repeated DB work per navigation.
+    # This is safe because the dashboard is a read-heavy page and small staleness is acceptable.
+    user_id = user.get("id")
+    if user_id:
+        cached_ctx = persistent_cache_get_json("dashboard_context", {"user_id": int(user_id)})
+        if isinstance(cached_ctx, dict) and cached_ctx:
+            return cached_ctx
+
     next_series = load_next_series_snapshot(user)
     latest_document, deliverables, outstanding_count = load_player_deliverables(user)
     performance = build_performance_snapshot()
@@ -1575,7 +1583,7 @@ def build_player_home_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if not isinstance(schedule_calendar, list):
         schedule_calendar = []
 
-    return {
+    ctx = {
         "hero_message": None,
         "next_series": next_series or {},  # Ensure it's always a dict, never None
         "latest_document": latest_document,
@@ -1590,6 +1598,16 @@ def build_player_home_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         "mlb_logo_url": mlb_logo_url,
         "schedule_calendar": schedule_calendar,
     }
+
+    if user_id:
+        try:
+            # 30s cache keeps UI snappy without making data feel stale.
+            from app.services.persistent_cache import set_json as persistent_cache_set_json
+            persistent_cache_set_json("dashboard_context", {"user_id": int(user_id)}, ctx, ttl_seconds=30)
+        except Exception:
+            pass
+
+    return ctx
 
 
 def purge_concluded_series_documents(reference_ts: Optional[float] = None) -> None:

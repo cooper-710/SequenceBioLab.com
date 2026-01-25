@@ -1,7 +1,7 @@
 """
 Page routes
 """
-from flask import Blueprint, render_template, request, session, g, redirect, url_for, send_file
+from flask import Blueprint, render_template, request, session, g, redirect, url_for, send_file, make_response
 from datetime import datetime, timedelta
 from urllib.parse import quote_plus, quote
 from typing import Optional, List, Dict, Any
@@ -1754,9 +1754,24 @@ def user_avatar(user_id: int):
     data = avatar.get("data")
     content_type = (avatar.get("content_type") or "image/jpeg").strip()
 
+    updated_at = avatar.get("updated_at") or 0
+    try:
+        etag = f'W/"avatar-{int(user_id)}-{int(float(updated_at))}"'
+    except Exception:
+        etag = f'W/"avatar-{int(user_id)}"'
+
+    inm = request.headers.get("If-None-Match")
+    if inm and inm.strip() == etag:
+        resp = make_response("", 304)
+        resp.headers["ETag"] = etag
+        resp.headers["Cache-Control"] = "private, max-age=31536000, immutable"
+        resp.headers["Vary"] = "Cookie"
+        return resp
+
     resp = send_file(BytesIO(data), mimetype=content_type, download_name=f"user-{user_id}-avatar")
-    # Cache aggressively; templates include a version query param for busting.
-    resp.headers["Cache-Control"] = "private, max-age=86400"
+    resp.headers["ETag"] = etag
+    resp.headers["Cache-Control"] = "private, max-age=31536000, immutable"
+    resp.headers["Vary"] = "Cookie"
     return resp
 
 
