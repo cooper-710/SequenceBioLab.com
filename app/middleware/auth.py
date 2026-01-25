@@ -53,6 +53,33 @@ def refresh_user_cache(user_id=None):
     return None
 
 
+def refresh_user_cache_with_db(db, user_id: int):
+    """
+    Refresh the session user cache using an existing PlayerDB connection.
+
+    This prevents nested PlayerDB() opens inside a request, which can exhaust the
+    per-worker connection pool (especially when maxconn=1).
+    """
+    if not user_id or not db:
+        return None
+    try:
+        user = db.get_user_by_id(user_id)
+        if not user:
+            return None
+        user_cache = {k: v for k, v in user.items() if k != "password_hash"}
+        session["_cached_user"] = user_cache
+        session["_user_cache_timestamp"] = time.time()
+        # Also keep the common session fields in sync (used by templates)
+        session["is_admin"] = bool(user_cache.get("is_admin"))
+        session["first_name"] = user_cache.get("first_name", "")
+        session["last_name"] = user_cache.get("last_name", "")
+        if user_cache.get("theme_preference"):
+            session["theme_preference"] = user_cache["theme_preference"]
+        return user_cache
+    except Exception:
+        return None
+
+
 def setup_auth_middleware(app):
     """Setup authentication middleware"""
     

@@ -319,7 +319,13 @@
                 navItems.forEach(item => {
                     if (!item.dataset.loaderAttached) {
                         item.dataset.loaderAttached = 'true';
-                        // Use click event only (mousedown can cause issues)
+                        // Use pointerdown so the loader paints before navigation
+                        item.addEventListener('pointerdown', function(e) {
+                            if (shouldShowLoader(this)) {
+                                scheduleLoadingScreen();
+                            }
+                        }, { passive: true, capture: true });
+
                         item.addEventListener('click', function(e) {
                             if (shouldShowLoader(this)) {
                                 scheduleLoadingScreen();
@@ -336,9 +342,18 @@
                         scheduleLoadingScreen();
                     }
                 }
+
+                // Fire even earlier than click for Safari/slow paints
+                function handleNavigationPointerDown(e) {
+                    const link = e.target.closest('a[href]');
+                    if (link && shouldShowLoader(link)) {
+                        scheduleLoadingScreen();
+                    }
+                }
                 
                 // Listen to click events on document for all links
                 document.addEventListener('click', handleNavigation, true);
+                document.addEventListener('pointerdown', handleNavigationPointerDown, true);
             }
 
             // Set up navigation interception immediately

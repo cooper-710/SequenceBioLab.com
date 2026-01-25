@@ -9,8 +9,7 @@ from pathlib import Path
 import sys
 from io import BytesIO
 
-from app.middleware.auth import login_required, admin_required
-from app.config import Config
+from app.middleware.auth import login_required, admin_required, invalidate_user_cache, refresh_user_cache_with_db
 from app.services.page_service import (
     build_player_home_context,
     load_full_season_schedule,
@@ -35,9 +34,7 @@ from app.utils.formatters import (
     format_journal_date
 )
 from app.middleware.csrf import generate_csrf_token, validate_csrf
-from app.middleware.auth import invalidate_user_cache, refresh_user_cache
 from app.constants import DIVISION_OPTIONS, LEAGUE_OPTIONS, JOURNAL_VISIBILITY_OPTIONS, MAX_JOURNAL_TIMELINE_ENTRIES
-from app.config import Config
 from flask import flash, abort
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
@@ -1589,7 +1586,7 @@ def profile_settings():
                 if success:
                     # Invalidate and refresh cache to ensure latest data
                     invalidate_user_cache(viewer["id"])
-                    g.user = refresh_user_cache(viewer["id"])
+                    g.user = refresh_user_cache_with_db(db, viewer["id"])
                     flash("Profile details updated.", "success")
                 else:
                     flash("No profile changes detected.", "info")
@@ -1602,7 +1599,7 @@ def profile_settings():
                     db.update_user_profile(viewer["id"], theme_preference=theme)
                     # Invalidate and refresh cache to ensure latest data
                     invalidate_user_cache(viewer["id"])
-                    g.user = refresh_user_cache(viewer["id"])
+                    g.user = refresh_user_cache_with_db(db, viewer["id"])
                     session["theme_preference"] = theme
                     flash("Appearance preference saved.", "success")
 
@@ -1618,7 +1615,7 @@ def profile_settings():
                 )
                 # Invalidate and refresh cache to ensure latest data
                 invalidate_user_cache(viewer["id"])
-                g.user = refresh_user_cache(viewer["id"])
+                g.user = refresh_user_cache_with_db(db, viewer["id"])
                 flash("Notification preferences updated.", "success")
 
             elif form_name == "change-password":
@@ -1689,7 +1686,7 @@ def profile_settings():
                                 
                                 # Invalidate and refresh cache to show updated image immediately
                                 invalidate_user_cache(viewer["id"])
-                                g.user = refresh_user_cache(viewer["id"])
+                                g.user = refresh_user_cache_with_db(db, viewer["id"])
                                 
                                 flash("Profile photo updated.", "success")
             else:

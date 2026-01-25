@@ -19,7 +19,7 @@ from app.utils.formatters import coerce_utc_datetime
 from app.services.player_service import determine_user_team
 from app.services.schedule_service import collect_series_for_team, team_abbr_from_id
 from app.services.cache_service import cache_service, CACHE_UPCOMING_GAMES, CACHE_PLAYER_NEWS
-from app.services.persistent_cache import get_json as persistent_cache_get_json, set_json as persistent_cache_set_json
+from app.services.persistent_cache import get_or_set_json as persistent_get_or_set_json, get_json as persistent_cache_get_json
 
 # Import PlayerDB and next_games if available
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
@@ -268,108 +268,94 @@ def load_full_season_schedule(user: Dict[str, Any], start_date: Optional[str] = 
             "end_date": end_date,
             "use_mock": bool(use_mock),
         }
-        cached = persistent_cache_get_json("full_season_schedule", cache_key_payload)
-        if isinstance(cached, list):
-            return cached
+        def _build_schedule():
+            # Get games - use mock or real data
+            games_local = []
+            if use_mock:
+                # Get mock games with raw date data (same as calendar widget)
+                # Start from start_date (March 1st) or today, whichever is later
+                if start_dt > datetime.now().date():
+                    base_date = start_dt
+                else:
+                    base_date = datetime.now().date()
+
+                base_first_pitch = datetime.combine(base_date, datetime.min.time().replace(hour=19, minute=10))
+                if base_first_pitch.tzinfo is None:
+                    base_first_pitch = base_first_pitch.replace(tzinfo=datetime.now().astimezone().tzinfo)
+
+                mock_blueprint = [
+                    {"days_offset": 0, "opponent": "Washington Nationals", "opponent_abbr": "WSH", "opponent_id": 120, "is_home": True, "status": "Scheduled"},
+                    {"days_offset": 1, "opponent": "Washington Nationals", "opponent_abbr": "WSH", "opponent_id": 120, "is_home": True, "status": "Scheduled"},
+                    {"days_offset": 3, "opponent": "Philadelphia Phillies", "opponent_abbr": "PHI", "opponent_id": 143, "is_home": False, "status": "Scheduled"},
+                    {"days_offset": 4, "opponent": "Philadelphia Phillies", "opponent_abbr": "PHI", "opponent_id": 143, "is_home": False, "status": "Scheduled"},
+                    {"days_offset": 6, "opponent": "Atlanta Braves", "opponent_abbr": "ATL", "opponent_id": 144, "is_home": True, "status": "Scheduled"},
+                    {"days_offset": 8, "opponent": "Miami Marlins", "opponent_abbr": "MIA", "opponent_id": 146, "is_home": True, "status": "Scheduled"},
+                    {"days_offset": 10, "opponent": "New York Yankees", "opponent_abbr": "NYY", "opponent_id": 147, "is_home": False, "status": "Scheduled"},
+                ]
+
+                days_span = (end_dt - start_dt).days
+                weeks_needed = max(1, (days_span // 14) + 2)
+                for week_offset in range(0, weeks_needed):
+                    for entry in mock_blueprint:
+                        days_offset = entry["days_offset"] + (week_offset * 14)
+                        game_dt = base_first_pitch + timedelta(days=days_offset)
+                        game_date = game_dt.date()
+                        if start_dt <= game_date <= end_dt:
+                            games_local.append({
+                                "game_date": game_date.isoformat(),
+                                "game_datetime": game_dt.isoformat(),
+                                "opponent_name": entry["opponent"],
+                                "opponent_abbr": entry["opponent_abbr"],
+                                "opponent_id": entry["opponent_id"],
+                                "is_home": entry["is_home"],
+                                "status": entry.get("status", "Scheduled"),
+                                "venue": "TBD",
+                            })
+            elif next_games:
+                days_ahead = max((end_dt - today).days, 0)
+                if days_ahead == 0:
+                    days_ahead = 365
+                try:
+                    games_local = next_games(team_abbr, days_ahead=min(days_ahead, 365), include_started=True)
+                    logger.info(f"Loaded {len(games_local)} games from real API for {team_abbr}")
+                except Exception as e:
+                    logger.warning(f"Error fetching games from API: {e}")
+                    games_local = []
+            else:
+                logger.warning("next_games not available, cannot load real schedule data")
+                games_local = []
+
+            filtered = []
+            for game in games_local:
+                game_date_str = game.get("game_date")
+                if game_date_str:
+                    try:
+                        if isinstance(game_date_str, str):
+                            game_date = datetime.fromisoformat(game_date_str).date()
+                        else:
+                            game_date = game_date_str if isinstance(game_date_str, date) else datetime.combine(game_date_str, datetime.min.time()).date()
+                        if start_dt <= game_date <= end_dt:
+                            filtered.append(game)
+                    except Exception:
+                        continue
+            return filtered
+
+        cached_or_built = persistent_get_or_set_json(
+            "full_season_schedule",
+            cache_key_payload,
+            ttl_seconds=(6 * 60 * 60),
+            builder=_build_schedule,
+        )
+        if isinstance(cached_or_built, list):
+            return cached_or_built
         
         # Calculate days between dates
         start_dt = datetime.fromisoformat(start_date).date()
         end_dt = datetime.fromisoformat(end_date).date()
         today = datetime.now().date()
         
-        # Get games - use mock or real data
-        games = []
-        if use_mock:
-            # Get mock games with raw date data (same as calendar widget)
-            # Start from start_date (March 1st) or today, whichever is later
-            if start_dt > datetime.now().date():
-                # Season hasn't started yet, start from season start date
-                base_date = start_dt
-            else:
-                # Season has started, use today
-                base_date = datetime.now().date()
-            
-            # Create base datetime for game times (7:10 PM)
-            base_first_pitch = datetime.combine(base_date, datetime.min.time().replace(hour=19, minute=10))
-            if base_first_pitch.tzinfo is None:
-                base_first_pitch = base_first_pitch.replace(tzinfo=datetime.now().astimezone().tzinfo)
-            
-            mock_blueprint = [
-                {"days_offset": 0, "opponent": "Washington Nationals", "opponent_abbr": "WSH", "opponent_id": 120, "is_home": True, "status": "Scheduled"},
-                {"days_offset": 1, "opponent": "Washington Nationals", "opponent_abbr": "WSH", "opponent_id": 120, "is_home": True, "status": "Scheduled"},
-                {"days_offset": 3, "opponent": "Philadelphia Phillies", "opponent_abbr": "PHI", "opponent_id": 143, "is_home": False, "status": "Scheduled"},
-                {"days_offset": 4, "opponent": "Philadelphia Phillies", "opponent_abbr": "PHI", "opponent_id": 143, "is_home": False, "status": "Scheduled"},
-                {"days_offset": 6, "opponent": "Atlanta Braves", "opponent_abbr": "ATL", "opponent_id": 144, "is_home": True, "status": "Scheduled"},
-                {"days_offset": 8, "opponent": "Miami Marlins", "opponent_abbr": "MIA", "opponent_id": 146, "is_home": True, "status": "Scheduled"},
-                {"days_offset": 10, "opponent": "New York Yankees", "opponent_abbr": "NYY", "opponent_id": 147, "is_home": False, "status": "Scheduled"},
-            ]
-            
-            # Generate games for the full season (March to October)
-            # Calculate how many weeks we need to cover from start_date to end_date
-            days_span = (end_dt - start_dt).days
-            weeks_needed = max(1, (days_span // 14) + 2)  # Add buffer
-            
-            # Repeat the pattern every 14 days to create a realistic schedule
-            for week_offset in range(0, weeks_needed):
-                for entry in mock_blueprint:
-                    days_offset = entry["days_offset"] + (week_offset * 14)
-                    
-                    game_dt = base_first_pitch + timedelta(days=days_offset)
-                    game_date = game_dt.date()
-                    
-                    # Only include if within date range
-                    if start_dt <= game_date <= end_dt:
-                        games.append({
-                            "game_date": game_date.isoformat(),
-                            "game_datetime": game_dt.isoformat(),
-                            "opponent_name": entry["opponent"],
-                            "opponent_abbr": entry["opponent_abbr"],
-                            "opponent_id": entry["opponent_id"],
-                            "is_home": entry["is_home"],
-                            "status": entry.get("status", "Scheduled"),
-                            "venue": "TBD",
-                        })
-        elif next_games:
-            days_ahead = max((end_dt - today).days, 0)
-            
-            if days_ahead == 0:
-                days_ahead = 365  # If end date is in past, get a full year
-            
-            # Get all games in range - USE REAL DATA ONLY
-            try:
-                games = next_games(team_abbr, days_ahead=min(days_ahead, 365), include_started=True)
-                logger.info(f"Loaded {len(games)} games from real API for {team_abbr}")
-            except Exception as e:
-                logger.warning(f"Error fetching games from API: {e}")
-                games = []
-        else:
-            logger.warning("next_games not available, cannot load real schedule data")
-            games = []
-        
-        # Filter by date range if provided
-        filtered_games = []
-        for game in games:
-            game_date_str = game.get("game_date")
-            if game_date_str:
-                try:
-                    if isinstance(game_date_str, str):
-                        game_date = datetime.fromisoformat(game_date_str).date()
-                    else:
-                        game_date = game_date_str if isinstance(game_date_str, date) else datetime.combine(game_date_str, datetime.min.time()).date()
-                    
-                    if start_dt <= game_date <= end_dt:
-                        filtered_games.append(game)
-                except Exception:
-                    continue
-        
-        # Cache results (long TTL for schedule; short TTL for empty to avoid stampede)
-        try:
-            ttl = 6 * 60 * 60 if filtered_games else 60
-            persistent_cache_set_json("full_season_schedule", cache_key_payload, filtered_games, ttl_seconds=ttl)
-        except Exception:
-            pass
-
-        return filtered_games
+        # Fallback to direct build if cache system unavailable
+        return _build_schedule()
     except Exception as e:
         logger.warning(f"Warning loading full season schedule: {e}")
         return []
