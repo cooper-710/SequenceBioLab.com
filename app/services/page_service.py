@@ -268,6 +268,12 @@ def load_full_season_schedule(user: Dict[str, Any], start_date: Optional[str] = 
             "end_date": end_date,
             "use_mock": bool(use_mock),
         }
+
+        # Calculate days between dates (used by builder)
+        start_dt = datetime.fromisoformat(start_date).date()
+        end_dt = datetime.fromisoformat(end_date).date()
+        today = datetime.now().date()
+
         def _build_schedule():
             # Get games - use mock or real data
             games_local = []
@@ -348,12 +354,7 @@ def load_full_season_schedule(user: Dict[str, Any], start_date: Optional[str] = 
         )
         if isinstance(cached_or_built, list):
             return cached_or_built
-        
-        # Calculate days between dates
-        start_dt = datetime.fromisoformat(start_date).date()
-        end_dt = datetime.fromisoformat(end_date).date()
-        today = datetime.now().date()
-        
+
         # Fallback to direct build if cache system unavailable
         return _build_schedule()
     except Exception as e:
