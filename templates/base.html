@@ -225,6 +225,141 @@
     
     {% block scripts %}{% endblock %}
     <script>
+        // Background download helper (prevents Safari navigating to blank download screen)
+        (function() {
+            function isLikelyDownloadLink(linkEl) {
+                if (!linkEl) return false;
+
+                // Respect explicit new-tab / external intents.
+                if (linkEl.hasAttribute('target')) return false;
+
+                const rawHref = linkEl.getAttribute('href') || '';
+                if (!rawHref || rawHref.startsWith('#') || rawHref.startsWith('javascript:') || rawHref.startsWith('mailto:')) {
+                    return false;
+                }
+
+                // Normalize to an absolute URL to compare origins safely.
+                let url;
+                try {
+                    url = new URL(linkEl.href, window.location.origin);
+                } catch (e) {
+                    return false;
+                }
+
+                // Only intercept same-origin links (downloads are served by this app).
+                if (url.origin !== window.location.origin) return false;
+
+                // Strong signals.
+                if (linkEl.hasAttribute('download')) return true;
+                if (linkEl.classList.contains('player-docs-download')) return true;
+
+                // Known download routes in this app.
+                const path = url.pathname || '';
+                if (path.startsWith('/download/')) return true;
+                if (path.startsWith('/reports/files/')) return true;
+                if (path.startsWith('/api/admin/player-docs/')) return true;
+
+                // Common downloadable file extensions (keep small + conservative).
+                const lower = path.toLowerCase();
+                if (lower.endsWith('.pdf')) return true;
+                if (lower.endsWith('.csv')) return true;
+                if (lower.endsWith('.zip')) return true;
+
+                return false;
+            }
+
+            function ensureDownloadIframe() {
+                let iframe = document.getElementById('bg-download-iframe');
+                if (!iframe) {
+                    iframe = document.createElement('iframe');
+                    iframe.id = 'bg-download-iframe';
+                    iframe.style.display = 'none';
+                    iframe.setAttribute('aria-hidden', 'true');
+                    document.body.appendChild(iframe);
+                }
+                return iframe;
+            }
+
+            function showDownloadToast(message) {
+                const text = message || 'Download started. Check your browser downloads.';
+                let toast = document.getElementById('bg-download-toast');
+                if (!toast) {
+                    toast = document.createElement('div');
+                    toast.id = 'bg-download-toast';
+                    toast.setAttribute('role', 'status');
+                    toast.setAttribute('aria-live', 'polite');
+                    toast.style.cssText = [
+                        'position: fixed',
+                        'left: 50%',
+                        'bottom: 22px',
+                        'transform: translateX(-50%)',
+                        'max-width: 92vw',
+                        'padding: 10px 14px',
+                        'border-radius: 12px',
+                        'background: rgba(0, 0, 0, 0.82)',
+                        'color: #fff',
+                        'font-size: 14px',
+                        'line-height: 1.35',
+                        'z-index: 10000',
+                        'box-shadow: 0 10px 30px rgba(0,0,0,0.35)',
+                        'text-align: center',
+                        'backdrop-filter: blur(6px)',
+                        '-webkit-backdrop-filter: blur(6px)',
+                        'display: none'
+                    ].join('; ');
+                    document.body.appendChild(toast);
+                }
+
+                toast.textContent = text;
+                toast.style.display = 'block';
+                if (toast._hideTimer) {
+                    clearTimeout(toast._hideTimer);
+                }
+                toast._hideTimer = setTimeout(() => {
+                    toast.style.display = 'none';
+                }, 2500);
+            }
+
+            function startBackgroundDownload(url) {
+                const iframe = ensureDownloadIframe();
+
+                // Cache-bust so repeated clicks always trigger a request.
+                let u;
+                try {
+                    u = new URL(url, window.location.origin);
+                } catch (e) {
+                    iframe.src = url;
+                    return;
+                }
+                u.searchParams.set('_dl', String(Date.now()));
+                iframe.src = u.toString();
+            }
+
+            // Capture-phase handler so it runs before navigation/loader interception.
+            document.addEventListener('click', (e) => {
+                const link = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+                if (!link) return;
+
+                // Respect modified clicks / new-tab intents.
+                if (e.defaultPrevented) return;
+                if (e.button && e.button !== 0) return; // left click only
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+
+                if (!isLikelyDownloadLink(link)) return;
+
+                // Prevent navigation and any subsequent handlers (e.g., loader).
+                e.preventDefault();
+                if (typeof e.stopImmediatePropagation === 'function') {
+                    e.stopImmediatePropagation();
+                } else {
+                    e.stopPropagation();
+                }
+
+                startBackgroundDownload(link.href);
+                showDownloadToast();
+            }, true);
+        })();
+
         // Global page loading overlay
         (function() {
             const globalLoader = document.getElementById('globalPageLoader');
