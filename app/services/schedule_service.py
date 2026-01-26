@@ -46,108 +46,75 @@ def team_abbr_from_id(team_id: Optional[int]) -> Optional[str]:
 
 
 def build_mock_upcoming_games(team_abbr: Optional[str], limit: int = 5) -> List[Dict[str, Any]]:
-    """Generate a deterministic mock schedule for local testing."""
+    """Generate a deterministic mock schedule for local testing.
+
+    IMPORTANT: This is intentionally team-dependent so different users (with different
+    team_abbr) see different series in the admin uploader + gameday.
+    """
     now = datetime.now().astimezone()
     base_first_pitch = now.replace(hour=19, minute=10, second=0, microsecond=0)
 
-    blueprint = [
-        {
-            "days_offset": -6,
-            "status": "Final",
-            "opponent": "Miami Marlins",
-            "opponent_abbr": "MIA",
-            "opponent_id": 146,
-            "home": False,
-            "venue": "loanDepot park",
-            "series": "3-game series",
-            "game_pk": 499900,
-            "probable_pitchers": ["Jesús Luzardo"],
-        },
-        {
-            "days_offset": -5,
-            "status": "Final",
-            "opponent": "Miami Marlins",
-            "opponent_abbr": "MIA",
-            "opponent_id": 146,
-            "home": False,
-            "venue": "loanDepot park",
-            "series": "3-game series",
-            "game_pk": 499901,
-            "probable_pitchers": ["Sandy Alcantara"],
-        },
-        {
-            "days_offset": 0,
-            "status": "In Progress",
-            "opponent": "Washington Nationals",
-            "opponent_abbr": "WSH",
-            "opponent_id": 120,
-            "home": True,
-            "venue": "Citi Field",
-            "series": "Division matchup",
-            "game_pk": 500000,
-            "probable_pitchers": ["Josiah Gray"],
-        },
-        {
-            "days_offset": 1,
-            "status": "Pre-Game",
-            "opponent": "Washington Nationals",
-            "opponent_abbr": "WSH",
-            "opponent_id": 120,
-            "home": True,
-            "venue": "Citi Field",
-            "series": "Division matchup",
-            "game_pk": 500001,
-            "probable_pitchers": ["MacKenzie Gore"],
-        },
-        {
-            "days_offset": 2,
-            "status": "Scheduled",
-            "opponent": "Philadelphia Phillies",
-            "opponent_abbr": "PHI",
-            "opponent_id": 143,
-            "home": True,
-            "venue": "Citi Field",
-            "series": "3-game series",
-            "game_pk": 500100,
-            "probable_pitchers": ["Zack Wheeler"],
-        },
-        {
-            "days_offset": 3,
-            "status": "Scheduled",
-            "opponent": "Philadelphia Phillies",
-            "opponent_abbr": "PHI",
-            "opponent_id": 143,
-            "home": True,
-            "venue": "Citi Field",
-            "series": "3-game series",
-            "game_pk": 500101,
-            "probable_pitchers": ["Aaron Nola"],
-        },
-        {
-            "days_offset": 5,
-            "status": "Scheduled",
-            "opponent": "Atlanta Braves",
-            "opponent_abbr": "ATL",
-            "opponent_id": 144,
-            "home": False,
-            "venue": "Truist Park",
-            "series": "Division matchup",
-            "game_pk": 500200,
-            "probable_pitchers": ["Max Fried"],
-        },
-        {
-            "days_offset": 6,
-            "status": "Scheduled",
-            "opponent": "Atlanta Braves",
-            "opponent_abbr": "ATL",
-            "opponent_id": 144,
-            "home": False,
-            "venue": "Truist Park",
-            "series": "Division matchup",
-            "game_pk": 500201,
-            "probable_pitchers": ["Chris Sale"],
-        },
+    team_key = (team_abbr or "NYM").strip().upper() or "NYM"
+    # Real MLB team ids so team_abbr_from_id() resolves consistently.
+    opponent_pool = [
+        {"name": "Arizona Diamondbacks", "abbr": "ARI", "id": 109, "venue": "Chase Field"},
+        {"name": "Atlanta Braves", "abbr": "ATL", "id": 144, "venue": "Truist Park"},
+        {"name": "Baltimore Orioles", "abbr": "BAL", "id": 110, "venue": "Oriole Park at Camden Yards"},
+        {"name": "Boston Red Sox", "abbr": "BOS", "id": 111, "venue": "Fenway Park"},
+        {"name": "Chicago Cubs", "abbr": "CHC", "id": 112, "venue": "Wrigley Field"},
+        {"name": "Cincinnati Reds", "abbr": "CIN", "id": 113, "venue": "Great American Ball Park"},
+        {"name": "Cleveland Guardians", "abbr": "CLE", "id": 114, "venue": "Progressive Field"},
+        {"name": "Houston Astros", "abbr": "HOU", "id": 117, "venue": "Minute Maid Park"},
+        {"name": "Los Angeles Dodgers", "abbr": "LAD", "id": 119, "venue": "Dodger Stadium"},
+        {"name": "Miami Marlins", "abbr": "MIA", "id": 146, "venue": "loanDepot park"},
+        {"name": "New York Yankees", "abbr": "NYY", "id": 147, "venue": "Yankee Stadium"},
+        {"name": "Philadelphia Phillies", "abbr": "PHI", "id": 143, "venue": "Citizens Bank Park"},
+        {"name": "San Diego Padres", "abbr": "SD", "id": 135, "venue": "Petco Park"},
+        {"name": "Seattle Mariners", "abbr": "SEA", "id": 136, "venue": "T-Mobile Park"},
+        {"name": "Texas Rangers", "abbr": "TEX", "id": 140, "venue": "Globe Life Field"},
+        {"name": "Washington Nationals", "abbr": "WSH", "id": 120, "venue": "Nationals Park"},
     ]
+
+    # Deterministic team-based "randomness" (no RNG) so each team gets different opponents.
+    seed = sum(ord(c) for c in team_key)
+    start = seed % len(opponent_pool)
+
+    def _opp(rel: int) -> Dict[str, Any]:
+        return opponent_pool[(start + rel) % len(opponent_pool)]
+
+    # Build a few short series (contiguous opponent_id) so collect_series_for_team() groups correctly.
+    series_defs = [
+        # Most recent past series (2 games)
+        {"series_start": -2, "games": 2, "opp_rel": -1, "home": False, "statuses": ["Final", "Final"], "series": "2-game set"},
+        # Current series (2 games)
+        {"series_start": 0, "games": 2, "opp_rel": 0, "home": True, "statuses": ["In Progress", "Pre-Game"], "series": "Division matchup"},
+        # Next upcoming (2 games)
+        {"series_start": 3, "games": 2, "opp_rel": 1, "home": True, "statuses": ["Scheduled", "Scheduled"], "series": "2-game set"},
+        # Another upcoming (3 games)
+        {"series_start": 6, "games": 3, "opp_rel": 2, "home": False, "statuses": ["Scheduled", "Scheduled", "Scheduled"], "series": "3-game series"},
+    ]
+
+    blueprint: List[Dict[str, Any]] = []
+    base_pk = 500000 + (seed % 1000) * 10
+    pk_counter = 0
+    for sdef in series_defs:
+        opp = _opp(sdef["opp_rel"])
+        for i in range(sdef["games"]):
+            days_offset = int(sdef["series_start"]) + i
+            status = sdef["statuses"][i] if i < len(sdef["statuses"]) else "Scheduled"
+            blueprint.append({
+                "days_offset": days_offset,
+                "status": status,
+                "opponent": opp["name"],
+                "opponent_abbr": opp["abbr"],
+                "opponent_id": opp["id"],
+                "home": bool(sdef["home"]),
+                "venue": opp["venue"] if not sdef["home"] else "Home Park",
+                "series": sdef["series"],
+                "game_pk": base_pk + pk_counter,
+                "probable_pitchers": [],
+            })
+            pk_counter += 1
 
     formatted: List[Dict[str, Any]] = []
     for entry in blueprint[:max(limit, len(blueprint))]:

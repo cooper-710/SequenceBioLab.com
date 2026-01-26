@@ -562,6 +562,8 @@ class PlayerDB:
             'phone': text_type,
             'timezone': text_type,
             'notification_preferences': text_type,
+            # Store explicit team selection per user (used for schedule + series logic).
+            'team_abbr': text_type,
         })
         
         # Player documents table
@@ -1187,7 +1189,7 @@ class PlayerDB:
         """Return all users sorted by creation date."""
         cursor = self.conn.cursor()
         self._execute(cursor, """
-            SELECT id, email, first_name, last_name, created_at, updated_at, is_admin, 
+            SELECT id, email, first_name, last_name, team_abbr, created_at, updated_at, is_admin, 
                    COALESCE(is_active, 1) as is_active,
                    COALESCE(email_verified, 0) as email_verified
             FROM users
@@ -1212,6 +1214,23 @@ class PlayerDB:
             "UPDATE users SET is_active = ?, updated_at = ? WHERE id = ?",
             (1 if is_active else 0, datetime.now().timestamp(), user_id)
         )
+        self.conn.commit()
+
+    def set_user_team_abbr(self, user_id: int, team_abbr: Optional[str]) -> None:
+        """Set a user's explicit team abbreviation (e.g. NYM)."""
+        cursor = self.conn.cursor()
+        value = (team_abbr or "").strip().upper() or None
+        now_ts = datetime.now().timestamp()
+        if self.is_postgres:
+            self._execute(cursor,
+                "UPDATE users SET team_abbr = %s, updated_at = %s WHERE id = %s",
+                (value, now_ts, user_id)
+            )
+        else:
+            self._execute(cursor,
+                "UPDATE users SET team_abbr = ?, updated_at = ? WHERE id = ?",
+                (value, now_ts, user_id)
+            )
         self.conn.commit()
 
     def delete_user(self, user_id: int) -> bool:

@@ -54,6 +54,9 @@ def determine_user_team(user: Optional[Dict[str, Any]]) -> str:
     team_abbr = None
 
     if user:
+        explicit = clean_str(user.get("team_abbr")).upper()
+        if explicit and explicit != "AUTO":
+            return explicit
         team_abbr = lookup_team_for_name(user.get("first_name"), user.get("last_name"))
 
     if not team_abbr:

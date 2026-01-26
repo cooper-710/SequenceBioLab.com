@@ -20,71 +20,30 @@
         </div>
     </header>
 
-    <section class="admin-search-stack">
-        <div class="search-box">
-            <i class="fas fa-search"></i>
-            <input id="playerSearchInput" type="text" placeholder="Search by name or email">
-            <div class="search-hint" id="playerSearchHelp">Start typing to find a player.</div>
-            <div class="player-search-results" id="playerSearchResults"></div>
-        </div>
-        <div class="quick-actions">
-            <button class="quick-btn" id="refreshPlayers">
-                <i class="fas fa-rotate-right"></i>
-                Refresh list
-            </button>
-            <a class="quick-btn" href="/register" target="_blank" rel="noopener">
-                <i class="fas fa-user-plus"></i>
-                Invite player
-            </a>
-        </div>
-    </section>
-
     <div class="admin-grid">
-        <aside class="player-summary">
-            <div class="summary-card media">
-                <div class="avatar">
-                    <i class="fas fa-user"></i>
-                </div>
+        <section class="summary-card upload" id="pdfsUploadCard">
+            <header class="tab-toolbar" style="margin:0; align-items:flex-end;">
                 <div>
-                    <h2 id="selectedPlayerName">No player selected</h2>
-                    <p id="selectedPlayerEmail" class="subtle">Pick someone from search or the table.</p>
+                    <h3 style="margin:0;">PDFs Upload</h3>
+                    <p class="subtle" style="margin:6px 0 0;">Upload one PDF per player for a selected series. Progress and status are shown inline.</p>
                 </div>
-            </div>
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <div class="pdf-setall-control">
+                        <select id="pdfSetAllSeriesMode" aria-label="Set all series mode">
+                            <option value="next" selected>Next series</option>
+                            <option value="current">Current series</option>
+                            <option value="none">No specific series</option>
+                        </select>
+                        <button type="button" class="btn-secondary btn-sm" id="pdfSetAllCurrentBtn">Set all to next series</button>
+                    </div>
+                    <button type="button" class="btn-primary btn-sm" id="pdfUploadAllBtn" disabled>Upload All</button>
+                </div>
+            </header>
 
-            <form id="playerDocForm" class="summary-card upload" enctype="multipart/form-data">
-                <h3>Upload document</h3>
-                <p class="subtle" id="playerUploadName">Choose a player to enable uploading.</p>
-                <label class="upload-slot">
-                    <input type="file" id="playerDocFile" name="document" required>
-                    <span id="uploadSlotText"><i class="fas fa-file-arrow-up"></i> Drop file or click to browse</span>
-                </label>
-                <div class="series-select">
-                    <label for="playerDocCategory">Type</label>
-                    <select id="playerDocCategory" name="category">
-                        <option value="">Player document</option>
-                        <option value="report">Series report (shows on Gameday series card)</option>
-                    </select>
-                </div>
-                <div class="series-select">
-                    <label for="playerDocSeries">Series</label>
-                    <select id="playerDocSeries" name="series_id" required disabled>
-                        <option value="">Select series</option>
-                        <option value="__none__" data-opponent="" data-label="No Specific Series" data-start="" data-end="">No Specific Series</option>
-                    </select>
-                    <p id="playerDocSeriesHelper" class="series-helper subtle">Select a player to load series.</p>
-                </div>
-                <input type="hidden" name="series_opponent" id="playerDocSeriesOpponent">
-                <input type="hidden" name="series_label" id="playerDocSeriesLabel">
-                <input type="hidden" name="series_start" id="playerDocSeriesStart">
-                <input type="hidden" name="series_end" id="playerDocSeriesEnd">
-                <div class="upload-actions">
-                    <button type="submit" class="btn-primary" id="uploadDocBtn">
-                        <i class="fas fa-upload"></i> Upload
-                    </button>
-                    <button type="button" class="btn-secondary" id="resetDocBtn">Reset</button>
-                </div>
-            </form>
-        </aside>
+            <div class="pdf-upload-grid" id="pdfUploadGrid">
+                <div class="table-placeholder">Loading players…</div>
+            </div>
+        </section>
 
         <section class="player-content">
             <nav class="tab-switcher">
@@ -278,18 +237,15 @@
     display: grid;
     column-gap: 40px;
     row-gap: 24px;
-    grid-template-columns: 360px minmax(0, 1fr);
-    grid-template-areas: "summary content";
+    grid-template-columns: 1fr;
+    grid-template-areas:
+        "pdfs"
+        "content";
     align-items: start;
 }
-.player-summary {
-    display: grid;
-    gap: 18px;
-    width: 100%;
-    max-width: 360px;
-    grid-column: 1;
-    grid-area: summary;
-    padding-right: 8px;
+.summary-card.upload#pdfsUploadCard {
+    grid-area: pdfs;
+    align-content: start;
 }
 .summary-card {
     border-radius: var(--card-radius);
@@ -329,6 +285,151 @@
     cursor: pointer;
     text-align: center;
     color: var(--color-text-secondary);
+}
+.summary-card.upload {
+    padding: 16px;
+    gap: 14px;
+}
+.summary-card.upload h3 {
+    margin: 0;
+}
+
+.pdf-upload-grid {
+    display: grid;
+    gap: 10px;
+    margin-top: 14px;
+    max-height: min(62vh, 520px);
+    overflow: auto;
+    padding-right: 4px;
+}
+.pdf-row {
+    display: grid;
+    /* Make PDF drop narrower and series select wider */
+    grid-template-columns: 1fr 1.2fr 2fr 1fr;
+    gap: 12px;
+    align-items: center;
+    border: 1px solid var(--color-layer-border);
+    border-radius: 14px;
+    background: var(--color-layer-soft);
+    padding: 10px 12px;
+    min-height: 76px; /* keep every row the same height */
+}
+.pdf-row > * {
+    min-width: 0; /* allow ellipsis within grid cells */
+}
+.pdf-player {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+.pdf-player .name {
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.pdf-player .email {
+    font-size: 0.82rem;
+    color: var(--color-text-subtle);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.pdf-drop {
+    position: relative;
+    border: 1px dashed var(--color-border);
+    border-radius: 12px;
+    padding: 10px 12px;
+    background: var(--color-layer-card);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    height: 46px; /* uniform control height */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-align: center;
+    min-width: 0;
+}
+.pdf-drop i {
+    flex: 0 0 auto;
+}
+.pdf-drop [data-pdf-file-label] {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.pdf-drop:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+}
+.pdf-drop.dragover {
+    border-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 10%, var(--color-layer-card));
+}
+.pdf-drop input[type="file"] {
+    display: none;
+}
+.pdf-series select {
+    width: 100%;
+    border-radius: 999px;
+    border: 1px solid var(--color-layer-border);
+    padding: 8px 12px;
+    background: var(--color-layer-card);
+    color: var(--color-text-primary);
+    font-weight: 600;
+    height: 46px; /* uniform control height */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.pdf-status {
+    display: grid;
+    gap: 6px;
+    justify-items: start;
+    align-content: center;
+}
+.pdf-status-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.pdf-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: color-mix(in srgb, var(--color-text-subtle) 18%, transparent);
+    color: var(--color-text-subtle);
+}
+.pdf-pill.uploading {
+    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+    color: var(--color-accent);
+}
+.pdf-pill.queued {
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+    color: var(--color-accent);
+}
+.pdf-pill.done {
+    background: color-mix(in srgb, #22c55e 22%, transparent);
+    color: #15803d;
+}
+.pdf-pill.error {
+    background: color-mix(in srgb, #ef4444 18%, transparent);
+    color: #b91c1c;
+}
+@media (max-width: 1080px) {
+    .pdf-row {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
 }
 .upload-slot input {
     display: none;
@@ -409,12 +510,11 @@
     display: grid;
     gap: 18px;
     min-width: 0;
-    grid-column: 2;
     grid-area: content;
     margin-left: 0;
     justify-items: start;
-    padding-left: 48px;
-    padding-right: 16px;
+    padding-left: 0;
+    padding-right: 0;
 }
 .player-content > * {
     width: 100%;
@@ -607,6 +707,49 @@
     border-color: var(--color-accent);
     color: var(--color-accent);
 }
+.btn-secondary:focus-visible,
+.btn-primary:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
+    outline-offset: 2px;
+}
+
+/* Make "Set all to current series" more prominent */
+#pdfSetAllCurrentBtn {
+    border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-layer-border));
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+    color: var(--color-accent);
+    font-weight: 700;
+    box-shadow: 0 6px 18px rgba(0,0,0,.10);
+}
+#pdfSetAllCurrentBtn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    background: var(--color-accent);
+    color: var(--color-main-bg);
+    box-shadow: 0 10px 26px rgba(0,0,0,.16);
+}
+#pdfSetAllCurrentBtn:disabled {
+    opacity: .6;
+    box-shadow: none;
+    transform: none;
+}
+
+.pdf-setall-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+.pdf-setall-control select {
+    padding: 6px 10px;
+    border-radius: var(--tile-radius);
+    border: 1px solid var(--color-layer-border);
+    background: var(--color-layer-card);
+    color: var(--color-text-primary);
+    font-weight: 600;
+}
+.pdf-setall-control select:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
+    outline-offset: 2px;
+}
 .badge {
     display: inline-block;
     padding: 4px 10px;
@@ -662,7 +805,7 @@
     .admin-grid {
         grid-template-columns: 1fr;
         grid-template-areas:
-            "summary"
+            "pdfs"
             "content";
     }
     .admin-hero {
@@ -682,10 +825,6 @@
         justify-items: stretch;
         padding-left: 0;
     }
-    .player-summary {
-        max-width: 100%;
-        padding-right: 0;
-    }
     .player-content .tab-card {
         max-width: 100%;
     }
@@ -693,33 +832,19 @@
 </style>
 <script>
 (function() {
-    const playerSearchInput = document.getElementById('playerSearchInput');
-    const playerSearchResults = document.getElementById('playerSearchResults');
-    const playerSearchHelp = document.getElementById('playerSearchHelp');
-    const selectedPlayerName = document.getElementById('selectedPlayerName');
-    const selectedPlayerEmail = document.getElementById('selectedPlayerEmail');
-    const playerUploadName = document.getElementById('playerUploadName');
-    const playerDocForm = document.getElementById('playerDocForm');
-    const playerDocFile = document.getElementById('playerDocFile');
-    const uploadDocBtn = document.getElementById('uploadDocBtn');
-    const uploadSlotText = document.getElementById('uploadSlotText');
+    const pdfUploadGrid = document.getElementById('pdfUploadGrid');
+    const pdfUploadAllBtn = document.getElementById('pdfUploadAllBtn');
+    const pdfSetAllCurrentBtn = document.getElementById('pdfSetAllCurrentBtn');
+    const pdfSetAllSeriesMode = document.getElementById('pdfSetAllSeriesMode');
+    const PDF_UPLOAD_CONCURRENCY = 3;
     const docsCountPill = document.querySelector('.docs-count-pill');
     const playerDocStatus = document.getElementById('playerDocStatus');
-    const defaultUploadText = '<i class="fas fa-file-arrow-up"></i> Drop file or click to browse';
-    const playerDocSeries = document.getElementById('playerDocSeries');
-    const playerDocSeriesHelper = document.getElementById('playerDocSeriesHelper');
-    const playerDocSeriesOpponent = document.getElementById('playerDocSeriesOpponent');
-    const playerDocSeriesLabel = document.getElementById('playerDocSeriesLabel');
-    const playerDocSeriesStart = document.getElementById('playerDocSeriesStart');
-    const playerDocSeriesEnd = document.getElementById('playerDocSeriesEnd');
-    const playerDocCategory = document.getElementById('playerDocCategory');
 
     const playerDocList = document.getElementById('playerDocList');
     const playerDocLogList = document.getElementById('playerDocLogList');
     const playerDocLogShowAll = document.getElementById('playerDocLogShowAll');
     const playerDocLogShowAllLabel = playerDocLogShowAll ? playerDocLogShowAll.querySelector('span') : null;
     const playerDocSort = document.getElementById('playerDocSort');
-    const resetDocBtn = document.getElementById('resetDocBtn');
     const documentsTab = document.getElementById('documentsTab');
     const activityTab = document.getElementById('activityTab');
     const tabButtons = document.querySelectorAll('.tab-switcher .tab');
@@ -727,7 +852,7 @@
     const accountsSearch = document.getElementById('accountsSearch');
     const totalPlayersEl = document.getElementById('totalPlayers');
     const totalDocsEl = document.getElementById('totalDocs');
-    const refreshPlayersBtn = document.getElementById('refreshPlayers');
+    const refreshPlayersBtn = null;
 
     const ACTIVITY_LOG_PAGE_SIZE = 10;
 
@@ -737,6 +862,11 @@
     let currentLogEntries = [];
     let showingAllActivity = false;
     let currentSeriesOptions = [];
+
+    // PDFs upload state (one PDF per player)
+    let pdfUploads = {}; // playerId -> {file, series, status, progress, error, xhr}
+    let pdfActiveUploads = 0;
+    const seriesCache = new Map(); // playerId -> {series:[], fetchedAt:number}
 
     function formatCount(count, singular) {
         const label = count === 1 ? singular : `${singular}s`;
@@ -771,129 +901,190 @@
         return response.json();
     }
 
-    function resetSeriesSelection(disable = true) {
-        currentSeriesOptions = [];
-        playerDocSeries.innerHTML = `
-            <option value="">Select series</option>
-            <option value="__none__" data-opponent="" data-label="No Specific Series" data-start="" data-end="">No Specific Series</option>
-        `;
-        playerDocSeries.disabled = disable;
-        playerDocSeries.value = '';
-        playerDocSeriesHelper.textContent = disable ? 'Select a player to load series.' : 'Select which series this document belongs to.';
-        updateSeriesHiddenFields();
+    function _queueId() {
+        return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     }
 
-    function applyDocCategoryRules() {
-        if (!playerDocCategory) return;
-        const isReport = playerDocCategory.value === 'report';
-        // Hint the file picker for report uploads.
-        if (playerDocFile) {
-            playerDocFile.accept = isReport ? '.pdf' : '';
+    async function _fetchSeriesForPlayer(playerId) {
+        if (!playerId) return [];
+        const cached = seriesCache.get(playerId);
+        if (cached && (Date.now() - cached.fetchedAt) < 60_000) {
+            return cached.series || [];
         }
-        // Disallow "No Specific Series" for reports (backend enforces too).
-        const noneOption = playerDocSeries ? playerDocSeries.querySelector('option[value="__none__"]') : null;
-        if (noneOption) {
-            noneOption.disabled = isReport;
-        }
-        if (isReport && playerDocSeries && playerDocSeries.value === '__none__') {
-            playerDocSeries.value = '';
-            updateSeriesHiddenFields();
-        }
-        if (playerDocSeriesHelper && playerDocSeries && !playerDocSeries.disabled) {
-            playerDocSeriesHelper.textContent = isReport
-                ? 'Series reports must be linked to a specific series.'
-                : 'Select which series this document belongs to.';
-        }
+        const payload = await fetchJSON(`/api/admin/player-series/${playerId}`);
+        // Keep only current + upcoming for PDF uploads (exclude concluded/past series).
+        const raw = payload.series || [];
+        const filtered = raw.filter(s => {
+            const st = (s.status || '').toLowerCase();
+            return st !== 'expired' && st !== 'completed' && st !== 'past';
+        });
+        seriesCache.set(playerId, { series: filtered, fetchedAt: Date.now() });
+        return filtered;
     }
 
-    function updateSeriesHiddenFields() {
-        const option = playerDocSeries.selectedOptions[0];
-        if (!option || !option.value || option.value === '__none__') {
-            if (option && option.value === '__none__') {
-                playerDocSeriesLabel.value = 'No Specific Series';
-            } else {
-                playerDocSeriesLabel.value = '';
+    function _seriesOptionLabel(series) {
+        const baseLabel = series.series_label || `${series.is_home ? 'Home vs' : 'Road @'} ${series.opponent_name || series.opponent_abbr || 'Opponent'}`;
+        return series.range ? `${baseLabel} • ${series.range}` : baseLabel;
+    }
+
+    function _seriesToState(seriesList, idx) {
+        if (!seriesList || idx == null || idx < 0 || idx >= seriesList.length) return null;
+        const s = seriesList[idx];
+        if (!s) return null;
+        const label = _seriesOptionLabel(s);
+        return {
+            id: String(idx),
+            opponent: (s.opponent_abbr || '').toString(),
+            label: (s.series_label || label || '').toString(),
+            start: (s.start || '').toString(),
+            end: (s.end || '').toString(),
+            status: (s.status || '').toString(),
+        };
+    }
+
+    function _syncEnhancedSelect(select) {
+        if (!select) return;
+        try {
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+        } catch (e) {}
+        try {
+            select.dispatchEvent(new Event('custom-select:sync', { bubbles: true }));
+        } catch (e) {}
+    }
+
+    function _defaultSeriesForPlayer(seriesList) {
+        if (!seriesList || !seriesList.length) return null;
+        // For PDF uploads, default to the *series after the current one* (i.e. next series),
+        // because admins typically prep reports ahead of time.
+        //
+        // The admin endpoint returns a small set sorted by start; when both "current" and
+        // "next" exist, the next series is index 1.
+        const withStarts = seriesList
+            .map(s => ({ s, startTs: Date.parse(s.start || '') }))
+            .filter(x => Number.isFinite(x.startTs))
+            .sort((a, b) => a.startTs - b.startTs)
+            .map(x => x.s);
+
+        if (withStarts.length >= 2) return withStarts[1];
+        if (withStarts.length === 1) return withStarts[0];
+
+        // If dates are missing, fall back to the second item when available.
+        return seriesList.length >= 2 ? seriesList[1] : seriesList[0];
+    }
+
+    function _setPdfUploadAllEnabled() {
+        if (!pdfUploadAllBtn) return;
+        const eligible = Object.values(pdfUploads).some(x => x && x.file && x.series && x.status !== 'uploading');
+        pdfUploadAllBtn.disabled = !eligible || pdfActiveUploads > 0;
+    }
+
+    function _renderPdfUploadGrid() {
+        if (!pdfUploadGrid) return;
+        if (!allPlayers || !allPlayers.length) {
+            pdfUploadGrid.innerHTML = '<div class="table-placeholder">No players found.</div>';
+            _setPdfUploadAllEnabled();
+            return;
+        }
+
+        pdfUploadGrid.innerHTML = allPlayers.map(player => {
+            const pid = String(player.id);
+            const state = pdfUploads[pid] || { file: null, series: null, status: 'idle', progress: 0, error: null, xhr: null };
+            pdfUploads[pid] = state;
+            const status = state.status || 'idle';
+            const pillClass = status === 'uploading' ? 'uploading' : status === 'queued' ? 'queued' : status === 'done' ? 'done' : status === 'error' ? 'error' : '';
+            const pillText = status === 'done' ? 'Done' : status === 'uploading' ? 'Uploading' : status === 'queued' ? 'Queued' : status === 'error' ? 'Failed' : 'Ready';
+            const fileLabel = state.file ? state.file.name : 'Drop PDF or click to browse';
+            const name = `${player.first_name || ''} ${player.last_name || ''}`.trim() || player.email;
+            const canSoloUpload = _canUploadPdf(pid) && status !== 'uploading';
+            const soloLabel = status === 'done' ? 'Re-upload' : 'Upload';
+
+            return `
+                <div class="pdf-row" data-pdf-player-id="${pid}">
+                    <div class="pdf-player">
+                        <div class="name">${escapeHtml(name)}</div>
+                        <div class="email">${escapeHtml(player.email || '')}</div>
+                    </div>
+                    <label class="pdf-drop" data-pdf-drop>
+                        <input type="file" accept=".pdf,application/pdf" data-pdf-file />
+                        <i class="fas fa-file-pdf"></i>
+                        <span data-pdf-file-label>${escapeHtml(fileLabel)}</span>
+                    </label>
+                    <div class="pdf-series">
+                        <select data-pdf-series>
+                            <option value="">Loading series…</option>
+                        </select>
+                    </div>
+                    <div class="pdf-status">
+                        <div class="pdf-status-top">
+                            <span class="pdf-pill ${pillClass}">${pillText}</span>
+                            <button type="button" class="btn-primary btn-sm" data-pdf-upload-one ${canSoloUpload ? '' : 'disabled'}>${soloLabel}</button>
+                        </div>
+                        ${state.error ? `<div class="subtle" style="font-size:.78rem; color:#b91c1c;">${escapeHtml(state.error)}</div>` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // After render: load series options per player
+        allPlayers.forEach(async (player) => {
+            const pid = String(player.id);
+            const row = pdfUploadGrid.querySelector(`[data-pdf-player-id="${pid}"]`);
+            if (!row) return;
+            const select = row.querySelector('[data-pdf-series]');
+            if (!select) return;
+            try {
+                const seriesList = await _fetchSeriesForPlayer(player.id);
+                if (!seriesList.length) {
+                    select.innerHTML = '<option value="">No series found</option>';
+                    return;
+                }
+                const opts = [
+                    '<option value="__none__">No specific series</option>',
+                ];
+                seriesList.forEach((s, idx) => {
+                    const label = _seriesOptionLabel(s);
+                    opts.push(`<option value="${idx}" data-opponent="${escapeHtml(s.opponent_abbr || '')}" data-label="${escapeHtml(s.series_label || label)}" data-start="${escapeHtml(s.start || '')}" data-end="${escapeHtml(s.end || '')}" data-status="${escapeHtml(s.status || '')}">${escapeHtml(label)}</option>`);
+                });
+                select.innerHTML = opts.join('');
+
+                const state = pdfUploads[pid];
+                if (!state.series) {
+                    const def = _defaultSeriesForPlayer(seriesList);
+                    if (def) {
+                        const defIdx = seriesList.indexOf(def);
+                        state.series = _seriesToState(seriesList, defIdx);
+                        select.value = String(defIdx);
+                        _syncEnhancedSelect(select);
+                    }
+                } else {
+                    // If state series is invalid (e.g. list changed), re-default.
+                    const desiredIdx = parseInt(state.series.id || '', 10);
+                    if (!Number.isFinite(desiredIdx) || desiredIdx < 0 || desiredIdx >= seriesList.length) {
+                        state.series = null;
+                        const def = _defaultSeriesForPlayer(seriesList);
+                        const defIdx = def ? seriesList.indexOf(def) : -1;
+                        if (defIdx >= 0) {
+                            state.series = _seriesToState(seriesList, defIdx);
+                            select.value = String(defIdx);
+                        } else {
+                            select.value = "";
+                        }
+                        _syncEnhancedSelect(select);
+                    } else {
+                        select.value = String(desiredIdx);
+                        _syncEnhancedSelect(select);
+                    }
+                }
+                _setPdfUploadAllEnabled();
+            } catch (err) {
+                select.innerHTML = '<option value="">Unable to load series</option>';
             }
-            playerDocSeriesOpponent.value = '';
-            playerDocSeriesStart.value = '';
-            playerDocSeriesEnd.value = '';
-            return;
-        }
-        playerDocSeriesOpponent.value = option.dataset.opponent || '';
-        playerDocSeriesLabel.value = option.dataset.label || option.textContent || '';
-        playerDocSeriesStart.value = option.dataset.start || '';
-        playerDocSeriesEnd.value = option.dataset.end || '';
-    }
-
-    function renderSeriesOptions(options = []) {
-        currentSeriesOptions = options || [];
-        const defaultOption = document.createElement('option');
-        defaultOption.value = '';
-        defaultOption.textContent = 'Select series';
-        const noneOption = document.createElement('option');
-        noneOption.value = '__none__';
-        noneOption.dataset.opponent = '';
-        noneOption.dataset.label = 'No Specific Series';
-        noneOption.dataset.start = '';
-        noneOption.dataset.end = '';
-        noneOption.textContent = 'No Specific Series';
-        playerDocSeries.innerHTML = '';
-        playerDocSeries.appendChild(defaultOption);
-        playerDocSeries.appendChild(noneOption);
-        playerDocSeries.disabled = false;
-        if (!currentSeriesOptions.length) {
-            playerDocSeriesHelper.textContent = 'No current or upcoming series found. Use "No Specific Series" if needed.';
-            playerDocSeries.value = '__none__';
-            updateSeriesHiddenFields();
-            return;
-        }
-
-        currentSeriesOptions.forEach((series, index) => {
-            const option = document.createElement('option');
-            const baseLabel = series.series_label || `${series.is_home ? 'Home vs' : 'Road @'} ${series.opponent_name || series.opponent_abbr || 'Opponent'}`;
-            option.value = String(index);
-            option.textContent = series.range ? `${baseLabel} • ${series.range}` : baseLabel;
-            option.dataset.opponent = series.opponent_abbr || series.opponent_name || '';
-            option.dataset.label = baseLabel;
-            option.dataset.start = series.start || '';
-            option.dataset.end = series.end || '';
-            option.dataset.status = series.status || '';
-            playerDocSeries.appendChild(option);
         });
 
-        let defaultIndex = currentSeriesOptions.findIndex(series => series.status === 'current');
-        if (defaultIndex === -1) {
-            defaultIndex = currentSeriesOptions.findIndex(series => series.status === 'upcoming');
-        }
-        if (defaultIndex !== -1) {
-            playerDocSeries.value = String(defaultIndex);
-        }
-        playerDocSeriesHelper.textContent = 'Select which series this document belongs to.';
-        updateSeriesHiddenFields();
+        _setPdfUploadAllEnabled();
     }
 
-    async function loadSeriesOptions(player) {
-        resetSeriesSelection();
-        if (!player) {
-            resetSeriesSelection();
-            return;
-        }
-        try {
-            playerDocSeriesHelper.textContent = 'Loading series…';
-            playerDocSeries.innerHTML = `
-                <option value="">Loading series…</option>
-                <option value="__none__" data-opponent="" data-label="No Specific Series" data-start="" data-end="">No Specific Series</option>
-            `;
-            playerDocSeries.disabled = false;
-            playerDocSeries.value = '__none__';
-            updateSeriesHiddenFields();
-            const payload = await fetchJSON(`/api/admin/player-series/${player.id}`);
-            renderSeriesOptions(payload.series || []);
-        } catch (err) {
-            resetSeriesSelection(false);
-            playerDocSeriesHelper.textContent = `Unable to load series: ${err.message} — using "No Specific Series".`;
-        }
-    }
+    // Legacy single-upload + queue uploader removed (PDFs Upload renders all players).
 
     function formatSeriesInfo(doc) {
         const pieces = [];
@@ -931,16 +1122,16 @@
             if (!currentPlayer) {
                 totalDocsEl.textContent = formatCount(0, 'doc');
             }
-            playerSearchHelp.textContent = allPlayers.length ? 'Select a player to load their information, upload new files, and review their history.' : 'No player accounts found yet. Ask players to register to begin managing files.';
             renderAccountsTable(allPlayers);
+            _renderPdfUploadGrid();
         } catch (err) {
             allPlayers = [];
             totalPlayersEl.textContent = formatCount(0, 'player');
             if (!currentPlayer) {
                 totalDocsEl.textContent = formatCount(0, 'doc');
             }
-            playerSearchHelp.textContent = `Unable to load player accounts: ${err.message}`;
             renderAccountsTable([]);
+            _renderPdfUploadGrid();
         }
     }
 
@@ -987,25 +1178,11 @@
         }).join('');
     }
 
-    function renderSearchResults(matches) {
-        if (!matches.length) {
-            playerSearchResults.style.display = 'none';
-            playerSearchResults.innerHTML = '';
-            return;
-        }
-        playerSearchResults.innerHTML = matches.map(player => `
-            <div class="result-item" data-player-id="${player.id}">
-                <strong>${(player.first_name || '') + ' ' + (player.last_name || '')}</strong>
-            </div>
-        `).join('');
-        playerSearchResults.style.display = 'block';
-    }
+    // Player search UI removed.
 
     function updatePlayerOverview(player) {
         const fullName = `${player.first_name || ''} ${player.last_name || ''}`.trim();
-        selectedPlayerName.textContent = fullName || player.email;
-        selectedPlayerEmail.textContent = player.email;
-        playerUploadName.textContent = fullName || player.email;
+        // Summary card removed; keep function as a no-op for safety.
     }
 
     function renderPlayerDocs() {
@@ -1098,11 +1275,7 @@
     async function loadPlayerData(player) {
         currentPlayer = player;
         updatePlayerOverview(player);
-        playerSearchHelp.textContent = `Managing documents for ${player.email}`;
         playerDocStatus.textContent = 'Loading documents…';
-        playerDocForm.reset();
-        uploadSlotText.innerHTML = defaultUploadText;
-        resetSeriesSelection();
         playerDocList.innerHTML = '<tr><td colspan="4" class="table-placeholder">Loading…</td></tr>';
         playerDocLogList.innerHTML = '<li class="table-placeholder">Loading…</li>';
         showingAllActivity = false;
@@ -1140,109 +1313,282 @@
             }
         }
 
-        await loadSeriesOptions(player);
+        // PDFs Upload is managed in the "PDFs Upload" panel (all players).
     }
 
-    playerSearchInput.addEventListener('input', () => {
-        const value = playerSearchInput.value.trim().toLowerCase();
-        if (!value) {
-            renderSearchResults([]);
-            return;
-        }
-        const matches = allPlayers.filter(player => {
-            const name = `${player.first_name || ''} ${player.last_name || ''}`.toLowerCase();
-            return player.email.toLowerCase().includes(value) || name.includes(value);
-        }).slice(0, 10);
-        renderSearchResults(matches);
-    });
+    // PDFs Upload (all players) interactions
+    if (pdfUploadGrid) {
+        pdfUploadGrid.addEventListener('click', (event) => {
+            const btn = event.target.closest('[data-pdf-upload-one]');
+            if (!btn) return;
+            const row = btn.closest('[data-pdf-player-id]');
+            if (!row) return;
+            const pid = row.dataset.pdfPlayerId;
+            const state = pdfUploads[pid] || (pdfUploads[pid] = { file: null, series: null, status: 'idle', progress: 0, error: null, xhr: null });
 
-    playerSearchResults.addEventListener('click', (event) => {
-        const item = event.target.closest('.result-item');
-        if (!item) return;
-        const playerId = Number(item.dataset.playerId);
-        const player = allPlayers.find(p => p.id === playerId);
-        if (player) {
-            playerSearchInput.value = '';
-            playerSearchResults.style.display = 'none';
-            loadPlayerData(player);
-        }
-    });
+            if (state.status === 'uploading') return;
 
-    document.addEventListener('click', (event) => {
-        if (!playerSearchResults.contains(event.target) && event.target !== playerSearchInput) {
-            playerSearchResults.style.display = 'none';
-        }
-    });
+            if (!_canUploadPdf(pid)) {
+                state.status = 'error';
+                state.error = 'Select a PDF and a series first.';
+                state.progress = 0;
+                _renderPdfUploadGrid();
+                _setPdfUploadAllEnabled();
+                return;
+            }
 
-    playerDocForm.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        if (!currentPlayer) {
-            alert('Select a player first.');
-            return;
-        }
-        if (!playerDocFile.files.length) {
-            alert('Choose a document to upload.');
-            return;
-        }
-        if (playerDocSeries.disabled || !playerDocSeries.value) {
-            alert('Select a series for this document.');
-            return;
-        }
-        if (playerDocSeries.value !== '__none__' && (!playerDocSeriesOpponent.value || !playerDocSeriesStart.value || !playerDocSeriesEnd.value)) {
-            alert('Series details are missing. Please re-select the series.');
-            return;
-        }
-        const formData = new FormData(playerDocForm);
-        formData.append('player_id', currentPlayer.id);
+            // Allow re-upload: reset "done" back to idle before queueing.
+            if (state.status === 'done') {
+                state.status = 'idle';
+                state.progress = 0;
+            }
 
-        try {
-            uploadDocBtn.disabled = true;
-            uploadDocBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i><span>Uploading…</span>';
-            const response = await fetch('/api/admin/player-docs', {
-                method: 'POST',
-                body: formData,
-                credentials: 'same-origin'
+            state.status = 'queued';
+            state.error = null;
+            _renderPdfUploadGrid();
+            _startPdfUploads();
+        });
+
+        pdfUploadGrid.addEventListener('change', (event) => {
+            const row = event.target.closest('[data-pdf-player-id]');
+            if (!row) return;
+            const pid = row.dataset.pdfPlayerId;
+            const state = pdfUploads[pid] || (pdfUploads[pid] = { file: null, series: null, status: 'idle', progress: 0, error: null, xhr: null });
+
+            if (event.target.matches('[data-pdf-file]')) {
+                const file = event.target.files && event.target.files[0] ? event.target.files[0] : null;
+                state.file = file;
+                state.error = null;
+                if (state.status !== 'uploading') {
+                    state.status = 'idle';
+                    state.progress = 0;
+                }
+                const label = row.querySelector('[data-pdf-file-label]');
+                if (label) label.textContent = file ? file.name : 'Drop PDF or click to browse';
+                _setPdfUploadAllEnabled();
+            }
+
+            if (event.target.matches('[data-pdf-series]')) {
+                const opt = event.target.selectedOptions[0];
+                if (!opt || !event.target.value || event.target.value === '__none__') {
+                    state.series = null;
+                } else {
+                    state.series = {
+                        id: event.target.value,
+                        opponent: opt.dataset.opponent || '',
+                        label: opt.dataset.label || opt.textContent || '',
+                        start: opt.dataset.start || '',
+                        end: opt.dataset.end || '',
+                        status: opt.dataset.status || '',
+                    };
+                }
+                _setPdfUploadAllEnabled();
+            }
+        });
+
+        pdfUploadGrid.addEventListener('dragover', (e) => {
+            const drop = e.target.closest('[data-pdf-drop]');
+            if (!drop) return;
+            e.preventDefault();
+            drop.classList.add('dragover');
+        });
+        pdfUploadGrid.addEventListener('dragleave', (e) => {
+            const drop = e.target.closest('[data-pdf-drop]');
+            if (!drop) return;
+            drop.classList.remove('dragover');
+        });
+        pdfUploadGrid.addEventListener('drop', (e) => {
+            const drop = e.target.closest('[data-pdf-drop]');
+            if (!drop) return;
+            e.preventDefault();
+            drop.classList.remove('dragover');
+            const row = drop.closest('[data-pdf-player-id]');
+            if (!row) return;
+            const pid = row.dataset.pdfPlayerId;
+            const state = pdfUploads[pid] || (pdfUploads[pid] = { file: null, series: null, status: 'idle', progress: 0, error: null, xhr: null });
+            const file = e.dataTransfer?.files && e.dataTransfer.files[0] ? e.dataTransfer.files[0] : null;
+            if (!file) return;
+            state.file = file;
+            state.error = null;
+            if (state.status !== 'uploading') {
+                state.status = 'idle';
+                state.progress = 0;
+            }
+            const label = row.querySelector('[data-pdf-file-label]');
+            if (label) label.textContent = file.name;
+            _setPdfUploadAllEnabled();
+        });
+    }
+
+    function _canUploadPdf(pid) {
+        const s = pdfUploads[pid];
+        if (!s || !s.file) return false;
+        if (!s.series || !s.series.opponent || !s.series.start || !s.series.end) return false;
+        const ext = (s.file.name || '').split('.').pop()?.toLowerCase();
+        return ext === 'pdf';
+    }
+
+    function _uploadSinglePdf(pid) {
+        const s = pdfUploads[pid];
+        if (!s) return;
+        s.status = 'uploading';
+        s.progress = 1;
+        s.error = null;
+        pdfActiveUploads += 1;
+        _setPdfUploadAllEnabled();
+        _renderPdfUploadGrid();
+
+        const formData = new FormData();
+        formData.append('document', s.file);
+        formData.append('player_id', String(pid));
+        formData.append('category', 'report');
+        formData.append('series_id', String(s.series.id));
+        formData.append('series_opponent', s.series.opponent || '');
+        formData.append('series_label', s.series.label || '');
+        formData.append('series_start', s.series.start || '');
+        formData.append('series_end', s.series.end || '');
+
+        const xhr = new XMLHttpRequest();
+        s.xhr = xhr;
+        xhr.open('POST', '/api/admin/player-docs', true);
+        xhr.withCredentials = true;
+        xhr.upload.onprogress = (e) => {
+            if (!e.lengthComputable) return;
+            s.progress = Math.max(1, Math.min(99, Math.round((e.loaded / e.total) * 100)));
+            _renderPdfUploadGrid();
+        };
+        xhr.onreadystatechange = () => {
+            if (xhr.readyState !== 4) return;
+            pdfActiveUploads = Math.max(0, pdfActiveUploads - 1);
+            if (xhr.status >= 200 && xhr.status < 300) {
+                s.status = 'done';
+                s.progress = 100;
+                s.error = null;
+            } else {
+                s.status = 'error';
+                s.progress = 0;
+                try {
+                    const payload = JSON.parse(xhr.responseText || '{}');
+                    s.error = payload.error || 'Upload failed';
+                } catch (err) {
+                    s.error = xhr.statusText || 'Upload failed';
+                }
+            }
+            s.xhr = null;
+            _renderPdfUploadGrid();
+            _setPdfUploadAllEnabled();
+            _startPdfUploads();
+        };
+        xhr.onerror = () => {
+            pdfActiveUploads = Math.max(0, pdfActiveUploads - 1);
+            s.status = 'error';
+            s.progress = 0;
+            s.error = 'Network error';
+            s.xhr = null;
+            _renderPdfUploadGrid();
+            _setPdfUploadAllEnabled();
+            _startPdfUploads();
+        };
+        xhr.send(formData);
+    }
+
+    function _startPdfUploads() {
+        const limit = PDF_UPLOAD_CONCURRENCY;
+        while (pdfActiveUploads < limit) {
+            const nextQueued = Object.keys(pdfUploads).find(pid => {
+                const s = pdfUploads[pid];
+                return s && s.status === 'queued' && _canUploadPdf(pid);
             });
-            if (!response.ok) {
-                const error = await response.json().catch(() => ({}));
-                throw new Error(error.error || 'Upload failed');
-            }
-            playerDocForm.reset();
-            uploadSlotText.innerHTML = defaultUploadText;
-            if (!playerDocSeries.disabled) {
-                updateSeriesHiddenFields();
-            }
-            await loadPlayerData(currentPlayer);
-        } catch (err) {
-            alert(`Failed to upload document: ${err.message}`);
-        } finally {
-            uploadDocBtn.disabled = false;
-            uploadDocBtn.innerHTML = '<i class="fas fa-upload"></i><span>Upload</span>';
+            const nextPid = nextQueued || Object.keys(pdfUploads).find(pid => {
+                const s = pdfUploads[pid];
+                return s && s.status !== 'uploading' && s.status !== 'done' && _canUploadPdf(pid);
+            });
+            if (!nextPid) break;
+            _uploadSinglePdf(nextPid);
         }
-    });
-
-    resetDocBtn.addEventListener('click', (event) => {
-        event.preventDefault();
-        playerDocForm.reset();
-        uploadSlotText.innerHTML = defaultUploadText;
-        if (!playerDocSeries.disabled) {
-            playerDocSeries.value = '';
-            updateSeriesHiddenFields();
-        }
-    });
-    playerDocFile.addEventListener('change', () => {
-        if (playerDocFile.files && playerDocFile.files.length) {
-            const [file] = playerDocFile.files;
-            uploadSlotText.textContent = file.name;
-        } else {
-            uploadSlotText.innerHTML = defaultUploadText;
-        }
-    });
-    playerDocSeries.addEventListener('change', updateSeriesHiddenFields);
-    if (playerDocCategory) {
-        playerDocCategory.addEventListener('change', applyDocCategoryRules);
+        _setPdfUploadAllEnabled();
     }
-    applyDocCategoryRules();
+
+    if (pdfUploadAllBtn) {
+        pdfUploadAllBtn.addEventListener('click', () => {
+            _startPdfUploads();
+        });
+    }
+
+    if (pdfSetAllCurrentBtn) {
+        function _syncSetAllLabel() {
+            if (!pdfSetAllSeriesMode) return;
+            const mode = (pdfSetAllSeriesMode.value || 'next').toLowerCase();
+            pdfSetAllCurrentBtn.textContent =
+                mode === 'current'
+                    ? 'Set all to current series'
+                    : mode === 'none'
+                        ? 'Set all to no specific series'
+                        : 'Set all to next series';
+        }
+        if (pdfSetAllSeriesMode) {
+            pdfSetAllSeriesMode.addEventListener('change', _syncSetAllLabel);
+            _syncSetAllLabel();
+        }
+
+        pdfSetAllCurrentBtn.addEventListener('click', async () => {
+            pdfSetAllCurrentBtn.disabled = true;
+            try {
+                const mode = (pdfSetAllSeriesMode?.value || 'next').toLowerCase();
+                for (const player of allPlayers) {
+                    const pid = String(player.id);
+                    try {
+                        const seriesList = await _fetchSeriesForPlayer(player.id);
+                        const row = pdfUploadGrid ? pdfUploadGrid.querySelector(`[data-pdf-player-id="${pid}"]`) : null;
+                        const select = row ? row.querySelector('[data-pdf-series]') : null;
+                        const state = pdfUploads[pid] || (pdfUploads[pid] = { file: null, series: null, status: 'idle', progress: 0, error: null, xhr: null });
+
+                        if (mode === 'none') {
+                            state.series = null;
+                            if (select) {
+                                select.value = '__none__';
+                                _syncEnhancedSelect(select);
+                            }
+                            continue;
+                        }
+
+                        if (!seriesList.length) continue;
+
+                        // Determine target index based on selected mode.
+                        const currentIdx = seriesList.findIndex(s => {
+                            const st = (s.status || '').toLowerCase();
+                            return st === 'current' || st === 'active';
+                        });
+                        let idx = 0;
+                        if (mode === 'current') {
+                            idx = currentIdx >= 0 ? currentIdx : 0;
+                        } else {
+                            // "Next": the series after current when possible; otherwise fall back to index 1.
+                            if (currentIdx >= 0 && (currentIdx + 1) < seriesList.length) {
+                                idx = currentIdx + 1;
+                            } else if (seriesList.length >= 2) {
+                                idx = 1;
+                            } else {
+                                idx = 0;
+                            }
+                        }
+
+                        state.series = _seriesToState(seriesList, idx);
+                        if (select) {
+                            select.value = String(idx);
+                            _syncEnhancedSelect(select);
+                        }
+                    } catch (err) {
+                        // Keep going even if one player fails to load series.
+                        continue;
+                    }
+                }
+                _setPdfUploadAllEnabled();
+            } finally {
+                pdfSetAllCurrentBtn.disabled = false;
+            }
+        });
+    }
 
     playerDocSort.addEventListener('change', () => {
         renderPlayerDocs();
@@ -1276,6 +1622,8 @@
             }
         }
     });
+
+    // Legacy queue uploader removed.
 
     if (playerDocLogShowAll) {
         playerDocLogShowAll.addEventListener('click', () => {
@@ -1385,11 +1733,8 @@
         renderAccountsTable(filtered);
     });
 
-    refreshPlayersBtn.addEventListener('click', () => {
-        loadPlayers();
-    });
+    // Refresh list button removed; reload page to refresh.
 
-    resetSeriesSelection();
     loadPlayers();
 
     // Invite codes management
