@@ -8468,7 +8468,13 @@ def api_admin_workouts_upload():
         dest_path = player_dir / storage_name
 
         try:
-            file.save(dest_path)
+            # Read bytes once so we can store in DB (Render filesystem is ephemeral).
+            data = file.read()
+            # Best-effort write to disk for local/dev convenience.
+            try:
+                dest_path.write_bytes(data)
+            except Exception:
+                pass
         except Exception as exc:
             raise RuntimeError(f"Unable to save workout document: {exc}") from exc
 
@@ -8476,10 +8482,16 @@ def api_admin_workouts_upload():
         doc_id = db.create_player_document(
             player_id=player_id,
             filename=original_filename,
-            path=str(dest_path),
+            # Keep the on-disk path if it exists, but allow DB fallback for downloads.
+            path=str(dest_path) if (dest_path.exists() and dest_path.is_file()) else "",
             uploaded_by=uploader_id,
             category=WORKOUT_CATEGORY,
         )
+        # Store DB-backed blob for durable downloads.
+        try:
+            db.upsert_player_document_blob(int(doc_id), "application/pdf", data)
+        except Exception:
+            pass
         doc = db.get_player_document(doc_id)
         db.record_player_document_event(
             player_id=player_id,
@@ -8699,7 +8711,13 @@ def api_admin_player_docs_upload():
     dest_path = player_dir / filename
 
     try:
-        file.save(dest_path)
+        # Read bytes once so we can store in DB (Render filesystem is ephemeral).
+        data = file.read()
+        # Best-effort write to disk for local/dev convenience.
+        try:
+            dest_path.write_bytes(data)
+        except Exception:
+            pass
         db = PlayerDB()
         player_record = db.get_user_by_id(player_id)
         if not player_record:
@@ -8713,13 +8731,20 @@ def api_admin_player_docs_upload():
         doc_id = db.create_player_document(
             player_id=player_id,
             filename=filename,
-            path=str(dest_path),
+            # Keep the on-disk path if it exists, but downloads can fall back to DB blob.
+            path=str(dest_path) if (dest_path.exists() and dest_path.is_file()) else "",
             uploaded_by=g.user.get("id") if g.user else None,
             series_opponent=series_opponent,
             series_label=series_label,
             series_start=series_start_ts,
             series_end=series_end_ts
         )
+        # Store DB-backed blob for durable downloads.
+        try:
+            mime_type, _ = mimetypes.guess_type(filename)
+            db.upsert_player_document_blob(int(doc_id), mime_type or "application/octet-stream", data)
+        except Exception:
+            pass
         doc = db.get_player_document(doc_id)
         db.record_player_document_event(
             player_id=player_id,
@@ -8869,15 +8894,43 @@ def download_player_document(doc_id: int):
     try:
         db = PlayerDB()
         doc = db.get_player_document(doc_id)
-        db.close()
     except Exception:
+        try:
+            db.close()
+        except Exception:
+            pass
         doc = None
     if not doc:
+        try:
+            db.close()
+        except Exception:
+            pass
         abort(404)
     path = Path(doc.get("path") or "")
-    if not path.exists() or not path.is_file():
+    if path.exists() and path.is_file():
+        try:
+            db.close()
+        except Exception:
+            pass
+        return send_file(path, as_attachment=True, download_name=doc.get("filename") or path.name)
+
+    # DB-backed fallback (fixes Render ephemeral filesystem 404s)
+    blob = None
+    try:
+        blob = db.get_player_document_blob(int(doc_id))
+    except Exception:
+        blob = None
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
+    if not blob or not blob.get("data"):
         abort(404)
-    return send_file(path, as_attachment=True, download_name=doc.get("filename") or path.name)
+    data = blob.get("data")
+    content_type = (blob.get("content_type") or "").strip() or "application/octet-stream"
+    filename = (doc.get("filename") or "").strip() or f"document-{doc_id}"
+    return send_file(BytesIO(data), mimetype=content_type, as_attachment=True, download_name=filename)
 
 
 @app.route('/workout-docs/<int:doc_id>')
@@ -8888,26 +8941,67 @@ def view_workout_document(doc_id: int):
     try:
         db = PlayerDB()
         doc = db.get_player_document(doc_id)
-        db.close()
     except Exception:
+        try:
+            db.close()
+        except Exception:
+            pass
         doc = None
     if not doc or (doc.get("category") or "").strip().lower() != WORKOUT_CATEGORY:
+        try:
+            db.close()
+        except Exception:
+            pass
         abort(404)
     viewer_user = getattr(g, "user", None)
     viewer_id = viewer_user.get("id") if viewer_user else None
     if viewer_id is None:
+        try:
+            db.close()
+        except Exception:
+            pass
         abort(403)
     if doc.get("player_id") != viewer_id and not session.get("is_admin"):
+        try:
+            db.close()
+        except Exception:
+            pass
         abort(403)
     path = Path(doc.get("path") or "")
-    if not path.exists() or not path.is_file():
+    if path.exists() and path.is_file():
+        mime_type, _ = mimetypes.guess_type(path.name)
+        try:
+            db.close()
+        except Exception:
+            pass
+        return send_file(
+            path,
+            as_attachment=False,
+            download_name=doc.get("filename") or path.name,
+            mimetype=mime_type or "application/pdf",
+        )
+
+    # DB-backed fallback (fixes Render ephemeral filesystem 404s)
+    blob = None
+    try:
+        blob = db.get_player_document_blob(int(doc_id))
+    except Exception:
+        blob = None
+    finally:
+        try:
+            db.close()
+        except Exception:
+            pass
+    if not blob or not blob.get("data"):
         abort(404)
-    mime_type, _ = mimetypes.guess_type(path.name)
+    data = blob.get("data")
+    content_type = (blob.get("content_type") or "").strip() or "application/pdf"
+    filename = (doc.get("filename") or "").strip() or f"workout-{doc_id}.pdf"
     return send_file(
-        path,
+        BytesIO(data),
         as_attachment=False,
-        download_name=doc.get("filename") or path.name,
-        mimetype=mime_type or "application/pdf",
+        download_name=filename,
+        mimetype=content_type,
     )
 
 

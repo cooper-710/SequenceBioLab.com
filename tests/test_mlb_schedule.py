@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 """Test MLB StatsAPI schedule data"""
+import pytest
+
+# This file is an ad-hoc networked smoke test, not a unit test.
+# Skip during pytest collection (CI/dev environments may not have network access).
+pytest.skip("networked MLB StatsAPI smoke test (run manually)", allow_module_level=True)
+
 import sys
 from datetime import datetime, timedelta, timezone
 sys.path.insert(0, 'src')

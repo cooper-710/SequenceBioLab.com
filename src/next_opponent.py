@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any
+from functools import lru_cache
 import statsapi  # pip install MLB-StatsAPI
 
 # ---------- Team index helpers ----------
@@ -34,13 +35,23 @@ def _build_team_index() -> Dict[str, int]:
             idx[k] = tid
     return idx
 
-_TEAM_INDEX = _build_team_index()
+
+@lru_cache(maxsize=1)
+def _team_index() -> Dict[str, int]:
+    """
+    Lazy team index builder.
+
+    IMPORTANT: Avoid network calls at import time so unit tests and offline
+    environments can import this module safely.
+    """
+    return _build_team_index()
 
 def _resolve_team_id(team_key: str) -> int:
     k = team_key.strip().upper()
-    if k not in _TEAM_INDEX:
+    idx = _team_index()
+    if k not in idx:
         raise ValueError(f"Unrecognized team key: {team_key!r}")
-    return _TEAM_INDEX[k]
+    return idx[k]
 
 # ---------- Core logic ----------
 

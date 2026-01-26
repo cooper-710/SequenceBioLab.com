@@ -28,7 +28,8 @@ except ImportError:
 import os
 _postgres_pools = {}  # Dict of {worker_pid: pool}
 _pool_lock = threading.Lock()
-_schema_initialized = False
+# Track schema initialization per database (sqlite path or postgres URL).
+_schema_initialized_keys = set()
 _schema_lock = threading.Lock()
 
 # Global connection semaphore for Supabase Session mode
@@ -172,7 +173,12 @@ class PlayerDB:
             db_path: Path to SQLite database file (used if DATABASE_URL not set)
             database_url: PostgreSQL connection URL (takes precedence if set)
         """
-        self.database_url = database_url or os.environ.get('DATABASE_URL')
+        # If a caller provides a non-default db_path, assume they want SQLite even if
+        # DATABASE_URL is set in the environment (common in tests/dev).
+        default_db_path = "build/database/players.db"
+        db_path_provided = (db_path != default_db_path)
+        env_database_url = os.environ.get('DATABASE_URL')
+        self.database_url = database_url or (env_database_url if not db_path_provided else None)
         self.is_postgres = bool(self.database_url and HAS_POSTGRES)
         self.db_path = Path(db_path)
         self._from_pool = False  # Track if connection came from pool
@@ -387,17 +393,26 @@ class PlayerDB:
     
     def _init_schema_cached(self):
         """Initialize schema only once per worker (thread-safe)"""
-        global _schema_initialized
-        if _schema_initialized:
-            return  # Schema already initialized
+        global _schema_initialized_keys
+        try:
+            if self.is_postgres:
+                key = f"pg:{self.database_url}"
+            else:
+                key = f"sqlite:{self.db_path.resolve()}"
+        except Exception:
+            # Fallback: still avoid crashing schema init
+            key = f"db:{id(self)}"
+
+        if key in _schema_initialized_keys:
+            return  # Schema already initialized for this DB
         
         with _schema_lock:
             # Double-check after acquiring lock
-            if _schema_initialized:
+            if key in _schema_initialized_keys:
                 return
             # Initialize schema
             self._init_schema()
-            _schema_initialized = True
+            _schema_initialized_keys.add(key)
     
     def _init_schema(self):
         """Initialize database schema"""
@@ -702,6 +717,18 @@ class PlayerDB:
                 data {blob_type} NOT NULL,
                 updated_at {real_type} NOT NULL,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+
+        # Player document blobs stored in DB (fixes Render ephemeral filesystem 404s)
+        # This backs both player docs and workouts so downloads still work after deploys/restarts.
+        self._execute(cursor, f"""
+            CREATE TABLE IF NOT EXISTS player_document_blobs (
+                doc_id INTEGER PRIMARY KEY,
+                content_type {text_type} NOT NULL,
+                data {blob_type} NOT NULL,
+                updated_at {real_type} NOT NULL,
+                FOREIGN KEY (doc_id) REFERENCES player_documents(id) ON DELETE CASCADE
             )
         """)
         
@@ -1682,6 +1709,11 @@ class PlayerDB:
         if not row:
             return None
         self._execute(cursor, "DELETE FROM player_documents WHERE id = ?", (doc_id,))
+        # Best-effort cleanup of any DB-backed blob (SQLite may not enforce FK cascades).
+        try:
+            self._execute(cursor, "DELETE FROM player_document_blobs WHERE doc_id = ?", (int(doc_id),))
+        except Exception:
+            pass
 
         # Ensure the dashboard refreshes after deletions too.
         try:
@@ -1760,6 +1792,64 @@ class PlayerDB:
         """, (doc_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
+
+    # ---------------------------
+    # Player document blobs (DB-backed)
+    # ---------------------------
+
+    def get_player_document_blob(self, doc_id: int) -> Optional[Dict[str, Any]]:
+        """Fetch raw blob bytes and content type for a document."""
+        cursor = self.conn.cursor()
+        self._execute(
+            cursor,
+            """
+            SELECT doc_id, content_type, data, updated_at
+            FROM player_document_blobs
+            WHERE doc_id = ?
+            """,
+            (int(doc_id),),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        try:
+            return dict(row)
+        except Exception:
+            return {
+                "doc_id": row[0],
+                "content_type": row[1],
+                "data": row[2],
+                "updated_at": row[3] if len(row) > 3 else None,
+            }
+
+    def upsert_player_document_blob(self, doc_id: int, content_type: str, data: bytes) -> None:
+        """Insert/update a DB-backed blob for a player document."""
+        cursor = self.conn.cursor()
+        now_ts = float(datetime.now().timestamp())
+        ctype = (content_type or "application/octet-stream").strip()
+        if self.is_postgres:
+            self._execute(
+                cursor,
+                """
+                INSERT INTO player_document_blobs (doc_id, content_type, data, updated_at)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (doc_id) DO UPDATE SET
+                    content_type = EXCLUDED.content_type,
+                    data = EXCLUDED.data,
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (int(doc_id), ctype, data, now_ts),
+            )
+        else:
+            self._execute(
+                cursor,
+                """
+                INSERT OR REPLACE INTO player_document_blobs (doc_id, content_type, data, updated_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (int(doc_id), ctype, data, now_ts),
+            )
+        self.conn.commit()
 
     def list_expired_player_documents(self, reference_ts: Optional[float] = None) -> List[Dict[str, Any]]:
         """Return documents whose series window has elapsed."""
