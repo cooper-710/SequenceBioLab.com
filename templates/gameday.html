@@ -1327,7 +1327,6 @@ document.addEventListener('DOMContentLoaded', function () {
             var scheduleItems = scheduleList.querySelectorAll('li');
             var scheduleBucketPrimaryOpp = {};
             var scheduleBucketLabels = {
-                past: 'past series',
                 current: 'current series',
                 future: 'upcoming series'
             };
@@ -1430,7 +1429,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     return !item.hidden;
                 });
                 if (!hasVisibleItems) {
-                    var defaultBuckets = ['current', 'future', 'past'];
+                    var defaultBuckets = ['current', 'future'];
                     var applied = defaultBuckets.some(function (bucket) {
                         applyScheduleFilter(bucket);
                         return Array.prototype.some.call(scheduleItems, function (item) {

@@ -5,6 +5,7 @@ import os
 import subprocess
 import threading
 import uuid
+import time
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
@@ -13,6 +14,15 @@ from app.utils.helpers import sanitize_filename_component
 from app.utils.file_utils import report_exists_for_player
 from app.constants import REPORT_LEAD_DAYS
 from app.utils.formatters import extract_game_datetime
+
+# Import resource monitoring (safe - fails gracefully if not available)
+try:
+    from app.utils.resource_monitor import monitor_process_by_pid
+    MONITORING_AVAILABLE = True
+except ImportError:
+    MONITORING_AVAILABLE = False
+    def monitor_process_by_pid(*args, **kwargs):
+        return {"monitoring_available": False}
 
 # Global job status (replace with Redis in production)
 job_status: Dict[str, Any] = {}
@@ -64,14 +74,59 @@ def generate_single_report(
         env = os.environ.copy()
         env['PYTHONWARNINGS'] = 'ignore::UserWarning:urllib3,ignore::Warning'
         
-        result = subprocess.run(
+        # Use Popen to enable monitoring, then wait for completion
+        process = subprocess.Popen(
             cmd,
             cwd=str(Config.ROOT_DIR / "src"),
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=Config.REPORT_TIMEOUT,
             env=env
         )
+        
+        # Start monitoring in background thread (safe - fails gracefully)
+        resource_summary = {"monitoring_available": False}
+        if MONITORING_AVAILABLE:
+            def _monitor():
+                try:
+                    resource_summary.update(
+                        monitor_process_by_pid(process.pid, Config.REPORT_TIMEOUT, interval=1.0)
+                    )
+                except Exception:
+                    pass  # Fail silently
+        
+            monitor_thread = threading.Thread(target=_monitor, daemon=True)
+            monitor_thread.start()
+        
+        # Wait for process to complete with timeout
+        try:
+            stdout, stderr = process.communicate(timeout=Config.REPORT_TIMEOUT)
+            result = subprocess.CompletedProcess(
+                process.args,
+                process.returncode,
+                stdout,
+                stderr
+            )
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+            result = subprocess.CompletedProcess(
+                process.args,
+                -1,
+                stdout,
+                stderr
+            )
+            raise subprocess.TimeoutExpired(process.args, Config.REPORT_TIMEOUT)
+        
+        # Log resource usage if available
+        if resource_summary.get("monitoring_available") and resource_summary.get("samples_count", 0) > 0:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Report generation resource usage for {hitter_name}:")
+            logger.info(f"  CPU - Peak: {resource_summary.get('cpu', {}).get('max', 0):.1f}%, "
+                       f"Avg: {resource_summary.get('cpu', {}).get('avg', 0):.1f}%")
+            logger.info(f"  Memory - Peak: {resource_summary.get('memory_mb', {}).get('peak', 0):.2f} MB, "
+                       f"Avg: {resource_summary.get('memory_mb', {}).get('avg', 0):.2f} MB")
         
         # First, check if PDF was generated (even if returncode != 0, warnings might cause non-zero exit)
         output_lines = result.stdout.split('\n')
@@ -94,11 +149,21 @@ def generate_single_report(
         
         # If PDF was generated, return success regardless of returncode
         if pdf_path and Path(pdf_path).exists():
-            return {
+            result_dict = {
                 "success": True,
                 "pdf_path": pdf_path,
                 "pdf_filename": Path(pdf_path).name
             }
+            # Include resource usage in result if available
+            if resource_summary.get("monitoring_available") and resource_summary.get("samples_count", 0) > 0:
+                result_dict["resource_usage"] = {
+                    "cpu_peak": resource_summary.get('cpu', {}).get('max', 0),
+                    "cpu_avg": resource_summary.get('cpu', {}).get('avg', 0),
+                    "memory_peak_mb": resource_summary.get('memory_mb', {}).get('peak', 0),
+                    "memory_avg_mb": resource_summary.get('memory_mb', {}).get('avg', 0),
+                    "duration_seconds": resource_summary.get('duration_seconds', 0)
+                }
+            return result_dict
         
         # If no PDF found and returncode != 0, report the error
         if result.returncode != 0:
@@ -337,14 +402,59 @@ def generate_single_pitcher_report(
         env = os.environ.copy()
         env['PYTHONWARNINGS'] = 'ignore::UserWarning:urllib3,ignore::Warning'
         
-        result = subprocess.run(
+        # Use Popen to enable monitoring, then wait for completion
+        process = subprocess.Popen(
             cmd,
             cwd=str(Config.ROOT_DIR / "src"),
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=Config.REPORT_TIMEOUT,
             env=env
         )
+        
+        # Start monitoring in background thread (safe - fails gracefully)
+        resource_summary = {"monitoring_available": False}
+        if MONITORING_AVAILABLE:
+            def _monitor():
+                try:
+                    resource_summary.update(
+                        monitor_process_by_pid(process.pid, Config.REPORT_TIMEOUT, interval=1.0)
+                    )
+                except Exception:
+                    pass  # Fail silently
+        
+            monitor_thread = threading.Thread(target=_monitor, daemon=True)
+            monitor_thread.start()
+        
+        # Wait for process to complete with timeout
+        try:
+            stdout, stderr = process.communicate(timeout=Config.REPORT_TIMEOUT)
+            result = subprocess.CompletedProcess(
+                process.args,
+                process.returncode,
+                stdout,
+                stderr
+            )
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+            result = subprocess.CompletedProcess(
+                process.args,
+                -1,
+                stdout,
+                stderr
+            )
+            raise subprocess.TimeoutExpired(process.args, Config.REPORT_TIMEOUT)
+        
+        # Log resource usage if available
+        if resource_summary.get("monitoring_available") and resource_summary.get("samples_count", 0) > 0:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Pitcher report generation resource usage for {pitcher_name}:")
+            logger.info(f"  CPU - Peak: {resource_summary.get('cpu', {}).get('max', 0):.1f}%, "
+                       f"Avg: {resource_summary.get('cpu', {}).get('avg', 0):.1f}%")
+            logger.info(f"  Memory - Peak: {resource_summary.get('memory_mb', {}).get('peak', 0):.2f} MB, "
+                       f"Avg: {resource_summary.get('memory_mb', {}).get('avg', 0):.2f} MB")
         
         output_lines = result.stdout.split('\n')
         pdf_path = None
@@ -362,11 +472,21 @@ def generate_single_pitcher_report(
                 pdf_path = str(pdf_files[0])
         
         if pdf_path and Path(pdf_path).exists():
-            return {
+            result_dict = {
                 "success": True,
                 "pdf_path": pdf_path,
                 "pdf_filename": Path(pdf_path).name
             }
+            # Include resource usage in result if available
+            if resource_summary.get("monitoring_available") and resource_summary.get("samples_count", 0) > 0:
+                result_dict["resource_usage"] = {
+                    "cpu_peak": resource_summary.get('cpu', {}).get('max', 0),
+                    "cpu_avg": resource_summary.get('cpu', {}).get('avg', 0),
+                    "memory_peak_mb": resource_summary.get('memory_mb', {}).get('peak', 0),
+                    "memory_avg_mb": resource_summary.get('memory_mb', {}).get('avg', 0),
+                    "duration_seconds": resource_summary.get('duration_seconds', 0)
+                }
+            return result_dict
         
         if result.returncode != 0:
             error_msg = result.stderr or result.stdout or "Unknown error"

@@ -70,10 +70,14 @@ class Config:
     ALLOWED_PROFILE_TYPES = {"png", "jpeg", "gif", "webp", "heic"}
     WORKOUT_ALLOWED_EXTENSIONS = {".pdf"}
     WORKOUT_CATEGORY = "workout"
+    REPORT_DOC_CATEGORY = "report"
     
     # Report generation
     REPORT_TIMEOUT = 600  # 10 minutes
     REPORT_LEAD_DAYS = 5
+    # Disabled by default to avoid CPU/memory spikes on smaller deployments.
+    # Set ENABLE_AUTO_REPORTS=1 to re-enable.
+    ENABLE_AUTO_REPORTS = os.environ.get("ENABLE_AUTO_REPORTS", "0").strip().lower() in {"1", "true", "yes", "on"}
     
     # Job queue
     JOB_STATUS_MAX_AGE = 3600  # 1 hour

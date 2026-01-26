@@ -59,6 +59,13 @@
                     <span id="uploadSlotText"><i class="fas fa-file-arrow-up"></i> Drop file or click to browse</span>
                 </label>
                 <div class="series-select">
+                    <label for="playerDocCategory">Type</label>
+                    <select id="playerDocCategory" name="category">
+                        <option value="">Player document</option>
+                        <option value="report">Series report (shows on Gameday series card)</option>
+                    </select>
+                </div>
+                <div class="series-select">
                     <label for="playerDocSeries">Series</label>
                     <select id="playerDocSeries" name="series_id" required disabled>
                         <option value="">Select series</option>
@@ -705,6 +712,7 @@
     const playerDocSeriesLabel = document.getElementById('playerDocSeriesLabel');
     const playerDocSeriesStart = document.getElementById('playerDocSeriesStart');
     const playerDocSeriesEnd = document.getElementById('playerDocSeriesEnd');
+    const playerDocCategory = document.getElementById('playerDocCategory');
 
     const playerDocList = document.getElementById('playerDocList');
     const playerDocLogList = document.getElementById('playerDocLogList');
@@ -773,6 +781,29 @@
         playerDocSeries.value = '';
         playerDocSeriesHelper.textContent = disable ? 'Select a player to load series.' : 'Select which series this document belongs to.';
         updateSeriesHiddenFields();
+    }
+
+    function applyDocCategoryRules() {
+        if (!playerDocCategory) return;
+        const isReport = playerDocCategory.value === 'report';
+        // Hint the file picker for report uploads.
+        if (playerDocFile) {
+            playerDocFile.accept = isReport ? '.pdf' : '';
+        }
+        // Disallow "No Specific Series" for reports (backend enforces too).
+        const noneOption = playerDocSeries ? playerDocSeries.querySelector('option[value="__none__"]') : null;
+        if (noneOption) {
+            noneOption.disabled = isReport;
+        }
+        if (isReport && playerDocSeries && playerDocSeries.value === '__none__') {
+            playerDocSeries.value = '';
+            updateSeriesHiddenFields();
+        }
+        if (playerDocSeriesHelper && playerDocSeries && !playerDocSeries.disabled) {
+            playerDocSeriesHelper.textContent = isReport
+                ? 'Series reports must be linked to a specific series.'
+                : 'Select which series this document belongs to.';
+        }
     }
 
     function updateSeriesHiddenFields() {
@@ -1208,6 +1239,10 @@
         }
     });
     playerDocSeries.addEventListener('change', updateSeriesHiddenFields);
+    if (playerDocCategory) {
+        playerDocCategory.addEventListener('change', applyDocCategoryRules);
+    }
+    applyDocCategoryRules();
 
     playerDocSort.addEventListener('change', () => {
         renderPlayerDocs();

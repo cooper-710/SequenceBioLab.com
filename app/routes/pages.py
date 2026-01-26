@@ -14,11 +14,9 @@ from app.services.page_service import (
     build_player_home_context,
     load_full_season_schedule,
     purge_concluded_series_documents,
-    schedule_auto_reports,
-    collect_recent_reports,
-    attach_reports_to_games,
     format_player_document
 )
+from app.config import Config
 from app.services.analytics_service import (
     get_team_metadata,
     collect_league_leaders,
@@ -539,7 +537,12 @@ def gameday():
         try:
             db = PlayerDB()
             user_docs = db.list_player_documents(target_user.get("id"))
-            player_documents = [format_player_document(doc) for doc in user_docs]
+            # Hide series reports from the "Player Documents" card (they render on the Series card instead).
+            player_documents = [
+                format_player_document(doc)
+                for doc in user_docs
+                if (doc.get("category") or "").strip().lower() != Config.REPORT_DOC_CATEGORY
+            ]
             events = db.list_player_document_events(player_id=target_user.get("id"), limit=20)
             document_log = [
                 {
@@ -638,6 +641,7 @@ def gameday_schedule():
                 pass
 
     team_abbr = determine_user_team(target_user)
+    purge_concluded_series_documents()
 
     # Build upcoming series list (uses cached full season schedule)
     from datetime import date as date_type
@@ -772,34 +776,69 @@ def gameday_schedule():
                 "probable_pitchers": probables,
                 "reports": [],
                 "category": category,
+                "_series_start_date": series_start,
+                "_series_end_date": series_end,
             })
 
         upcoming_games = formatted
 
-    # Attach recent reports to series (best-effort)
-    player_slug = None
-    if target_user and target_user.get("first_name") and target_user.get("last_name"):
-        player_slug = sanitize_filename_component(
-            f"{target_user['first_name']} {target_user['last_name']}"
-        ).lower().replace(" ", "_")
-
-    recent_reports = []
-    for report in collect_recent_reports(limit=25):
-        filename = report.get("filename") or ""
-        if player_slug and player_slug not in filename.lower():
-            continue
+    # Attach admin-uploaded series reports (stored as player documents) to the series cards.
+    report_docs: List[Dict[str, Any]] = []
+    if PlayerDB and target_user and target_user.get("id"):
+        db = None
         try:
-            recent_reports.append({
-                **report,
-                "url": url_for("reports.download_report_file", filename=filename)
-            })
+            db = PlayerDB()
+            report_docs = db.list_player_documents(int(target_user.get("id")), category=Config.REPORT_DOC_CATEGORY) or []
         except Exception:
-            recent_reports.append({
-                **report,
-                "url": f"/reports/files/{filename}"
-            })
+            report_docs = []
+        finally:
+            try:
+                if db:
+                    db.close()
+            except Exception:
+                pass
 
-    upcoming_games = attach_reports_to_games(upcoming_games, recent_reports)
+    if report_docs and upcoming_games:
+        # Build per-opponent lists and match by series window overlap.
+        by_opp: Dict[str, List[Dict[str, Any]]] = {}
+        for doc in report_docs:
+            opp = (doc.get("series_opponent") or "").strip().upper()
+            if not opp:
+                continue
+            start_ts = doc.get("series_start")
+            end_ts = doc.get("series_end")
+            if not start_ts or not end_ts:
+                continue
+            by_opp.setdefault(opp, []).append(doc)
+
+        for game in upcoming_games:
+            opp = (game.get("opponent_abbr") or "").strip().upper()
+            if not opp:
+                continue
+            # Recover the series window from display_date is hard; use category grouping window if present.
+            # We stored start/end dates during formatting as datetime.date.
+            series_start = game.get("_series_start_date")
+            series_end = game.get("_series_end_date")
+            matched: List[Dict[str, Any]] = []
+            if series_start and series_end:
+                for doc in by_opp.get(opp, []):
+                    doc_start = datetime.fromtimestamp(doc["series_start"]).date()
+                    doc_end = datetime.fromtimestamp(doc["series_end"]).date()
+                    if doc_start <= series_end and doc_end >= series_start:
+                        matched.append({
+                            "title": doc.get("filename") or "Report",
+                            "url": url_for("admin.download_player_document", doc_id=doc.get("id")),
+                            "generated_at": None,
+                        })
+            else:
+                # Fallback: match by opponent only.
+                for doc in by_opp.get(opp, []):
+                    matched.append({
+                        "title": doc.get("filename") or "Report",
+                        "url": url_for("admin.download_player_document", doc_id=doc.get("id")),
+                        "generated_at": None,
+                    })
+            game["reports"] = matched
 
     html = render_template(
         "partials/gameday_schedule_content.html",

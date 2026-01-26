@@ -1,8 +1,5 @@
 <section class="gameday-card schedule-card" data-schedule-state="{{ default_schedule_tab or 'current' }}">
   <div class="schedule-tabs" role="tablist" aria-label="Series timeframe">
-    <button class="schedule-tab {% if default_schedule_tab == 'past' %}is-active{% endif %}" type="button" data-filter="past" role="tab" aria-selected="{% if default_schedule_tab == 'past' %}true{% else %}false{% endif %}">
-      Past Series
-    </button>
     <button class="schedule-tab {% if default_schedule_tab == 'current' or not default_schedule_tab %}is-active{% endif %}" type="button" data-filter="current" role="tab" aria-selected="{% if default_schedule_tab == 'current' or not default_schedule_tab %}true{% else %}false{% endif %}">
       Current Series
     </button>

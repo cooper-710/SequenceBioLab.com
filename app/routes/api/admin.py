@@ -1090,6 +1090,10 @@ def api_admin_player_docs_upload():
 
 
     series_choice = (request.form.get("series_id") or "").strip()
+    category_raw = clean_str(request.form.get("category")).lower()
+    category = category_raw or None
+    if category == Config.WORKOUT_CATEGORY:
+        return jsonify({"error": "Use the workout uploader for workout documents."}), 400
 
     raw_series_opponent = clean_str(request.form.get("series_opponent")).upper()
 
@@ -1161,6 +1165,9 @@ def api_admin_player_docs_upload():
 
             return jsonify({"error": "Series end date must be after its start date."}), 400
 
+    if category == Config.REPORT_DOC_CATEGORY and (not series_choice or series_choice == "__none__"):
+        return jsonify({"error": "Series selection is required for report documents."}), 400
+
 
 
     try:
@@ -1178,6 +1185,11 @@ def api_admin_player_docs_upload():
     if not filename:
 
         return jsonify({"error": "Invalid filename."}), 400
+
+    if category == Config.REPORT_DOC_CATEGORY:
+        ext = Path(filename).suffix.lower()
+        if ext != ".pdf":
+            return jsonify({"error": "Report documents must be a PDF."}), 400
 
 
 
@@ -1222,6 +1234,8 @@ def api_admin_player_docs_upload():
             path=str(dest_path),
 
             uploaded_by=g.user.get("id") if g.user else None,
+
+            category=category,
 
             series_opponent=series_opponent,
 

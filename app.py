@@ -25,21 +25,28 @@ from werkzeug.utils import secure_filename
 import statsapi
 from typing import Optional, List, Dict, Any, Set, Tuple
 
-# Load environment variables from .env file if it exists
+# Load environment variables from .env file if it exists and is readable.
+# If the file cannot be read (e.g., due to sandbox permissions), continue
+# without failing so the app can still start with existing environment vars.
 _env_file = Path(__file__).parent / ".env"
 if _env_file.exists():
-    with open(_env_file, 'r') as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith('#') and 'export ' in line:
-                # Parse export VAR="value" or export VAR=value
-                line = line.replace('export ', '').strip()
-                if '=' in line:
-                    key, value = line.split('=', 1)
-                    key = key.strip()
-                    value = value.strip().strip('"').strip("'")
-                    if key and value and key not in os.environ:
-                        os.environ[key] = value
+    try:
+        with open(_env_file, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and 'export ' in line:
+                    # Parse export VAR="value" or export VAR=value
+                    line = line.replace('export ', '').strip()
+                    if '=' in line:
+                        key, value = line.split('=', 1)
+                        key = key.strip()
+                        value = value.strip().strip('"').strip("'")
+                        if key and value and key not in os.environ:
+                            os.environ[key] = value
+    except PermissionError as exc:
+        # In restricted environments (like some IDE sandboxes), the .env file
+        # may exist but not be readable. Log a warning and continue.
+        print(f"Warning: Could not read .env file {_env_file}: {exc}. Continuing without loading it.")
 
 import settings_manager
 
@@ -253,6 +260,8 @@ def _resolve_default_season_start() -> str:
 def _schedule_auto_reports(games: List[Dict[str, Any]], team_abbr: Optional[str]) -> None:
     """Schedule auto reports - uses new service"""
     if not games:
+        return
+    if not getattr(Config, "ENABLE_AUTO_REPORTS", False):
         return
     player_name = _current_player_full_name()
     if not player_name:
@@ -7858,23 +7867,34 @@ def gameday():
     
     _schedule_auto_reports(upcoming_games, team_abbr)
 
-    player_slug = None
-    if target_user and target_user.get("first_name") and target_user.get("last_name"):
-        player_slug = _sanitize_filename_component(
-            f"{target_user['first_name']} {target_user['last_name']}"
-        ).lower().replace(" ", "_")
+    # Attach admin-uploaded series reports (stored as player documents) to the series cards.
+    if PlayerDB and target_user and target_user.get("id"):
+        db = None
+        report_map: Dict[str, List[Dict[str, Any]]] = {}
+        try:
+            db = PlayerDB()
+            report_docs = db.list_player_documents(int(target_user.get("id")), category=Config.REPORT_DOC_CATEGORY) or []
+            for doc in report_docs:
+                opp = (doc.get("series_opponent") or "").strip().upper()
+                if not opp:
+                    continue
+                report_map.setdefault(opp, []).append({
+                    "title": doc.get("filename") or "Report",
+                    "generated_at": None,
+                    "url": url_for("admin.download_player_document", doc_id=doc.get("id")),
+                })
+        except Exception:
+            report_map = {}
+        finally:
+            try:
+                if db:
+                    db.close()
+            except Exception:
+                pass
 
-    recent_reports = []
-    for report in _collect_recent_reports(limit=25):
-        filename = report.get("filename") or ""
-        if player_slug and player_slug not in filename.lower():
-            continue
-        recent_reports.append({
-            **report,
-            "url": url_for("download_report_file", filename=filename)
-        })
-
-    upcoming_games = _attach_reports_to_games(upcoming_games, recent_reports)
+        for game in upcoming_games:
+            opp = (game.get("opponent_abbr") or "").strip().upper()
+            game["reports"] = report_map.get(opp, [])
     league_leader_groups = _collect_league_leaders()
 
     player_documents = []
@@ -7884,7 +7904,11 @@ def gameday():
         try:
             db = PlayerDB()
             user_docs = db.list_player_documents(target_user.get("id"))
-            player_documents = [_format_player_document(doc) for doc in user_docs]
+            player_documents = [
+                _format_player_document(doc)
+                for doc in user_docs
+                if (doc.get("category") or "").strip().lower() != Config.REPORT_DOC_CATEGORY
+            ]
             events = db.list_player_document_events(player_id=target_user.get("id"), limit=20)
             document_log = [
                 {
@@ -9221,8 +9245,13 @@ def list_reports():
     return jsonify({"reports": reports})
 
 if __name__ == '__main__':
-    port = 5001
-    
+    # Allow overriding the port via the PORT environment variable, falling back
+    # to 5001 for backwards compatibility.
+    try:
+        port = int(os.environ.get("PORT", "5001"))
+    except (TypeError, ValueError):
+        port = 5001
+
     print(f"Starting Scouting Report Web UI...")
     print(f"Reports will be saved to: {OUT_DIR}")
     print(f"Open http://127.0.0.1:{port} in your browser")

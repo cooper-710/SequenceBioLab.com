@@ -1645,6 +1645,8 @@ def schedule_auto_reports(games: List[Dict[str, Any]], team_abbr: Optional[str])
     """Schedule auto reports for upcoming games."""
     if not games:
         return
+    if not getattr(Config, "ENABLE_AUTO_REPORTS", False):
+        return
     try:
         from app.services.report_service import maybe_trigger_report
         from app.utils.helpers import current_player_full_name, resolve_default_season_start
