@@ -1051,7 +1051,11 @@
                 select.innerHTML = opts.join('');
 
                 const state = pdfUploads[pid];
-                if (!state.series) {
+                // Persist explicit "no series" selection (notes) without auto-defaulting.
+                if (state?.series && String(state.series.id || '') === '__none__') {
+                    select.value = '__none__';
+                    _syncEnhancedSelect(select);
+                } else if (!state.series) {
                     const def = _defaultSeriesForPlayer(seriesList);
                     if (def) {
                         const defIdx = seriesList.indexOf(def);
@@ -1061,7 +1065,14 @@
                     }
                 } else {
                     // If state series is invalid (e.g. list changed), re-default.
-                    const desiredIdx = parseInt(state.series.id || '', 10);
+                    const desiredId = String(state.series.id || '');
+                    if (desiredId === '__none__') {
+                        select.value = '__none__';
+                        _syncEnhancedSelect(select);
+                        _setPdfUploadAllEnabled();
+                        return;
+                    }
+                    const desiredIdx = parseInt(desiredId, 10);
                     if (!Number.isFinite(desiredIdx) || desiredIdx < 0 || desiredIdx >= seriesList.length) {
                         state.series = null;
                         const def = _defaultSeriesForPlayer(seriesList);
@@ -1289,7 +1300,7 @@
 
             if (!_canUploadPdf(pid)) {
                 state.status = 'error';
-                state.error = 'Select a PDF and a series first.';
+                state.error = 'Select a PDF first (series optional for notes).';
                 state.progress = 0;
                 _renderPdfUploadGrid();
                 _setPdfUploadAllEnabled();
@@ -1331,11 +1342,15 @@
             if (event.target.matches('[data-pdf-series]')) {
                 const priorSeriesId = state.series ? String(state.series.id || '') : '';
                 const opt = event.target.selectedOptions[0];
-                if (!opt || !event.target.value || event.target.value === '__none__') {
+                const nextValue = String(event.target.value || '');
+                if (!opt || !nextValue) {
                     state.series = null;
+                } else if (nextValue === '__none__') {
+                    // Persist "no specific series" as a special sentinel so it doesn't get auto-defaulted.
+                    state.series = { id: '__none__', opponent: '', label: opt.textContent || 'No specific series (notes)', start: '', end: '', status: 'none' };
                 } else {
                     state.series = {
-                        id: event.target.value,
+                        id: nextValue,
                         opponent: opt.dataset.opponent || '',
                         label: opt.dataset.label || opt.textContent || '',
                         start: opt.dataset.start || '',
@@ -1395,7 +1410,10 @@
     function _canUploadPdf(pid) {
         const s = pdfUploads[pid];
         if (!s || !s.file) return false;
-        if (!s.series || !s.series.opponent || !s.series.start || !s.series.end) return false;
+        const seriesId = s.series ? String(s.series.id || '') : '';
+        const hasRealSeries = !!(s.series && s.series.opponent && s.series.start && s.series.end);
+        const isNoSeries = seriesId === '__none__';
+        if (!hasRealSeries && !isNoSeries) return false;
         const ext = (s.file.name || '').split('.').pop()?.toLowerCase();
         return ext === 'pdf';
     }
@@ -1413,12 +1431,18 @@
         const formData = new FormData();
         formData.append('document', s.file);
         formData.append('player_id', String(pid));
-        formData.append('category', 'report');
-        formData.append('series_id', String(s.series.id));
-        formData.append('series_opponent', s.series.opponent || '');
-        formData.append('series_label', s.series.label || '');
-        formData.append('series_start', s.series.start || '');
-        formData.append('series_end', s.series.end || '');
+        const seriesId = s.series ? String(s.series.id || '') : '';
+        const isNoSeries = seriesId === '__none__';
+        // Backend requires a series for category=report, but allows "__none__" for other categories.
+        // Treat "No specific series (notes)" uploads as a generic/scouting doc.
+        formData.append('category', isNoSeries ? 'scouting' : 'report');
+        formData.append('series_id', isNoSeries ? '__none__' : String(seriesId));
+        if (!isNoSeries && s.series) {
+            formData.append('series_opponent', s.series.opponent || '');
+            formData.append('series_label', s.series.label || '');
+            formData.append('series_start', s.series.start || '');
+            formData.append('series_end', s.series.end || '');
+        }
 
         const xhr = new XMLHttpRequest();
         s.xhr = xhr;
@@ -1552,7 +1576,7 @@
                         const state = pdfUploads[pid] || (pdfUploads[pid] = { file: null, series: null, status: 'idle', progress: 0, error: null, xhr: null });
 
                         if (mode === 'none') {
-                            state.series = null;
+                            state.series = { id: '__none__', opponent: '', label: 'No specific series (notes)', start: '', end: '', status: 'none' };
                             if (select) {
                                 select.value = '__none__';
                                 _syncEnhancedSelect(select);
