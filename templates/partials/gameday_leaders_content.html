@@ -1,0 +1,60 @@
+{% if league_leader_groups %}
+<div class="leaders-columns">
+    {% for group in league_leader_groups %}
+    {% set group_index = loop.index0 %}
+    <div class="leaders-group" data-group="{{ group_index }}">
+        <div class="leaders-group-heading">
+            <h3>{{ group.group }}</h3>
+            {% if group.categories|length > 1 %}
+            <label class="leaders-select-label">
+                <span>Stat</span>
+                <select class="leaders-select" data-group="{{ group_index }}">
+                    {% for category in group.categories %}
+                    <option value="{{ loop.index0 }}">{{ category.label }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            {% else %}
+            <div class="leaders-single-label">{{ group.categories[0].label }}</div>
+            {% endif %}
+        </div>
+        <div class="leaders-grid">
+            {% for category in group.categories %}
+            <div class="leaders-card {% if not loop.first %}is-hidden{% endif %}" data-group="{{ group_index }}" data-category="{{ loop.index0 }}">
+                <header>
+                    <h4>{{ category.label }}</h4>
+                    <span class="leaders-subtext">{{ category.subtitle or '' }}</span>
+                </header>
+                <table class="leaders-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Player</th>
+                            <th>Team</th>
+                            <th class="leaders-value-col">{{ category.abbr or 'Value' }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in category.entries %}
+                        <tr>
+                            <td class="leader-rank">#{{ entry.rank }}</td>
+                            <td>
+                                <a class="leader-link" href="{{ url_for('player_database') }}?player={{ entry.player | urlencode }}">
+                                    {{ entry.player }}
+                                </a>
+                            </td>
+                            <td class="leader-team">{{ entry.team }}</td>
+                            <td class="leader-value">{{ entry.value }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="empty-state">Loading leaderboards…</p>
+{% endif %}

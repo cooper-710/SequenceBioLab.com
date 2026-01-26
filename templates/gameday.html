@@ -178,66 +178,10 @@
                 <div class="card-header">
                     <h2><i class="fas fa-chart-line"></i> League Leaders</h2>
                 </div>
-                {% if league_leader_groups %}
-                <div class="leaders-columns">
-                    {% for group in league_leader_groups %}
-                    {% set group_index = loop.index0 %}
-                    <div class="leaders-group" data-group="{{ group_index }}">
-                        <div class="leaders-group-heading">
-                            <h3>{{ group.group }}</h3>
-                            {% if group.categories|length > 1 %}
-                            <label class="leaders-select-label">
-                                <span>Stat</span>
-                                <select class="leaders-select" data-group="{{ group_index }}">
-                                    {% for category in group.categories %}
-                                    <option value="{{ loop.index0 }}">{{ category.label }}</option>
-                                    {% endfor %}
-                                </select>
-                            </label>
-                            {% else %}
-                            <div class="leaders-single-label">{{ group.categories[0].label }}</div>
-                            {% endif %}
-                        </div>
-                        <div class="leaders-grid">
-                            {% for category in group.categories %}
-                            <div class="leaders-card {% if not loop.first %}is-hidden{% endif %}" data-group="{{ group_index }}" data-category="{{ loop.index0 }}">
-                                <header>
-                                    <h4>{{ category.label }}</h4>
-                                    <span class="leaders-subtext">{{ category.subtitle or '' }}</span>
-                                </header>
-                                <table class="leaders-table">
-                                    <thead>
-                                        <tr>
-                                            <th>#</th>
-                                            <th>Player</th>
-                                            <th>Team</th>
-                                            <th class="leaders-value-col">{{ category.abbr or 'Value' }}</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {% for entry in category.entries %}
-                                        <tr>
-                                            <td class="leader-rank">#{{ entry.rank }}</td>
-                                            <td>
-                                                <a class="leader-link" href="{{ url_for('player_database') }}?player={{ entry.player | urlencode }}">
-                                                    {{ entry.player }}
-                                                </a>
-                                            </td>
-                                            <td class="leader-team">{{ entry.team }}</td>
-                                            <td class="leader-value">{{ entry.value }}</td>
-                                        </tr>
-                                        {% endfor %}
-                                    </tbody>
-                                </table>
-                            </div>
-                            {% endfor %}
-                        </div>
-                    </div>
-                    {% endfor %}
+                <div id="gameday-leaders-content"
+                     data-widgets-endpoint="{{ url_for('pages.gameday_widgets') }}">
+                    {% include "partials/gameday_leaders_content.html" %}
                 </div>
-                {% else %}
-                <p class="empty-state">Leaderboards are currently unavailable.</p>
-                {% endif %}
             </section>
 
             <section id="standings" class="gameday-card standings-card">
@@ -281,31 +225,9 @@
                     </form>
                     {% endif %}
                 </div>
-                {% if standings_data and standings_data.rows %}
-                <h3 class="standings-division">{{ standings_data.title }}</h3>
-                <table class="standings-table">
-                    <thead>
-                        <tr>
-                            <th>Team</th>
-                            <th>W</th>
-                            <th>L</th>
-                            <th>GB</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in standings_data.rows %}
-                        <tr class="{% if row.is_user_team %}is-user-team{% endif %}">
-                            <td>{{ row.team }}</td>
-                            <td>{{ row.wins }}</td>
-                            <td>{{ row.losses }}</td>
-                            <td>{{ row.games_back }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                {% else %}
-                <p class="empty-state">Standings are currently unavailable.</p>
-                {% endif %}
+                <div id="gameday-standings-content">
+                    {% include "partials/gameday_standings_content.html" %}
+                </div>
             </section>
         </div>
     </div>
@@ -1356,7 +1278,9 @@ document.addEventListener('DOMContentLoaded', function () {
         }, 5000);
     }
     
-    var leaderSelects = document.querySelectorAll('.leaders-select');
+    var leadersContainer = document.getElementById('gameday-leaders-content');
+    var standingsContainer = document.getElementById('gameday-standings-content');
+    var leaderSelects = [];
     var standingForms = document.querySelectorAll('.standings-form');
     var standingsSelects = document.querySelectorAll('.standings-select');
     var standingsTabs = document.querySelectorAll('.standings-tab');
@@ -1409,6 +1333,55 @@ document.addEventListener('DOMContentLoaded', function () {
         if (docsEmptyPlaceholder) {
             docsEmptyPlaceholder.hidden = visible > 0;
         }
+    }
+
+    function loadGamedayWidgets() {
+        if (!leadersContainer) {
+            return;
+        }
+
+        var endpoint = leadersContainer.dataset.widgetsEndpoint;
+        if (!endpoint) {
+            return;
+        }
+
+        var params = new URLSearchParams(window.location.search || "");
+        var url = endpoint + (params.toString() ? ("?" + params.toString()) : "");
+
+        var controller = null;
+        var timeoutId = null;
+        try {
+            controller = new AbortController();
+            timeoutId = setTimeout(function () {
+                controller.abort();
+            }, 4500);
+        } catch (err) {
+            controller = null;
+        }
+
+        fetch(url, controller ? { signal: controller.signal, headers: { "Accept": "application/json" } } : { headers: { "Accept": "application/json" } })
+            .then(function (resp) { return resp.ok ? resp.json() : null; })
+            .then(function (payload) {
+                if (!payload) {
+                    return;
+                }
+                if (typeof payload.leaders_html === "string" && leadersContainer) {
+                    leadersContainer.innerHTML = payload.leaders_html;
+                }
+                if (typeof payload.standings_html === "string" && standingsContainer) {
+                    standingsContainer.innerHTML = payload.standings_html;
+                }
+                initLeaderControls();
+                requestAnimationFrame(syncLeaderHeights);
+            })
+            .catch(function () {
+                // Keep placeholders if the widget request fails.
+            })
+            .finally(function () {
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
+            });
     }
 
     if (scheduleCard) {
@@ -1575,22 +1548,27 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    leaderSelects.forEach(function (select) {
-        var group = select.dataset.group;
-        select.addEventListener('change', function () {
-            var selected = select.value;
-            document.querySelectorAll('.leaders-card[data-group="' + group + '"]').forEach(function (card) {
-                card.classList.toggle('is-hidden', card.dataset.category !== selected);
+    function initLeaderControls() {
+        leaderSelects = document.querySelectorAll('.leaders-select');
+        leaderSelects.forEach(function (select) {
+            var group = select.dataset.group;
+            select.addEventListener('change', function () {
+                var selected = select.value;
+                document.querySelectorAll('.leaders-card[data-group="' + group + '"]').forEach(function (card) {
+                    card.classList.toggle('is-hidden', card.dataset.category !== selected);
+                });
+                requestAnimationFrame(syncLeaderHeights);
             });
-            requestAnimationFrame(syncLeaderHeights);
         });
-    });
+        requestAnimationFrame(syncLeaderHeights);
+    }
 
     window.addEventListener('resize', function () {
         requestAnimationFrame(syncLeaderHeights);
     });
 
-    requestAnimationFrame(syncLeaderHeights);
+    initLeaderControls();
+    loadGamedayWidgets();
 
     function markScrollIntent() {
         try {

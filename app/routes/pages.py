@@ -1,7 +1,7 @@
 """
 Page routes
 """
-from flask import Blueprint, render_template, request, session, g, redirect, url_for, send_file, make_response
+from flask import Blueprint, render_template, request, session, g, redirect, url_for, send_file, make_response, jsonify
 from datetime import datetime, timedelta
 from urllib.parse import quote_plus, quote
 from typing import Optional, List, Dict, Any
@@ -721,7 +721,8 @@ def gameday():
             })
 
     upcoming_games = attach_reports_to_games(upcoming_games, recent_reports)
-    league_leader_groups = collect_league_leaders()
+    # Load league leaders asynchronously to avoid blocking initial page render
+    league_leader_groups = None
 
     player_documents = []
     document_log = []
@@ -761,12 +762,8 @@ def gameday():
     requested_division_id = request.args.get('division_id', type=int)
     requested_league_id = request.args.get('league_id', type=int)
 
-    standings_data = collect_standings_data(
-        standings_view,
-        team_metadata,
-        division_id=requested_division_id,
-        league_id=requested_league_id
-    )
+    # Load standings asynchronously to avoid blocking initial page render
+    standings_data = None
 
     selected_division_id = None
     selected_league_id = None
@@ -934,6 +931,71 @@ def gameday():
         show_date_redirect_note=show_date_redirect_note,
         default_schedule_tab=requested_tab or "current",
     )
+
+
+@bp.route('/api/gameday/widgets')
+@login_required
+def gameday_widgets():
+    """Async widgets for gameday (leaders + standings)."""
+    viewer_user = getattr(g, "user", None)
+    target_user = viewer_user
+
+    requested_user_id = request.args.get("user_id", type=int)
+    if session.get("is_admin") and PlayerDB and requested_user_id:
+        db = None
+        try:
+            db = PlayerDB()
+            fetched = db.get_user_by_id(int(requested_user_id))
+            if fetched:
+                target_user = fetched
+        except Exception:
+            target_user = viewer_user
+        finally:
+            try:
+                if db:
+                    db.close()
+            except Exception:
+                pass
+
+    team_abbr = determine_user_team(target_user)
+    team_metadata = get_team_metadata(team_abbr)
+
+    standings_view = request.args.get('standings_view', 'division').lower()
+    if standings_view not in {"division", "wildcard"}:
+        standings_view = "division"
+
+    requested_division_id = request.args.get('division_id', type=int)
+    requested_league_id = request.args.get('league_id', type=int)
+
+    league_leader_groups = []
+    try:
+        league_leader_groups = collect_league_leaders() or []
+    except Exception:
+        league_leader_groups = []
+
+    standings_data = None
+    try:
+        standings_data = collect_standings_data(
+            standings_view,
+            team_metadata,
+            division_id=requested_division_id,
+            league_id=requested_league_id
+        )
+    except Exception:
+        standings_data = None
+
+    leaders_html = render_template(
+        "partials/gameday_leaders_content.html",
+        league_leader_groups=league_leader_groups,
+    )
+    standings_html = render_template(
+        "partials/gameday_standings_content.html",
+        standings_data=standings_data,
+    )
+    return jsonify({
+        "leaders_html": leaders_html,
+        "standings_html": standings_html,
+    })
 
 
 # Simple template-only routes that don't need helper functions

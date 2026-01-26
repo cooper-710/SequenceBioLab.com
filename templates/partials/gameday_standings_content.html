@@ -1,0 +1,25 @@
+{% if standings_data and standings_data.rows %}
+<h3 class="standings-division">{{ standings_data.title }}</h3>
+<table class="standings-table">
+    <thead>
+        <tr>
+            <th>Team</th>
+            <th>W</th>
+            <th>L</th>
+            <th>GB</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in standings_data.rows %}
+        <tr class="{% if row.is_user_team %}is-user-team{% endif %}">
+            <td>{{ row.team }}</td>
+            <td>{{ row.wins }}</td>
+            <td>{{ row.losses }}</td>
+            <td>{{ row.games_back }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="empty-state">Loading standings…</p>
+{% endif %}
