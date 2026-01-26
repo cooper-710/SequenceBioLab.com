@@ -5,6 +5,7 @@ Player Database - PostgreSQL/SQLite compatible operations
 import os
 import sqlite3
 import json
+import hashlib
 import threading
 import socket
 from pathlib import Path
@@ -138,6 +139,31 @@ def _get_postgres_pool(database_url: str):
 class PlayerDB:
     """Database operations for player data - supports PostgreSQL and SQLite"""
     
+    def _invalidate_dashboard_context_cache(self, player_id: Optional[int]) -> None:
+        """
+        Best-effort invalidation for the player dashboard context cache.
+
+        The player dashboard (`/dashboard`) uses a persistent cache entry
+        `dashboard_context` keyed by {"user_id": <player_id>}. When we mutate a
+        player's documents, we want "Latest Reports" to reflect new uploads.
+        """
+        if not player_id:
+            return
+        try:
+            payload = {"user_id": int(player_id)}
+            raw = json.dumps(payload, sort_keys=True, default=str, separators=(",", ":"))
+            cache_key = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+            cursor = self.conn.cursor()
+            # Uses _execute to support (? -> %s) conversion for Postgres.
+            self._execute(
+                cursor,
+                "DELETE FROM app_cache WHERE cache_name = ? AND cache_key = ?",
+                ("dashboard_context", cache_key),
+            )
+        except Exception:
+            # Best-effort: never fail the primary operation because of cache.
+            return
+
     def __init__(self, db_path: str = "build/database/players.db", database_url: Optional[str] = None):
         """
         Initialize database connection.
@@ -1637,7 +1663,9 @@ class PlayerDB:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, params)
             doc_id = cursor.lastrowid
-        
+
+        # Ensure the dashboard refreshes with the newly uploaded document.
+        self._invalidate_dashboard_context_cache(int(player_id))
         self.conn.commit()
         return doc_id
 
@@ -1654,6 +1682,14 @@ class PlayerDB:
         if not row:
             return None
         self._execute(cursor, "DELETE FROM player_documents WHERE id = ?", (doc_id,))
+
+        # Ensure the dashboard refreshes after deletions too.
+        try:
+            self._invalidate_dashboard_context_cache(int(dict(row).get("player_id")))
+        except Exception:
+            # If row isn't dict-coercible, fall back to safe no-op.
+            pass
+
         self.conn.commit()
         return dict(row)
 
