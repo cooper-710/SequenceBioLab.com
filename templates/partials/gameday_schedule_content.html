@@ -1,0 +1,85 @@
+<section class="gameday-card schedule-card" data-schedule-state="{{ default_schedule_tab or 'current' }}">
+  <div class="schedule-tabs" role="tablist" aria-label="Series timeframe">
+    <button class="schedule-tab {% if default_schedule_tab == 'past' %}is-active{% endif %}" type="button" data-filter="past" role="tab" aria-selected="{% if default_schedule_tab == 'past' %}true{% else %}false{% endif %}">
+      Past Series
+    </button>
+    <button class="schedule-tab {% if default_schedule_tab == 'current' or not default_schedule_tab %}is-active{% endif %}" type="button" data-filter="current" role="tab" aria-selected="{% if default_schedule_tab == 'current' or not default_schedule_tab %}true{% else %}false{% endif %}">
+      Current Series
+    </button>
+    <button class="schedule-tab {% if default_schedule_tab == 'future' %}is-active{% endif %}" type="button" data-filter="future" role="tab" aria-selected="{% if default_schedule_tab == 'future' %}true{% else %}false{% endif %}">
+      Upcoming Series
+    </button>
+  </div>
+
+  {% if show_date_redirect_note %}
+  <p class="schedule-redirect-note" style="padding: 12px 16px; margin: 12px 0; background: rgba(255, 127, 0, 0.1); border-left: 3px solid var(--color-accent); border-radius: 4px; color: var(--color-text-primary); font-size: 0.9rem;">
+    <i class="fas fa-info-circle" style="margin-right: 8px;"></i>
+    Showing the current series. The selected date is beyond the upcoming series.
+  </p>
+  {% endif %}
+
+  <p class="empty-note schedule-empty" hidden>No series in this view yet.</p>
+
+  {% if upcoming_games %}
+  <ul class="matchups-list">
+    {% for game in upcoming_games %}
+    <li data-status="{{ game.status or '' }}" data-opponent="{{ (game.opponent_abbr or game.opponent)|lower }}" data-category="{{ game.category or 'future' }}">
+      <div class="matchup-head">
+        <span class="matchup-date">{{ game.date }}</span>
+        {% if game.series %}
+        <span class="matchup-series">{{ game.series }}</span>
+        {% endif %}
+      </div>
+      <div class="matchup-row">
+        <span class="matchup-opponent">
+          <span class="matchup-badge">
+            {% if game.opponent_id %}
+            <span class="team-abbr-badge" style="background-color: {{ get_team_color_global(team_id=game.opponent_id) }}; color: white; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; display: inline-block;">
+              {{ game.opponent_abbr or (game.opponent_id|team_abbr_from_id) or game.opponent }}
+            </span>
+            {% else %}
+            {{ game.opponent_abbr or game.opponent }}
+            {% endif %}
+          </span>
+          {% if game.home %}Home vs{% else %}Road @{% endif %} {{ game.opponent }}
+        </span>
+        <span class="matchup-time">{{ game.time }}</span>
+      </div>
+
+      {% if game.venue or game.status %}
+      <div class="matchup-meta">
+        {% if game.venue %}
+        <span><i class="fas fa-location-dot"></i> {{ game.venue }}</span>
+        {% endif %}
+        {% if game.status %}
+        <span><i class="fas fa-flag"></i> {{ game.status }}</span>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if game.probable_pitchers %}
+      <div class="matchup-probables">
+        <i class="fas fa-user"></i> Probable: {{ game.probable_pitchers|join(', ') }}
+      </div>
+      {% endif %}
+
+      <div class="matchup-reports">
+        {% if game.reports %}
+          {% for report in game.reports %}
+          <a class="report-chip" href="{{ report.url }}" target="_blank" rel="noopener">
+            <i class="fas fa-file-pdf"></i> {{ report.title }}
+          </a>
+          {% endfor %}
+        {% else %}
+          <span class="empty-note">No report linked yet</span>
+        {% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty-state">
+    No games on the calendar yet. Generate reports once matchups are finalized.
+  </p>
+  {% endif %}
+</section>

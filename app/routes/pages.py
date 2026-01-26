@@ -527,200 +527,8 @@ def gameday():
     team_abbr = determine_user_team(target_user)
     team_metadata = get_team_metadata(team_abbr)
 
-    purge_concluded_series_documents()
-
-    # Get date parameter if provided (from calendar click)
-    requested_date = request.args.get("date")
-    
-    # Always load full season schedule (365 days) to support date filtering and series display
-    raw_games = None
-    from datetime import date as date_type
-    today = date_type.today()
-    end_date = today + timedelta(days=365)
-    
-    try:
-        raw_games = load_full_season_schedule(
-            target_user,
-            start_date=today.isoformat(),
-            end_date=end_date.isoformat()
-        )
-    except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.warning(f"Warning loading games from load_full_season_schedule: {e}")
-        raw_games = []
-    
-    # Group games into series and format for display
-    upcoming_games = []
-    if raw_games and len(raw_games) > 0:
-        # Format the games and group into series
-        from datetime import date as date_type
-        today = date_type.today()
-        
-        # Group games into series (consecutive games against same opponent)
-        series_groups = []
-        current_series = None
-        last_opponent_id = None
-        last_game_date = None
-        
-        # Sort games by date first
-        sorted_games = sorted(raw_games, key=lambda g: g.get("game_date", ""))
-        
-        for game in sorted_games:
-            date_str = game.get("game_date") or game.get("game_date_iso") or game.get("date")
-            if not date_str:
-                continue
-                
-            try:
-                if isinstance(date_str, str):
-                    game_date = datetime.fromisoformat(date_str.split('T')[0] if 'T' in date_str else date_str).date()
-                else:
-                    game_date = date_str if isinstance(date_str, date_type) else datetime.combine(date_str, datetime.min.time()).date()
-            except Exception:
-                continue
-            
-            opponent_id = game.get("opponent_id")
-            
-            # Start new series if opponent changes or gap > 1 day
-            if (last_opponent_id is not None and 
-                (opponent_id != last_opponent_id or 
-                 (last_game_date and (game_date - last_game_date).days > 1))):
-                if current_series:
-                    series_groups.append(current_series)
-                current_series = None
-            
-            if not current_series:
-                current_series = {
-                    "opponent_id": opponent_id,
-                    "opponent_name": game.get("opponent_name") or game.get("opponent"),
-                    "opponent_abbr": game.get("opponent_abbr"),
-                    "games": [],
-                    "start_date": game_date,
-                    "end_date": game_date,
-                }
-            
-            current_series["games"].append(game)
-            current_series["end_date"] = max(current_series["end_date"], game_date)
-            last_opponent_id = opponent_id
-            last_game_date = game_date
-        
-        if current_series:
-            series_groups.append(current_series)
-        
-        # Sort series by start date
-        series_groups.sort(key=lambda s: s["start_date"])
-        
-        # Find the next upcoming series (first future series) to mark as "current" if no actual current series
-        next_upcoming_series_key = None
-        has_current_series = False
-        for series in series_groups:
-            if not series["games"]:
-                continue
-            series_start = series["start_date"]
-            series_end = series["end_date"]
-            if series_start <= today <= series_end:
-                has_current_series = True
-                break
-            elif series_start > today and next_upcoming_series_key is None:
-                # Store a unique key for the next upcoming series
-                next_upcoming_series_key = (series["opponent_id"], series["start_date"])
-        
-        # Format series for display
-        formatted = []
-        for series in series_groups:
-            if not series["games"]:
-                continue
-                
-            first_game = series["games"][0]
-            series_start = series["start_date"]
-            series_end = series["end_date"]
-            
-            # Determine category (past, current, future)
-            if series_end < today:
-                category = "past"
-            elif series_start <= today <= series_end:
-                category = "current"
-            elif not has_current_series and next_upcoming_series_key and (series["opponent_id"], series["start_date"]) == next_upcoming_series_key:
-                # If no actual current series, mark the next upcoming as "current" for display
-                category = "current"
-            else:
-                category = "future"
-            
-            # Format date
-            if series_start == series_end:
-                display_date = series_start.strftime("%a, %b %d")
-            else:
-                display_date = f"{series_start.strftime('%a, %b %d')} - {series_end.strftime('%b %d')}"
-            
-            game_time = first_game.get("game_datetime")
-            display_time = "TBD"
-            if game_time:
-                try:
-                    display_time = datetime.fromisoformat(game_time.replace("Z", "+00:00")).astimezone().strftime("%I:%M %p %Z")
-                except Exception:
-                    display_time = "TBD"
-            
-            team_abbr_code = team_abbr_from_id(series["opponent_id"])
-            series_label = f"{len(series['games'])}-game series" if len(series["games"]) > 1 else "Single game"
-            
-            # Get status from first game
-            status = first_game.get("status", "Scheduled")
-            
-            # Handle probable_pitchers
-            probables_raw = first_game.get("probable_pitchers") or []
-            probables = []
-            for p in probables_raw:
-                if isinstance(p, dict):
-                    name = p.get("name")
-                    if name:
-                        probables.append(name)
-                elif isinstance(p, str):
-                    probables.append(p)
-            
-            formatted.append({
-                "date": display_date,
-                "time": display_time,
-                "opponent": series["opponent_name"],
-                "opponent_abbr": team_abbr_code,
-                "opponent_id": series["opponent_id"],
-                "home": first_game.get("is_home"),
-                "venue": first_game.get("venue"),
-                "series": series_label,
-                "status": status,
-                "game_pk": first_game.get("game_pk"),
-                "probable_pitchers": probables,
-                "reports": [],
-                "category": category,  # Add category for JavaScript filtering
-            })
-        
-        # formatted is already in the correct order (same as sorted series_groups)
-        upcoming_games = formatted
-    
-    schedule_auto_reports(upcoming_games, team_abbr)
-
-    player_slug = None
-    if target_user and target_user.get("first_name") and target_user.get("last_name"):
-        player_slug = sanitize_filename_component(
-            f"{target_user['first_name']} {target_user['last_name']}"
-        ).lower().replace(" ", "_")
-
-    recent_reports = []
-    for report in collect_recent_reports(limit=25):
-        filename = report.get("filename") or ""
-        if player_slug and player_slug not in filename.lower():
-            continue
-        try:
-            recent_reports.append({
-                **report,
-                "url": url_for("reports.download_report_file", filename=filename)
-            })
-        except Exception:
-            recent_reports.append({
-                **report,
-                "url": f"/reports/files/{filename}"
-            })
-
-    upcoming_games = attach_reports_to_games(upcoming_games, recent_reports)
+    # Schedule/series are loaded asynchronously to keep initial page render fast.
+    upcoming_games: List[Dict[str, Any]] = []
     # Load league leaders asynchronously to avoid blocking initial page render
     league_leader_groups = None
 
@@ -780,136 +588,8 @@ def gameday():
     if not selected_league_id:
         selected_league_id = (team_metadata or {}).get("league_id") or LEAGUE_OPTIONS[0]["id"]
 
-    # Check if requested_date doesn't match any displayed series (i.e., is beyond the upcoming series)
     show_date_redirect_note = False
-    requested_tab = None  # Will be "past", "current", or "future" if a date was requested
-    if requested_date:
-        try:
-            from datetime import date as date_type
-            today = date_type.today()
-            filter_date = datetime.fromisoformat(requested_date).date()
-            
-            # Load full season schedule to check what series are actually displayed
-            # (The displayed series are: one past, one current, one upcoming)
-            # Reuse the already-loaded schedule for this request (and avoid a second API hit)
-            full_schedule_games = raw_games if raw_games is not None else load_full_season_schedule(
-                target_user,
-                start_date=today.isoformat(),
-                end_date=(today + timedelta(days=365)).isoformat()
-            )
-            
-            if full_schedule_games:
-                # Group into series to find which ones are displayed
-                all_series_groups = []
-                current_series = None
-                last_opponent_id = None
-                last_game_date = None
-                
-                sorted_games = sorted(full_schedule_games, key=lambda g: g.get("game_date", ""))
-                for game in sorted_games:
-                    date_str = game.get("game_date") or game.get("game_date_iso") or game.get("date")
-                    if not date_str:
-                        continue
-                    try:
-                        if isinstance(date_str, str):
-                            game_date = datetime.fromisoformat(date_str.split('T')[0] if 'T' in date_str else date_str).date()
-                        else:
-                            game_date = date_str if isinstance(date_str, date_type) else datetime.combine(date_str, datetime.min.time()).date()
-                    except Exception:
-                        continue
-                    
-                    opponent_id = game.get("opponent_id")
-                    if (last_opponent_id is not None and 
-                        (opponent_id != last_opponent_id or 
-                         (last_game_date and (game_date - last_game_date).days > 1))):
-                        if current_series:
-                            all_series_groups.append(current_series)
-                        current_series = None
-                    
-                    if not current_series:
-                        current_series = {
-                            "opponent_id": opponent_id,
-                            "start_date": game_date,
-                            "end_date": game_date,
-                        }
-                    current_series["end_date"] = max(current_series["end_date"], game_date)
-                    last_opponent_id = opponent_id
-                    last_game_date = game_date
-                
-                if current_series:
-                    all_series_groups.append(current_series)
-                
-                # Find displayed series (one past, one current, one upcoming)
-                past_series = []
-                current_series_list = []
-                upcoming_series_list = []
-                
-                for series in all_series_groups:
-                    series_start = series["start_date"]
-                    series_end = series["end_date"]
-                    if series_end < today:
-                        past_series.append(series)
-                    elif series_start <= today <= series_end:
-                        current_series_list.append(series)
-                    else:
-                        upcoming_series_list.append(series)
-                
-                past_series.sort(key=lambda s: s["start_date"], reverse=True)
-                upcoming_series_list.sort(key=lambda s: s["start_date"])
-                
-                # Get the latest date from displayed series (matching gameday hub logic)
-                displayed_series = []
-                if past_series:
-                    displayed_series.append(past_series[0])
-                if current_series_list:
-                    displayed_series.append(current_series_list[0])
-                    if upcoming_series_list:
-                        displayed_series.append(upcoming_series_list[0])
-                elif upcoming_series_list:
-                    displayed_series.append(upcoming_series_list[0])
-                    if len(upcoming_series_list) > 1:
-                        displayed_series.append(upcoming_series_list[1])
-                
-                # Check if requested date is in any displayed series and determine which tab
-                date_in_displayed = False
-                for series in displayed_series:
-                    if series["start_date"] <= filter_date <= series["end_date"]:
-                        date_in_displayed = True
-                        # Determine which tab this series belongs to by comparing series identifiers
-                        # (opponent_id and start_date) since object identity won't work
-                        series_key = (series["opponent_id"], series["start_date"])
-                        
-                        # Check past series
-                        if past_series and (past_series[0]["opponent_id"], past_series[0]["start_date"]) == series_key:
-                            requested_tab = "past"
-                        # Check current series
-                        elif current_series_list and (current_series_list[0]["opponent_id"], current_series_list[0]["start_date"]) == series_key:
-                            requested_tab = "current"
-                        # Check upcoming series
-                        elif upcoming_series_list:
-                            # Check first upcoming (which might be shown as "current" if no actual current)
-                            if (upcoming_series_list[0]["opponent_id"], upcoming_series_list[0]["start_date"]) == series_key:
-                                # If there's no current series, first upcoming is shown as "current"
-                                if not current_series_list:
-                                    requested_tab = "current"
-                                else:
-                                    requested_tab = "future"
-                            # Check second upcoming if it exists
-                            elif len(upcoming_series_list) > 1 and (upcoming_series_list[1]["opponent_id"], upcoming_series_list[1]["start_date"]) == series_key:
-                                requested_tab = "future"
-                        break
-                
-                # If date is not in displayed series and is after the latest displayed series, show note
-                if not date_in_displayed and displayed_series:
-                    latest_displayed_date = max(s["end_date"] for s in displayed_series)
-                    if filter_date > latest_displayed_date:
-                        show_date_redirect_note = True
-                        requested_tab = None  # Don't switch tabs if showing note
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Error checking date redirect note: {e}")
-            pass  # If date parsing fails, don't show note
+    requested_tab = "current"
 
     return render_template(
         'gameday.html',
@@ -931,6 +611,203 @@ def gameday():
         show_date_redirect_note=show_date_redirect_note,
         default_schedule_tab=requested_tab or "current",
     )
+
+
+@bp.route('/api/gameday/schedule')
+@login_required
+def gameday_schedule():
+    """Async schedule/series content for gameday."""
+    viewer_user = getattr(g, "user", None)
+    target_user = viewer_user
+
+    requested_user_id = request.args.get("user_id", type=int)
+    if session.get("is_admin") and PlayerDB and requested_user_id:
+        db = None
+        try:
+            db = PlayerDB()
+            fetched = db.get_user_by_id(int(requested_user_id))
+            if fetched:
+                target_user = fetched
+        except Exception:
+            target_user = viewer_user
+        finally:
+            try:
+                if db:
+                    db.close()
+            except Exception:
+                pass
+
+    team_abbr = determine_user_team(target_user)
+
+    # Build upcoming series list (uses cached full season schedule)
+    from datetime import date as date_type
+    today = date_type.today()
+    end_date = today + timedelta(days=365)
+
+    try:
+        raw_games = load_full_season_schedule(
+            target_user,
+            start_date=today.isoformat(),
+            end_date=end_date.isoformat()
+        ) or []
+    except Exception:
+        raw_games = []
+
+    upcoming_games: List[Dict[str, Any]] = []
+    if raw_games:
+        series_groups = []
+        current_series = None
+        last_opponent_id = None
+        last_game_date = None
+
+        sorted_games = sorted(raw_games, key=lambda g: g.get("game_date", ""))
+        for game in sorted_games:
+            date_str = game.get("game_date") or game.get("game_date_iso") or game.get("date")
+            if not date_str:
+                continue
+            try:
+                if isinstance(date_str, str):
+                    game_date = datetime.fromisoformat(date_str.split('T')[0] if 'T' in date_str else date_str).date()
+                else:
+                    game_date = date_str if isinstance(date_str, date_type) else datetime.combine(date_str, datetime.min.time()).date()
+            except Exception:
+                continue
+
+            opponent_id = game.get("opponent_id")
+            if (last_opponent_id is not None and
+                (opponent_id != last_opponent_id or
+                 (last_game_date and (game_date - last_game_date).days > 1))):
+                if current_series:
+                    series_groups.append(current_series)
+                current_series = None
+
+            if not current_series:
+                current_series = {
+                    "opponent_id": opponent_id,
+                    "opponent_name": game.get("opponent_name") or game.get("opponent"),
+                    "opponent_abbr": game.get("opponent_abbr"),
+                    "games": [],
+                    "start_date": game_date,
+                    "end_date": game_date,
+                }
+
+            current_series["games"].append(game)
+            current_series["end_date"] = max(current_series["end_date"], game_date)
+            last_opponent_id = opponent_id
+            last_game_date = game_date
+
+        if current_series:
+            series_groups.append(current_series)
+
+        series_groups.sort(key=lambda s: s["start_date"])
+
+        next_upcoming_series_key = None
+        has_current_series = False
+        for series in series_groups:
+            if not series["games"]:
+                continue
+            series_start = series["start_date"]
+            series_end = series["end_date"]
+            if series_start <= today <= series_end:
+                has_current_series = True
+                break
+            elif series_start > today and next_upcoming_series_key is None:
+                next_upcoming_series_key = (series["opponent_id"], series["start_date"])
+
+        formatted = []
+        for series in series_groups:
+            if not series["games"]:
+                continue
+
+            first_game = series["games"][0]
+            series_start = series["start_date"]
+            series_end = series["end_date"]
+
+            if series_end < today:
+                category = "past"
+            elif series_start <= today <= series_end:
+                category = "current"
+            elif not has_current_series and next_upcoming_series_key and (series["opponent_id"], series["start_date"]) == next_upcoming_series_key:
+                category = "current"
+            else:
+                category = "future"
+
+            if series_start == series_end:
+                display_date = series_start.strftime("%a, %b %d")
+            else:
+                display_date = f"{series_start.strftime('%a, %b %d')} - {series_end.strftime('%b %d')}"
+
+            game_time = first_game.get("game_datetime")
+            display_time = "TBD"
+            if game_time:
+                try:
+                    display_time = datetime.fromisoformat(game_time.replace("Z", "+00:00")).astimezone().strftime("%I:%M %p %Z")
+                except Exception:
+                    display_time = "TBD"
+
+            series_label = f"{len(series['games'])}-game series" if len(series["games"]) > 1 else "Single game"
+            status = first_game.get("status", "Scheduled")
+
+            probables_raw = first_game.get("probable_pitchers") or []
+            probables = []
+            for p in probables_raw:
+                if isinstance(p, dict):
+                    name = p.get("name")
+                    if name:
+                        probables.append(name)
+                elif isinstance(p, str):
+                    probables.append(p)
+
+            formatted.append({
+                "date": display_date,
+                "time": display_time,
+                "opponent": series["opponent_name"],
+                "opponent_abbr": team_abbr_from_id(series["opponent_id"]),
+                "opponent_id": series["opponent_id"],
+                "home": first_game.get("is_home"),
+                "venue": first_game.get("venue"),
+                "series": series_label,
+                "status": status,
+                "game_pk": first_game.get("game_pk"),
+                "probable_pitchers": probables,
+                "reports": [],
+                "category": category,
+            })
+
+        upcoming_games = formatted
+
+    # Attach recent reports to series (best-effort)
+    player_slug = None
+    if target_user and target_user.get("first_name") and target_user.get("last_name"):
+        player_slug = sanitize_filename_component(
+            f"{target_user['first_name']} {target_user['last_name']}"
+        ).lower().replace(" ", "_")
+
+    recent_reports = []
+    for report in collect_recent_reports(limit=25):
+        filename = report.get("filename") or ""
+        if player_slug and player_slug not in filename.lower():
+            continue
+        try:
+            recent_reports.append({
+                **report,
+                "url": url_for("reports.download_report_file", filename=filename)
+            })
+        except Exception:
+            recent_reports.append({
+                **report,
+                "url": f"/reports/files/{filename}"
+            })
+
+    upcoming_games = attach_reports_to_games(upcoming_games, recent_reports)
+
+    html = render_template(
+        "partials/gameday_schedule_content.html",
+        upcoming_games=upcoming_games,
+        show_date_redirect_note=False,
+        default_schedule_tab="current",
+    )
+    return jsonify({"schedule_html": html})
 
 
 @bp.route('/api/gameday/widgets')
