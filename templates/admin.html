@@ -32,7 +32,7 @@
                         <select id="pdfSetAllSeriesMode" aria-label="Set all series mode">
                             <option value="next" selected>Upcoming series</option>
                             <option value="current">Current series</option>
-                            <option value="none">No specific series</option>
+                            <option value="none">No specific series (notes)</option>
                         </select>
                         <button type="button" class="btn-secondary btn-sm" id="pdfSetAllCurrentBtn">Set all to next series</button>
                     </div>
@@ -1042,7 +1042,7 @@
                     return;
                 }
                 const opts = [
-                    '<option value="__none__">No specific series</option>',
+                    '<option value="__none__">No specific series (notes)</option>',
                 ];
                 seriesList.forEach((s, idx) => {
                     const label = _seriesOptionLabel(s);
@@ -1329,6 +1329,7 @@
             }
 
             if (event.target.matches('[data-pdf-series]')) {
+                const priorSeriesId = state.series ? String(state.series.id || '') : '';
                 const opt = event.target.selectedOptions[0];
                 if (!opt || !event.target.value || event.target.value === '__none__') {
                     state.series = null;
@@ -1341,6 +1342,15 @@
                         end: opt.dataset.end || '',
                         status: opt.dataset.status || '',
                     };
+                }
+                // If the series changes, reset the row to "Ready / Upload" so the UI
+                // doesn't imply we've uploaded for the newly selected series.
+                const nextSeriesId = state.series ? String(state.series.id || '') : '';
+                if (state.status !== 'uploading' && priorSeriesId !== nextSeriesId) {
+                    state.status = 'idle';
+                    state.progress = 0;
+                    state.error = null;
+                    _renderPdfUploadGrid();
                 }
                 _setPdfUploadAllEnabled();
                 _syncPdfRowUploadButton(row, pid);
@@ -1521,7 +1531,7 @@
                 mode === 'current'
                     ? 'Set all to current series'
                     : mode === 'none'
-                        ? 'Set all to no specific series'
+                        ? 'Set all to no specific series (notes)'
                         : 'Set all to next series';
         }
         if (pdfSetAllSeriesMode) {
