@@ -46,21 +46,15 @@
         </section>
 
         <section class="player-content">
-            <nav class="tab-switcher">
-                <button class="tab active" data-tab="documents">Documents</button>
-                <button class="tab" data-tab="activity">Activity</button>
-            </nav>
-
-            <div class="tab-card" id="documentsTab">
+            <div class="tab-card" id="playerFilesCard">
                 <header class="tab-toolbar">
-                    <span id="playerDocStatus" class="subtle">Select a player to view documents.</span>
-                    <label class="sort-control">
-                        Sort
-                        <select id="playerDocSort">
-                            <option value="desc">Newest first</option>
-                            <option value="asc">Oldest first</option>
+                    <label class="player-picker">
+                        Player
+                        <select id="adminPlayerSelect">
+                            <option value="">Select player…</option>
                         </select>
                     </label>
+                    <span id="playerDocStatus" class="subtle">Select a player to view uploaded files.</span>
                 </header>
                 <table class="data-table">
                     <thead>
@@ -72,22 +66,9 @@
                         </tr>
                     </thead>
                     <tbody id="playerDocList">
-                        <tr><td colspan="4" class="table-placeholder">No documents yet.</td></tr>
+                        <tr><td colspan="4" class="table-placeholder">Select a player to view files.</td></tr>
                     </tbody>
                 </table>
-            </div>
-
-            <div class="tab-card" id="activityTab" style="display:none;">
-                <header class="tab-toolbar">
-                    <span class="subtle">History of uploads and deletes.</span>
-                </header>
-                <ul class="activity-feed" id="playerDocLogList">
-                    <li class="table-placeholder">No activity yet.</li>
-                </ul>
-                <button type="button" class="activity-more-btn" id="playerDocLogShowAll" style="display:none;">
-                    <i class="fas fa-list"></i>
-                    <span>View complete activity</span>
-                </button>
             </div>
         </section>
     </div>
@@ -522,6 +503,9 @@
 .player-content .tab-card {
     max-width: clamp(540px, 70vw, 700px);
 }
+.player-content #playerFilesCard {
+    max-width: none;
+}
 .tab-switcher {
     display: inline-flex;
     gap: 6px;
@@ -577,6 +561,25 @@
     padding: 6px 12px;
     background: var(--color-layer-card);
     color: var(--color-text-primary);
+}
+.player-picker {
+    display: inline-flex;
+    gap: 10px;
+    align-items: center;
+    font-weight: 700;
+    color: var(--color-text-secondary);
+}
+.player-picker select {
+    border-radius: 999px;
+    border: 1px solid var(--color-layer-border);
+    padding: 6px 12px;
+    background: var(--color-layer-card);
+    color: var(--color-text-primary);
+    min-width: min(420px, 46vw);
+}
+.player-picker select:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--color-accent) 35%, transparent);
+    outline-offset: 2px;
 }
 .data-table {
     width: 100%;
@@ -841,26 +844,16 @@
     const playerDocStatus = document.getElementById('playerDocStatus');
 
     const playerDocList = document.getElementById('playerDocList');
-    const playerDocLogList = document.getElementById('playerDocLogList');
-    const playerDocLogShowAll = document.getElementById('playerDocLogShowAll');
-    const playerDocLogShowAllLabel = playerDocLogShowAll ? playerDocLogShowAll.querySelector('span') : null;
-    const playerDocSort = document.getElementById('playerDocSort');
-    const documentsTab = document.getElementById('documentsTab');
-    const activityTab = document.getElementById('activityTab');
-    const tabButtons = document.querySelectorAll('.tab-switcher .tab');
+    const adminPlayerSelect = document.getElementById('adminPlayerSelect');
     const accountsTableBody = document.getElementById('accountsTableBody');
     const accountsSearch = document.getElementById('accountsSearch');
     const totalPlayersEl = document.getElementById('totalPlayers');
     const totalDocsEl = document.getElementById('totalDocs');
     const refreshPlayersBtn = null;
 
-    const ACTIVITY_LOG_PAGE_SIZE = 10;
-
     let allPlayers = [];
     let currentPlayer = null;
     let currentDocs = [];
-    let currentLogEntries = [];
-    let showingAllActivity = false;
     let currentSeriesOptions = [];
 
     // PDFs upload state (one PDF per player)
@@ -1123,6 +1116,7 @@
                 totalDocsEl.textContent = formatCount(0, 'doc');
             }
             renderAccountsTable(allPlayers);
+            renderAdminPlayerSelect(allPlayers);
             _renderPdfUploadGrid();
         } catch (err) {
             allPlayers = [];
@@ -1131,7 +1125,35 @@
                 totalDocsEl.textContent = formatCount(0, 'doc');
             }
             renderAccountsTable([]);
+            renderAdminPlayerSelect([]);
             _renderPdfUploadGrid();
+        }
+    }
+
+    function renderAdminPlayerSelect(players) {
+        if (!adminPlayerSelect) return;
+        const selected = currentPlayer ? String(currentPlayer.id) : (adminPlayerSelect.value || '');
+        const visiblePlayers = (players || []).filter(p => !p?.is_admin);
+        const opts = ['<option value="">Select player…</option>'];
+        visiblePlayers.forEach(p => {
+            const pid = String(p.id);
+            const name = `${p.first_name || ''} ${p.last_name || ''}`.trim();
+            const label = name ? `${name} — ${p.email}` : p.email;
+            opts.push(`<option value="${escapeHtml(pid)}">${escapeHtml(label)}</option>`);
+        });
+        adminPlayerSelect.innerHTML = opts.join('');
+        if (selected) {
+            adminPlayerSelect.value = selected;
+        }
+    }
+
+    function clearPlayerFilesView() {
+        currentPlayer = null;
+        currentDocs = [];
+        if (playerDocStatus) playerDocStatus.textContent = 'Select a player to view uploaded files.';
+        if (totalDocsEl) totalDocsEl.textContent = formatCount(0, 'doc');
+        if (playerDocList) {
+            playerDocList.innerHTML = '<tr><td colspan="4" class="table-placeholder">Select a player to view files.</td></tr>';
         }
     }
 
@@ -1196,7 +1218,8 @@
         const sorted = currentDocs.slice().sort((a, b) => {
             const aTime = a.uploaded_at ? new Date(a.uploaded_at).getTime() : 0;
             const bTime = b.uploaded_at ? new Date(b.uploaded_at).getTime() : 0;
-            return playerDocSort.value === 'asc' ? aTime - bTime : bTime - aTime;
+            // Default: newest first
+            return bTime - aTime;
         });
         playerDocList.innerHTML = sorted.map(doc => `
             <tr data-doc-id="${escapeHtml(doc.id)}">
@@ -1220,72 +1243,10 @@
         }
     }
 
-    function renderDocumentLog(showAllOverride) {
-        const showAll = typeof showAllOverride === 'boolean' ? showAllOverride : showingAllActivity;
-        showingAllActivity = showAll;
-
-        if (!currentLogEntries.length) {
-            playerDocLogList.innerHTML = '<li class="table-placeholder">No activity yet.</li>';
-            if (playerDocLogShowAll) {
-                playerDocLogShowAll.style.display = 'none';
-            }
-            return;
-        }
-
-        const visibleEntries = showAll ? currentLogEntries : currentLogEntries.slice(0, ACTIVITY_LOG_PAGE_SIZE);
-
-        playerDocLogList.innerHTML = visibleEntries.map(entry => {
-            const actionMap = {
-                upload: 'Uploaded',
-                delete: 'Deleted',
-                auto_delete_series: 'Series auto-deleted',
-            };
-            const actionLabel = actionMap[entry.action] || entry.action;
-            return `
-            <li>
-                <span class="player-doc-log-action">${escapeHtml(actionLabel)} ${escapeHtml(entry.filename)}</span>
-                <span class="player-doc-log-meta">${escapeHtml(entry.timestamp_human || '—')}</span>
-            </li>
-        `;
-        }).join('');
-
-        if (!playerDocLogShowAll) {
-            return;
-        }
-
-        const hasMore = currentLogEntries.length > ACTIVITY_LOG_PAGE_SIZE;
-        if (!hasMore) {
-            playerDocLogShowAll.style.display = 'none';
-            playerDocLogShowAll.dataset.toggleState = 'collapsed';
-            return;
-        }
-
-        playerDocLogShowAll.style.display = 'inline-flex';
-        if (playerDocLogShowAllLabel) {
-            if (showAll) {
-                playerDocLogShowAllLabel.textContent = 'Show less';
-            } else {
-                const remaining = Math.max(currentLogEntries.length - visibleEntries.length, 0);
-                playerDocLogShowAllLabel.textContent = remaining ? `Show all (${remaining} more)` : 'Show all';
-            }
-        }
-        playerDocLogShowAll.dataset.toggleState = showAll ? 'expanded' : 'collapsed';
-    }
-
     async function loadPlayerData(player) {
         currentPlayer = player;
-        updatePlayerOverview(player);
         playerDocStatus.textContent = 'Loading documents…';
         playerDocList.innerHTML = '<tr><td colspan="4" class="table-placeholder">Loading…</td></tr>';
-        playerDocLogList.innerHTML = '<li class="table-placeholder">Loading…</li>';
-        showingAllActivity = false;
-        if (playerDocLogShowAll) {
-            playerDocLogShowAll.style.display = 'none';
-            playerDocLogShowAll.dataset.toggleState = 'collapsed';
-            if (playerDocLogShowAllLabel) {
-                playerDocLogShowAllLabel.textContent = 'Show all';
-            }
-        }
 
         try {
             const payload = await fetchJSON(`/api/admin/player-docs/${player.id}`);
@@ -1298,19 +1259,6 @@
             playerDocStatus.textContent = `Failed to load documents: ${err.message}`;
             totalDocsEl.textContent = formatCount(0, 'doc');
             renderPlayerDocs();
-        }
-
-        try {
-            const logPayload = await fetchJSON(`/api/admin/player-docs/logs?player_id=${player.id}`);
-            currentLogEntries = logPayload.events || [];
-            renderDocumentLog(false);
-        } catch (err) {
-            currentLogEntries = [];
-            playerDocLogList.innerHTML = `<li class="table-placeholder">Could not load activity: ${err.message}</li>`;
-            if (playerDocLogShowAll) {
-                playerDocLogShowAll.style.display = 'none';
-                playerDocLogShowAll.dataset.toggleState = 'collapsed';
-            }
         }
 
         // PDFs Upload is managed in the "PDFs Upload" panel (all players).
@@ -1590,9 +1538,22 @@
         });
     }
 
-    playerDocSort.addEventListener('change', () => {
-        renderPlayerDocs();
-    });
+    if (adminPlayerSelect) {
+        adminPlayerSelect.addEventListener('change', () => {
+            const val = adminPlayerSelect.value;
+            if (!val) {
+                clearPlayerFilesView();
+                return;
+            }
+            const pid = Number(val);
+            const player = allPlayers.find(p => p.id === pid);
+            if (player) {
+                loadPlayerData(player);
+            } else {
+                clearPlayerFilesView();
+            }
+        });
+    }
 
     playerDocList.addEventListener('click', async (event) => {
         const button = event.target.closest('[data-doc-action]');
@@ -1625,26 +1586,7 @@
 
     // Legacy queue uploader removed.
 
-    if (playerDocLogShowAll) {
-        playerDocLogShowAll.addEventListener('click', () => {
-            const nextState = playerDocLogShowAll.dataset.toggleState === 'expanded' ? false : true;
-            renderDocumentLog(nextState);
-        });
-    }
-
-    tabButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
-            tabButtons.forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            if (btn.dataset.tab === 'documents') {
-                documentsTab.style.display = '';
-                activityTab.style.display = 'none';
-            } else {
-                documentsTab.style.display = 'none';
-                activityTab.style.display = '';
-            }
-        });
-    });
+    // Activity tab removed from admin files editor.
 
     accountsTableBody.addEventListener('click', async (event) => {
         // Handle delete button
@@ -1719,6 +1661,9 @@
         const playerId = Number(row.dataset.playerId);
         const player = allPlayers.find(p => p.id === playerId);
         if (player) {
+            if (adminPlayerSelect) {
+                adminPlayerSelect.value = String(player.id);
+            }
             loadPlayerData(player);
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
