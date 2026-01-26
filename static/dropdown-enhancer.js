@@ -71,6 +71,11 @@
         // Create dropdown
         const dropdown = document.createElement('div');
         dropdown.className = 'custom-select-dropdown';
+
+        // Store references (needed when dropdown is "ported" to body while open)
+        customSelect._customSelectWrapper = wrapper;
+        customSelect._customSelectDropdown = dropdown;
+        dropdown._customSelectButton = customSelect;
         
         // Function to populate dropdown options
         function populateDropdown() {
@@ -172,7 +177,8 @@
         
         // Close on outside click
         document.addEventListener('click', function(e) {
-            if (!wrapper.contains(e.target)) {
+            // If dropdown is portaled to body, clicks inside dropdown should not count as "outside"
+            if (!wrapper.contains(e.target) && !dropdown.contains(e.target)) {
                 closeDropdown(customSelect, dropdown);
             }
         });
@@ -216,7 +222,7 @@
             if (newIndex !== currentIndex) {
                 options.forEach(opt => opt.classList.remove('selected'));
                 options[newIndex].classList.add('selected');
-                options[newIndex].scrollIntoView({ block: 'nearest' });
+                scrollOptionIntoDropdownView(dropdown, options[newIndex]);
             }
         });
 
@@ -245,30 +251,128 @@
         });
     }
 
+    function scrollOptionIntoDropdownView(dropdown, optionEl) {
+        if (!dropdown || !optionEl) return;
+
+        // Only scroll the dropdown itself (avoid scrollIntoView(), which can scroll ancestor containers)
+        const optionTop = optionEl.offsetTop;
+        const optionBottom = optionTop + optionEl.offsetHeight;
+        const viewTop = dropdown.scrollTop;
+        const viewBottom = viewTop + dropdown.clientHeight;
+
+        if (optionTop < viewTop) {
+            dropdown.scrollTop = optionTop;
+        } else if (optionBottom > viewBottom) {
+            dropdown.scrollTop = Math.max(0, optionBottom - dropdown.clientHeight);
+        }
+    }
+
     function openDropdown(customSelect, dropdown) {
         customSelect.classList.add('open');
         dropdown.classList.add('open');
+
+        // Portal dropdown to body so it isn't clipped by scroll containers (e.g. PDF upload grid).
+        portalDropdownToBody(customSelect, dropdown);
+        positionPortaledDropdown(customSelect, dropdown);
         
         // Scroll selected option into view
         const selectedOption = dropdown.querySelector('.custom-select-option.selected');
         if (selectedOption) {
-            selectedOption.scrollIntoView({ block: 'nearest' });
+            scrollOptionIntoDropdownView(dropdown, selectedOption);
         }
     }
 
     function closeDropdown(customSelect, dropdown) {
         customSelect.classList.remove('open');
         dropdown.classList.remove('open');
+        unportalDropdown(customSelect, dropdown);
     }
 
     function closeAllDropdowns() {
         const openDropdowns = document.querySelectorAll('.custom-select.open');
         openDropdowns.forEach(function(customSelect) {
-            const dropdown = customSelect.nextElementSibling;
-            if (dropdown && dropdown.classList.contains('custom-select-dropdown')) {
-                closeDropdown(customSelect, dropdown);
-            }
+            const dropdown = customSelect._customSelectDropdown || customSelect.nextElementSibling;
+            if (dropdown) closeDropdown(customSelect, dropdown);
         });
+    }
+
+    function portalDropdownToBody(customSelect, dropdown) {
+        if (!customSelect || !dropdown) return;
+        if (dropdown._portaled) return;
+
+        dropdown._originalParent = dropdown.parentNode;
+        dropdown._originalNextSibling = dropdown.nextSibling;
+        dropdown._portaled = true;
+
+        dropdown.classList.add('portaled');
+        dropdown.style.position = 'absolute';
+        dropdown.style.zIndex = '5000';
+        dropdown.style.left = '0px';
+        dropdown.style.top = '0px';
+        dropdown.style.width = 'auto';
+
+        document.body.appendChild(dropdown);
+
+        // Reposition while scrolling/resizing (capture scroll from nested containers too)
+        const reposition = () => {
+            if (!dropdown._portaled || !customSelect.classList.contains('open')) return;
+            positionPortaledDropdown(customSelect, dropdown);
+        };
+        dropdown._repositionHandler = reposition;
+        window.addEventListener('scroll', reposition, true);
+        window.addEventListener('resize', reposition);
+    }
+
+    function unportalDropdown(customSelect, dropdown) {
+        if (!dropdown || !dropdown._portaled) return;
+        dropdown._portaled = false;
+
+        dropdown.classList.remove('portaled');
+        dropdown.style.left = '';
+        dropdown.style.top = '';
+        dropdown.style.width = '';
+        dropdown.style.position = '';
+        dropdown.style.zIndex = '';
+
+        if (dropdown._repositionHandler) {
+            window.removeEventListener('scroll', dropdown._repositionHandler, true);
+            window.removeEventListener('resize', dropdown._repositionHandler);
+            dropdown._repositionHandler = null;
+        }
+
+        const parent = dropdown._originalParent;
+        if (parent) {
+            if (dropdown._originalNextSibling && dropdown._originalNextSibling.parentNode === parent) {
+                parent.insertBefore(dropdown, dropdown._originalNextSibling);
+            } else {
+                parent.appendChild(dropdown);
+            }
+        }
+        dropdown._originalParent = null;
+        dropdown._originalNextSibling = null;
+    }
+
+    function positionPortaledDropdown(customSelect, dropdown) {
+        if (!customSelect || !dropdown) return;
+        const rect = customSelect.getBoundingClientRect();
+        const scrollX = window.scrollX || window.pageXOffset || 0;
+        const scrollY = window.scrollY || window.pageYOffset || 0;
+
+        // Match control width
+        dropdown.style.width = `${rect.width}px`;
+
+        // Default: open downward
+        let top = rect.bottom + scrollY;
+
+        // If it would go off-screen, try opening upward
+        const viewportSpaceBelow = window.innerHeight - rect.bottom;
+        const maxHeight = parseInt(getComputedStyle(dropdown).maxHeight || '300', 10) || 300;
+        if (viewportSpaceBelow < Math.min(maxHeight, 180) && rect.top > 180) {
+            top = rect.top + scrollY - Math.min(dropdown.scrollHeight || maxHeight, maxHeight);
+        }
+
+        dropdown.style.left = `${rect.left + scrollX}px`;
+        dropdown.style.top = `${top}px`;
     }
 })();
 

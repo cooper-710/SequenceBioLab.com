@@ -2842,6 +2842,16 @@ footer {
     width: 100%;
 }
 
+/* Admin player picker: make enhanced dropdown start wider */
+.admin-page .player-picker .custom-select-wrapper {
+    width: clamp(420px, 50vw, 640px);
+    max-width: 100%;
+}
+
+.admin-page .player-picker .custom-select {
+    width: 100%;
+}
+
 .control-group .custom-select-wrapper {
     width: 100%;
 }
@@ -2908,6 +2918,11 @@ footer {
 
 .custom-select-dropdown.open {
     display: block;
+}
+
+.custom-select-dropdown.portaled {
+    /* When portaled to body, ensure it's above cards/sidebars */
+    z-index: 5000;
 }
 
 .custom-select-option {

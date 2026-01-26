@@ -518,7 +518,8 @@ body[data-theme='light'] .time-input-group label {
         if (logPollInterval) {
             clearInterval(logPollInterval);
         }
-        logPollInterval = setInterval(loadLogs, 2000); // Poll every 2 seconds
+        // Polling too aggressively can spike CPU/memory on small instances.
+        logPollInterval = setInterval(loadLogs, 5000); // Poll every 5 seconds
 
         try {
             const payload = await fetchJSON('/api/admin/data-refresh/trigger', {
@@ -553,8 +554,8 @@ body[data-theme='light'] .time-input-group label {
                 }
             };
 
-            // Check status every 3 seconds
-            statusCheckInterval = setInterval(checkStatus, 3000);
+            // Check status every 5 seconds (avoid hammering server)
+            statusCheckInterval = setInterval(checkStatus, 5000);
             
             // Also check immediately
             setTimeout(checkStatus, 1000);

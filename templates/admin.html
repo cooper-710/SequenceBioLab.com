@@ -1426,6 +1426,42 @@
                 s.status = 'done';
                 s.progress = 100;
                 s.error = null;
+                // If the admin is currently viewing this player, refresh the table so the
+                // newly uploaded doc shows up immediately in "Player Files".
+                try {
+                    const payload = JSON.parse(xhr.responseText || '{}');
+                    const uploadedDoc = payload.document || null;
+                    if (uploadedDoc && currentPlayer && String(currentPlayer.id) === String(pid)) {
+                        currentDocs = [uploadedDoc, ...(currentDocs || []).filter(d => String(d?.id) !== String(uploadedDoc.id))];
+                        if (playerDocStatus) {
+                            playerDocStatus.textContent = `${currentDocs.length} document${currentDocs.length === 1 ? '' : 's'} found`;
+                        }
+                        if (totalDocsEl) totalDocsEl.textContent = formatCount(currentDocs.length, 'doc');
+                        renderPlayerDocs();
+                    } else if (currentPlayer && String(currentPlayer.id) === String(pid)) {
+                        // Fallback: reload from server if response shape changes.
+                        loadPlayerData(currentPlayer);
+                    } else {
+                        // If no player is selected and this looks like a one-off upload, jump to that player.
+                        const hasOtherActive = Object.keys(pdfUploads || {}).some(otherPid => {
+                            if (String(otherPid) === String(pid)) return false;
+                            const st = (pdfUploads[otherPid] || {}).status;
+                            return st === 'queued' || st === 'uploading';
+                        });
+                        if (!hasOtherActive && adminPlayerSelect && !adminPlayerSelect.value) {
+                            const player = (allPlayers || []).find(p => String(p.id) === String(pid));
+                            if (player) {
+                                adminPlayerSelect.value = String(pid);
+                                try { adminPlayerSelect.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+                                loadPlayerData(player);
+                            }
+                        }
+                    }
+                } catch (err) {
+                    if (currentPlayer && String(currentPlayer.id) === String(pid)) {
+                        loadPlayerData(currentPlayer);
+                    }
+                }
             } else {
                 s.status = 'error';
                 s.progress = 0;
@@ -1589,7 +1625,14 @@
                     const error = await response.json().catch(() => ({}));
                     throw new Error(error.error || 'Delete failed');
                 }
-                await loadPlayerData(currentPlayer);
+                // Only remove the doc we deleted (don't full-reload, which can make
+                // it look like multiple docs disappeared if server-side cleanup runs).
+                currentDocs = (currentDocs || []).filter(d => String(d?.id) !== String(docId));
+                if (playerDocStatus) {
+                    playerDocStatus.textContent = `${currentDocs.length} document${currentDocs.length === 1 ? '' : 's'} found`;
+                }
+                if (totalDocsEl) totalDocsEl.textContent = formatCount(currentDocs.length, 'doc');
+                renderPlayerDocs();
             } catch (err) {
                 alert(`Failed to delete document: ${err.message}`);
             } finally {

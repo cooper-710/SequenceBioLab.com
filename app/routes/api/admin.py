@@ -1984,7 +1984,8 @@ def trigger_data_refresh():
                 return
             
             # Run the update script (explicitly without --dry-run to ensure real updates)
-            cmd = ['python3', str(UPDATE_SCRIPT)]
+            # NOTE: we pass flags that reduce memory/CPU spikes on small instances.
+            cmd = ['python3', str(UPDATE_SCRIPT), '--skip-deps', '--skip-statcast']
             logger.info(f"Executing data refresh command: {' '.join(cmd)}")
             logger.info(f"Working directory: {ROOT_DIR}")
             logger.info(f"Script path: {UPDATE_SCRIPT}")
@@ -1993,39 +1994,44 @@ def trigger_data_refresh():
             # Ensure log directory exists
             LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
             
-            # Write to log file directly so we can see output in real-time
+            # Stream child output directly to the log file to avoid buffering large
+            # stdout/stderr in memory (critical on Render small instances).
             with open(LOG_FILE, 'a') as log_file:
                 log_file.write(f"\n{'='*70}\n")
                 log_file.write(f"Data refresh started at {datetime.now().isoformat()}\n")
                 log_file.write(f"Command: {' '.join(cmd)}\n")
                 log_file.write(f"{'='*70}\n")
-            
-            result = subprocess.run(
-                cmd,
-                cwd=str(ROOT_DIR),
-                capture_output=True,
-                text=True,
-                timeout=3600  # 1 hour timeout
-            )
-            
-            # Write output to log file
-            with open(LOG_FILE, 'a') as log_file:
-                if result.stdout:
-                    log_file.write(result.stdout)
-                if result.stderr:
-                    log_file.write("\n--- STDERR ---\n")
-                    log_file.write(result.stderr)
+                log_file.flush()
+
+                proc = subprocess.Popen(
+                    cmd,
+                    cwd=str(ROOT_DIR),
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                )
+
+                try:
+                    returncode = proc.wait(timeout=3600)  # 1 hour timeout
+                except subprocess.TimeoutExpired:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+                    raise
+
                 log_file.write(f"\n{'='*70}\n")
                 log_file.write(f"Data refresh completed at {datetime.now().isoformat()}\n")
-                log_file.write(f"Exit code: {result.returncode}\n")
+                log_file.write(f"Exit code: {returncode}\n")
                 log_file.write(f"{'='*70}\n\n")
-            
-            _refresh_status['status'] = 'completed' if result.returncode == 0 else 'failed'
+                log_file.flush()
+
+            _refresh_status['status'] = 'completed' if returncode == 0 else 'failed'
             _refresh_status['completed_at'] = datetime.now().isoformat()
-            if result.returncode != 0:
-                error_msg = result.stderr[:1000] if result.stderr else (result.stdout[:1000] if result.stdout else 'Unknown error')
+            if returncode != 0:
+                error_msg = f"Refresh failed with exit code {returncode}. See logs for details."
                 _refresh_status['error'] = error_msg
-                logger.error(f"Data refresh failed with exit code {result.returncode}: {error_msg}")
+                logger.error(error_msg)
             else:
                 logger.info("Data refresh completed successfully")
         except subprocess.TimeoutExpired:
@@ -2068,6 +2074,38 @@ def get_refresh_status():
 @admin_required
 def get_refresh_logs():
     """Get data refresh log entries."""
+    def _tail_text(path: Path, max_bytes: int = 250_000) -> str:
+        """
+        Read only the last max_bytes from a text file (best-effort).
+        This avoids loading large log files into memory.
+        """
+        try:
+            max_bytes = int(max_bytes or 0)
+        except Exception:
+            max_bytes = 250_000
+        if max_bytes <= 0:
+            max_bytes = 250_000
+
+        try:
+            with open(path, 'rb') as f:
+                f.seek(0, 2)  # end
+                size = f.tell()
+                start = max(0, size - max_bytes)
+                f.seek(start)
+                data = f.read()
+            # If we started mid-line, drop the partial first line.
+            try:
+                text = data.decode('utf-8', errors='replace')
+            except Exception:
+                text = data.decode(errors='replace')
+            if start > 0:
+                nl = text.find('\n')
+                if nl != -1:
+                    text = text[nl + 1:]
+            return text
+        except Exception:
+            return ""
+
     try:
         limit = request.args.get('limit', 100, type=int)
         
@@ -2077,15 +2115,22 @@ def get_refresh_logs():
                 'last_refresh': None
             })
         
-        # Read log file
-        with open(LOG_FILE, 'r') as f:
-            lines = f.readlines()
+        # Tail log file (avoid full-file read)
+        # Use a larger tail window when limit is larger.
+        tail_bytes = 250_000
+        try:
+            tail_bytes = max(250_000, min(2_000_000, int(limit or 100) * 4_000))
+        except Exception:
+            tail_bytes = 250_000
+
+        text = _tail_text(LOG_FILE, max_bytes=tail_bytes)
+        lines = text.splitlines(True)
         
         # Parse log entries (format: timestamp - LEVEL - message)
         log_entries = []
         last_refresh = None
         
-        # First pass: Find the most recent refresh time by searching all lines
+        # First pass: Find the most recent refresh time by searching tail lines
         # Look for both start and completion messages
         for line in reversed(lines):  # Search from most recent to oldest
             line = line.strip()
@@ -2113,7 +2158,7 @@ def get_refresh_logs():
                     pass
         
         # Second pass: Parse log entries for display (from end, most recent first)
-        for line in reversed(lines[-limit*2:]):  # Read more lines to account for multi-line entries
+        for line in reversed(lines[-limit*4:]):  # Read more lines to account for multi-line entries
             line = line.strip()
             if not line:
                 continue

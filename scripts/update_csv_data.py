@@ -41,6 +41,10 @@ parser.add_argument('--simulate-year', type=int, metavar='YEAR',
                    help='Simulate a specific year as current (e.g., 2026 for testing)')
 parser.add_argument('--force-full', action='store_true',
                    help='Force full rebuild of all seasons (ignore incremental logic)')
+parser.add_argument('--skip-deps', action='store_true',
+                   help='Skip runtime dependency installation (recommended in production)')
+parser.add_argument('--skip-statcast', action='store_true',
+                   help='Skip Statcast rebuild (very expensive; recommended for web-triggered refresh)')
 args = parser.parse_args()
 
 # Adjust paths and year based on test mode
@@ -97,6 +101,60 @@ class PrefixedLogger:
         self.logger.error(self.prefix + msg)
 
 logger = PrefixedLogger(logger, logger_prefix)
+
+def get_opening_day(season: int):
+    """
+    Return MLB Opening Day (first regular-season game date) for the given season.
+    Uses MLB StatsAPI schedule endpoint. Returns a datetime.date or None.
+    """
+    try:
+        season_int = int(season)
+    except Exception:
+        return None
+
+    url = "https://statsapi.mlb.com/api/v1/schedule"
+    params = {"sportId": 1, "season": season_int, "gameType": "R"}
+    try:
+        resp = requests.get(url, params=params, timeout=20)
+        resp.raise_for_status()
+        data = resp.json() or {}
+    except Exception:
+        return None
+
+    dates = data.get("dates") or []
+    earliest = None
+    for d in dates:
+        date_str = (d or {}).get("date") or (d or {}).get("officialDate")
+        if not date_str:
+            continue
+        try:
+            dt = datetime.fromisoformat(date_str).date()
+        except Exception:
+            try:
+                dt = datetime.strptime(date_str, "%Y-%m-%d").date()
+            except Exception:
+                continue
+        if earliest is None or dt < earliest:
+            earliest = dt
+    return earliest
+
+
+# ---------------------------------------------------------------------------
+# Pre-season fallback (Fangraphs + Statcast only):
+# Until MLB Opening Day, treat "current season" as last year to avoid
+# upstream providers returning empty/HTML responses for the new season.
+# ---------------------------------------------------------------------------
+TODAY = datetime.now().date()
+OPENING_DAY = None
+EFFECTIVE_STATS_YEAR = CURRENT_YEAR
+EFFECTIVE_STATS_END_YEAR = END_YEAR
+
+if not args.force_full:
+    OPENING_DAY = get_opening_day(CURRENT_YEAR)
+    if OPENING_DAY and TODAY < OPENING_DAY:
+        EFFECTIVE_STATS_YEAR = max(START_YEAR, int(CURRENT_YEAR) - 1)
+        EFFECTIVE_STATS_END_YEAR = min(END_YEAR, EFFECTIVE_STATS_YEAR)
+        logger.info(f"Pre-season mode: Opening Day {OPENING_DAY.isoformat()} not reached; using {EFFECTIVE_STATS_YEAR} for Fangraphs/Statcast.")
 
 
 def install_dependencies():
@@ -205,7 +263,11 @@ def update_fangraphs_hitters():
         # Check existing seasons
         existing_seasons = get_existing_seasons(FANGRAPHS_HITTERS_PATH)
         seasons_to_fetch, missing_historical, has_current = determine_seasons_to_fetch(
-            existing_seasons, START_YEAR, END_YEAR, CURRENT_YEAR, args.force_full
+            existing_seasons,
+            START_YEAR,
+            (END_YEAR if args.force_full else EFFECTIVE_STATS_END_YEAR),
+            (CURRENT_YEAR if args.force_full else EFFECTIVE_STATS_YEAR),
+            args.force_full
         )
         
         if args.dry_run:
@@ -213,8 +275,9 @@ def update_fangraphs_hitters():
             logger.info(f"  [DRY RUN] Would fetch seasons: {seasons_to_fetch}")
             if missing_historical:
                 logger.info(f"  [DRY RUN] New historical seasons: {missing_historical}")
-            if CURRENT_YEAR in seasons_to_fetch:
-                logger.info(f"  [DRY RUN] Would update current season: {CURRENT_YEAR}")
+            stats_year = CURRENT_YEAR if args.force_full else EFFECTIVE_STATS_YEAR
+            if stats_year in seasons_to_fetch:
+                logger.info(f"  [DRY RUN] Would update current season: {stats_year}")
             return True
         
         if not seasons_to_fetch:
@@ -224,8 +287,9 @@ def update_fangraphs_hitters():
         logger.info(f"  Fetching seasons: {seasons_to_fetch}")
         if missing_historical:
             logger.info(f"    New historical seasons: {missing_historical}")
-        if CURRENT_YEAR in seasons_to_fetch:
-            logger.info(f"    Updating current season: {CURRENT_YEAR}")
+        stats_year = CURRENT_YEAR if args.force_full else EFFECTIVE_STATS_YEAR
+        if stats_year in seasons_to_fetch:
+            logger.info(f"    Updating current season: {stats_year}")
         
         # Fetch only needed seasons
         min_year = min(seasons_to_fetch)
@@ -299,7 +363,11 @@ def update_fangraphs_pitchers():
         # Check existing seasons
         existing_seasons = get_existing_seasons(FANGRAPHS_PITCHERS_PATH)
         seasons_to_fetch, missing_historical, has_current = determine_seasons_to_fetch(
-            existing_seasons, START_YEAR, END_YEAR, CURRENT_YEAR, args.force_full
+            existing_seasons,
+            START_YEAR,
+            (END_YEAR if args.force_full else EFFECTIVE_STATS_END_YEAR),
+            (CURRENT_YEAR if args.force_full else EFFECTIVE_STATS_YEAR),
+            args.force_full
         )
         
         if args.dry_run:
@@ -530,14 +598,19 @@ def update_statcast():
         # Check existing seasons
         existing_seasons = get_existing_seasons(STATSCAST_PATH, season_col='year')
         seasons_to_fetch, missing_historical, has_current = determine_seasons_to_fetch(
-            existing_seasons, START_YEAR, END_YEAR, CURRENT_YEAR, args.force_full
+            existing_seasons,
+            START_YEAR,
+            (END_YEAR if args.force_full else EFFECTIVE_STATS_END_YEAR),
+            (CURRENT_YEAR if args.force_full else EFFECTIVE_STATS_YEAR),
+            args.force_full
         )
         
         if args.dry_run:
             logger.info(f"  [DRY RUN] Existing seasons: {sorted(existing_seasons) if existing_seasons else 'None'}")
             logger.info(f"  [DRY RUN] Would fetch seasons: {seasons_to_fetch}")
-            if CURRENT_YEAR in seasons_to_fetch:
-                logger.info(f"  [DRY RUN] Would update current season: {CURRENT_YEAR}")
+            stats_year = CURRENT_YEAR if args.force_full else EFFECTIVE_STATS_YEAR
+            if stats_year in seasons_to_fetch:
+                logger.info(f"  [DRY RUN] Would update current season: {stats_year}")
             return True
         
         if not seasons_to_fetch:
@@ -545,8 +618,9 @@ def update_statcast():
             return True
         
         logger.info(f"  Fetching seasons: {seasons_to_fetch}")
-        if CURRENT_YEAR in seasons_to_fetch:
-            logger.info(f"    Updating current season: {CURRENT_YEAR}")
+        stats_year = CURRENT_YEAR if args.force_full else EFFECTIVE_STATS_YEAR
+        if stats_year in seasons_to_fetch:
+            logger.info(f"    Updating current season: {stats_year}")
         
         # Load existing data to get player list
         existing_df = None
@@ -572,8 +646,8 @@ def update_statcast():
                 return False
         
         if not player_seasons:
-            logger.warning("  No players found for these seasons")
-            return False
+            logger.warning("  No players found for these seasons; skipping Statcast refresh.")
+            return True
         
         # Fetch and aggregate statcast data for each player-season
         all_rows = []
@@ -920,6 +994,10 @@ def main():
         mode_str.append(f"SIMULATE {args.simulate_year}")
     if args.force_full:
         mode_str.append("FULL REBUILD")
+    if args.skip_deps:
+        mode_str.append("SKIP DEPS")
+    if args.skip_statcast:
+        mode_str.append("SKIP STATCAST")
     
     mode_str = " | ".join(mode_str) if mode_str else "PRODUCTION"
     
@@ -930,10 +1008,13 @@ def main():
         logger.info(f"Test files will be saved to: {TEST_DIR}")
     logger.info("=" * 70)
     
-    # Install dependencies
-    if not install_dependencies():
-        logger.error("Failed to install dependencies. Exiting.")
-        return False
+    # Install dependencies (optional; should generally be handled at build time in production)
+    if not args.skip_deps:
+        if not install_dependencies():
+            logger.error("Failed to install dependencies. Exiting.")
+            return False
+    else:
+        logger.info("Skipping runtime dependency installation (--skip-deps).")
     
     results = {}
     
@@ -941,7 +1022,11 @@ def main():
     results['fangraphs_hitters'] = update_fangraphs_hitters()
     results['fangraphs_pitchers'] = update_fangraphs_pitchers()
     results['positions'] = update_positions()
-    results['statcast'] = update_statcast()
+    if args.skip_statcast:
+        logger.info("Skipping Statcast refresh (--skip-statcast).")
+        results['statcast'] = True
+    else:
+        results['statcast'] = update_statcast()
     
     # Summary
     logger.info("=" * 70)
