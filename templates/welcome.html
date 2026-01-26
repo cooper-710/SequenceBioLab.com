@@ -418,13 +418,13 @@ body {
     /* Force immediate rendering */
     transform: translateZ(0);
     will-change: auto;
-    /* Dark mode - black liquid glass image */
-    background-image: url("{{ url_for('static', filename='sequence-logo.png') }}");
+    /* Dark mode - no background image (avoid large logo) */
+    background-image: none;
 }
 
 /* Light mode - white liquid glass image */
 body[data-theme='light'] .welcome-background {
-    background-image: url("{{ url_for('static', filename='WhiteBG.png') }}");
+    background-image: none;
 }
 
 /* 3D Graphics Layer - Three.js Canvas */
