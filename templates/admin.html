@@ -972,6 +972,15 @@
         pdfUploadAllBtn.disabled = !eligible || pdfActiveUploads > 0;
     }
 
+    function _syncPdfRowUploadButton(row, pid) {
+        if (!row) return;
+        const btn = row.querySelector('[data-pdf-upload-one]');
+        if (!btn) return;
+        const state = pdfUploads[pid];
+        const can = !!state && state.status !== 'uploading' && _canUploadPdf(pid);
+        btn.disabled = !can;
+    }
+
     function _renderPdfUploadGrid() {
         if (!pdfUploadGrid) return;
         if (!allPlayers || !allPlayers.length) {
@@ -1316,6 +1325,7 @@
                 const label = row.querySelector('[data-pdf-file-label]');
                 if (label) label.textContent = file ? file.name : 'Drop PDF or click to browse';
                 _setPdfUploadAllEnabled();
+                _syncPdfRowUploadButton(row, pid);
             }
 
             if (event.target.matches('[data-pdf-series]')) {
@@ -1333,6 +1343,7 @@
                     };
                 }
                 _setPdfUploadAllEnabled();
+                _syncPdfRowUploadButton(row, pid);
             }
         });
 
@@ -1367,6 +1378,7 @@
             const label = row.querySelector('[data-pdf-file-label]');
             if (label) label.textContent = file.name;
             _setPdfUploadAllEnabled();
+            _syncPdfRowUploadButton(row, pid);
         });
     }
 
