@@ -1602,9 +1602,9 @@ def build_player_home_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
     if user_id:
         try:
-            # 30s cache keeps UI snappy without making data feel stale.
+            # 1h cache keeps dashboard consistently snappy.
             from app.services.persistent_cache import set_json as persistent_cache_set_json
-            persistent_cache_set_json("dashboard_context", {"user_id": int(user_id)}, ctx, ttl_seconds=30)
+            persistent_cache_set_json("dashboard_context", {"user_id": int(user_id)}, ctx, ttl_seconds=60 * 60)
         except Exception:
             pass
 
