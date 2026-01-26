@@ -1476,6 +1476,35 @@ def api_admin_player_docs_list(player_id: str):
         return jsonify({"error": str(exc)}), 500
 
 
+@bp.route('/player-docs/by-player/<int:player_id>', methods=['GET'])
+@admin_required
+def api_admin_player_docs_by_player(player_id: int):
+    """List ALL documents for a player (reports + workouts + generic docs).
+
+    Note: This avoids the `/player-docs/<int:doc_id>` download route collision.
+    """
+    if not PlayerDB:
+        return jsonify({"error": "Database unavailable"}), 500
+
+    purge_concluded_series_documents()
+
+    try:
+        db = PlayerDB()
+        docs: List[Dict[str, Any]] = []
+        # Generic docs (category NULL)
+        docs.extend(db.list_player_documents(int(player_id)) or [])
+        # Reports + workouts
+        docs.extend(db.list_player_documents(int(player_id), category=Config.REPORT_DOC_CATEGORY) or [])
+        docs.extend(db.list_player_documents(int(player_id), category=Config.WORKOUT_CATEGORY) or [])
+        db.close()
+
+        # Sort newest first (uploaded_at is stored as a unix timestamp).
+        docs.sort(key=lambda d: d.get("uploaded_at") or 0, reverse=True)
+        return jsonify({"documents": [_format_player_document(doc) for doc in docs]})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 
 
 

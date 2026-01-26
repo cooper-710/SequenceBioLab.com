@@ -8802,6 +8802,31 @@ def api_admin_player_docs_list(player_id: str):
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route('/api/admin/player-docs/by-player/<int:player_id>', methods=['GET'])
+@admin_required
+def api_admin_player_docs_by_player(player_id: int):
+    """List ALL documents for a player (reports + workouts + generic docs).
+
+    Note: This avoids collisions with document download routes that use numeric IDs.
+    """
+    if not PlayerDB:
+        return jsonify({"error": "Database unavailable"}), 500
+    _purge_concluded_series_documents()
+    try:
+        db = PlayerDB()
+        docs = []
+        # Generic docs (category NULL)
+        docs.extend(db.list_player_documents(int(player_id)) or [])
+        # Reports + workouts
+        docs.extend(db.list_player_documents(int(player_id), category=Config.REPORT_DOC_CATEGORY) or [])
+        docs.extend(db.list_player_documents(int(player_id), category=Config.WORKOUT_CATEGORY) or [])
+        db.close()
+        docs.sort(key=lambda d: d.get("uploaded_at") or 0, reverse=True)
+        return jsonify({"documents": [_format_player_document(doc) for doc in docs]})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route('/player-docs/<int:doc_id>')
 @login_required
 def download_player_document(doc_id: int):
