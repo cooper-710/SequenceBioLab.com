@@ -115,6 +115,7 @@ MAX_PROFILE_IMAGE_BYTES = Config.MAX_UPLOAD_SIZE
 WORKOUT_CATEGORY = Config.WORKOUT_CATEGORY
 WORKOUT_ALLOWED_EXTENSIONS = Config.WORKOUT_ALLOWED_EXTENSIONS
 SERIES_AUTO_DELETE_GRACE_SECONDS = Config.SERIES_AUTO_DELETE_GRACE_SECONDS
+NON_SERIES_AUTO_DELETE_SECONDS = getattr(Config, "NON_SERIES_AUTO_DELETE_SECONDS", 0)
 PLAYER_DOCS_DIR = Config.PLAYER_DOCS_DIR
 WORKOUT_DOCS_DIR = Config.WORKOUT_DOCS_DIR
 
@@ -138,14 +139,18 @@ _PENDING_REPORT_LOCK = threading.Lock()
 
 
 def _purge_concluded_series_documents(reference_ts: Optional[float] = None) -> None:
-    """Remove player documents tied to series that have already finished."""
+    """Remove player documents that have aged out (series + non-series)."""
     if not PlayerDB:
         return
     try:
         db = PlayerDB()
-        if reference_ts is None:
-            reference_ts = datetime.now().timestamp() - SERIES_AUTO_DELETE_GRACE_SECONDS
-        expired_docs = db.list_expired_player_documents(reference_ts)
+        now_ts = datetime.now().timestamp()
+
+        # 1) Series-tied docs
+        series_cutoff_ts = reference_ts
+        if series_cutoff_ts is None:
+            series_cutoff_ts = now_ts - SERIES_AUTO_DELETE_GRACE_SECONDS
+        expired_docs = db.list_expired_player_documents(series_cutoff_ts)
         for doc in expired_docs:
             deleted = db.delete_player_document(doc["id"])
             if not deleted:
@@ -162,6 +167,34 @@ def _purge_concluded_series_documents(reference_ts: Optional[float] = None) -> N
                     file_path.unlink()
                 except OSError as exc:
                     print(f"Warning removing expired document file {file_path}: {exc}")
+
+        # 2) Non-series docs (exclude legacy workout docs)
+        try:
+            retention_seconds = int(NON_SERIES_AUTO_DELETE_SECONDS or 0)
+        except Exception:
+            retention_seconds = 0
+        if retention_seconds > 0:
+            non_series_cutoff_ts = now_ts - float(retention_seconds)
+            expired_non_series = db.list_expired_non_series_player_documents(
+                non_series_cutoff_ts,
+                exclude_category=WORKOUT_CATEGORY,
+            )
+            for doc in expired_non_series:
+                deleted = db.delete_player_document(doc["id"])
+                if not deleted:
+                    continue
+                db.record_player_document_event(
+                    player_id=deleted["player_id"],
+                    filename=deleted["filename"],
+                    action="auto_delete_non_series",
+                    performed_by=None,
+                )
+                file_path = Path(deleted.get("path") or "")
+                if file_path.exists() and file_path.is_file():
+                    try:
+                        file_path.unlink()
+                    except OSError as exc:
+                        print(f"Warning removing expired document file {file_path}: {exc}")
         db.close()
     except Exception as exc:
         print(f"Warning purging expired player documents: {exc}")

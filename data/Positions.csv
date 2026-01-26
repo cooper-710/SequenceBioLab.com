@@ -22877,6 +22877,7 @@ season,team_id,player_id,player_name,position_code,position_name,position_type,t
 2026,158,806921,Yannic Walther,2,Catcher,Catcher,Milwaukee Brewers,MIL
 2026,138,806922,Yoerny Junco,5,Third Base,Infielder,St. Louis Cardinals,STL
 2026,118,806923,Gijs Van Den Brink,1,Pitcher,Pitcher,Kansas City Royals,KC
+2026,146,806927,Luis De La Cruz,1,Pitcher,Pitcher,Miami Marlins,MIA
 2026,117,806948,Luis Aguilar,1,Pitcher,Pitcher,Houston Astros,HOU
 2026,113,806951,Samuel Perez,1,Pitcher,Pitcher,Cincinnati Reds,CIN
 2026,142,806953,Eduardo Tait,2,Catcher,Catcher,Minnesota Twins,MIN
@@ -24194,7 +24195,6 @@ season,team_id,player_id,player_name,position_code,position_name,position_type,t
 2026,114,821134,Hector Castillo,1,Pitcher,Pitcher,Cleveland Guardians,CLE
 2026,158,821136,Handelfry Encarnacion,8,Outfielder,Outfielder,Milwaukee Brewers,MIL
 2026,111,821138,Tavano Baker,8,Outfielder,Outfielder,Boston Red Sox,BOS
-2026,114,821139,Luis De La Cruz,O,Outfield,Outfielder,Cleveland Guardians,CLE
 2026,111,821141,Abis Prado,1,Pitcher,Pitcher,Boston Red Sox,BOS
 2026,108,821142,Fabian Gallardo,1,Pitcher,Pitcher,Los Angeles Angels,LAA
 2026,158,821143,Frandy Lafond,8,Outfielder,Outfielder,Milwaukee Brewers,MIL
@@ -25231,7 +25231,6 @@ season,team_id,player_id,player_name,position_code,position_name,position_type,t
 2026,142,829773,Yovanny Duran,O,Outfield,Outfielder,Minnesota Twins,MIN
 2026,121,829774,Yorber Semprun,6,Shortstop,Infielder,New York Mets,NYM
 2026,109,829776,Jeshua Mendez,2,Catcher,Catcher,Arizona Diamondbacks,AZ
-2026,138,829777,Jesus Perez,I,Infield,Infielder,St. Louis Cardinals,STL
 2026,142,829778,Juan Quinones,1,Pitcher,Pitcher,Minnesota Twins,MIN
 2026,114,829779,Randy Baron,1,Pitcher,Pitcher,Cleveland Guardians,CLE
 2026,146,829780,Keyner Cedeno,1,Pitcher,Pitcher,Miami Marlins,MIA
@@ -25333,6 +25332,7 @@ season,team_id,player_id,player_name,position_code,position_name,position_type,t
 2026,111,829892,Hector Ramos,6,Shortstop,Infielder,Boston Red Sox,BOS
 2026,113,829893,Deinis Chourio,O,Outfield,Outfielder,Cincinnati Reds,CIN
 2026,108,829894,Yojancel Cabrera,6,Shortstop,Infielder,Los Angeles Angels,LAA
+2026,146,829895,Jesus Perez,O,Outfield,Outfielder,Miami Marlins,MIA
 2026,158,829896,Enrique Velasquez,1,Pitcher,Pitcher,Milwaukee Brewers,MIL
 2026,113,829897,Jose Martinez,O,Outfield,Outfielder,Cincinnati Reds,CIN
 2026,112,829898,Rafael Merchan,1,Pitcher,Pitcher,Chicago Cubs,CHC

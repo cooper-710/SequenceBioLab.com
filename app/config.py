@@ -94,6 +94,9 @@ class Config:
     
     # Series management
     SERIES_AUTO_DELETE_GRACE_SECONDS = 0
+    # Retention for player documents not tied to a series (default: 7 days).
+    # NOTE: This is enforced "lazily" via request-time purge hooks.
+    NON_SERIES_AUTO_DELETE_SECONDS = 7 * 24 * 60 * 60
     
     # Session configuration - sessions persist for 30 days
     PERMANENT_SESSION_LIFETIME = timedelta(days=30)

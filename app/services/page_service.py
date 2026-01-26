@@ -1612,14 +1612,18 @@ def build_player_home_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def purge_concluded_series_documents(reference_ts: Optional[float] = None) -> None:
-    """Remove player documents tied to series that have already finished."""
+    """Remove player documents that have aged out (series + non-series)."""
     if not PlayerDB:
         return
     try:
         db = PlayerDB()
-        if reference_ts is None:
-            reference_ts = datetime.now().timestamp() - Config.SERIES_AUTO_DELETE_GRACE_SECONDS
-        expired_docs = db.list_expired_player_documents(reference_ts)
+        now_ts = datetime.now().timestamp()
+
+        # 1) Series-tied docs: expire once the series window has concluded (with optional grace).
+        series_cutoff_ts = reference_ts
+        if series_cutoff_ts is None:
+            series_cutoff_ts = now_ts - Config.SERIES_AUTO_DELETE_GRACE_SECONDS
+        expired_docs = db.list_expired_player_documents(series_cutoff_ts)
         for doc in expired_docs:
             deleted = db.delete_player_document(doc["id"])
             if not deleted:
@@ -1636,6 +1640,35 @@ def purge_concluded_series_documents(reference_ts: Optional[float] = None) -> No
                     file_path.unlink()
                 except OSError as exc:
                     logger.warning(f"Warning removing expired document file {file_path}: {exc}")
+
+        # 2) Non-series docs: expire after a fixed retention window from upload time.
+        retention_seconds = getattr(Config, "NON_SERIES_AUTO_DELETE_SECONDS", 0)
+        try:
+            retention_seconds = int(retention_seconds or 0)
+        except Exception:
+            retention_seconds = 0
+        if retention_seconds > 0:
+            non_series_cutoff_ts = now_ts - float(retention_seconds)
+            expired_non_series = db.list_expired_non_series_player_documents(
+                non_series_cutoff_ts,
+                exclude_category=Config.WORKOUT_CATEGORY,
+            )
+            for doc in expired_non_series:
+                deleted = db.delete_player_document(doc["id"])
+                if not deleted:
+                    continue
+                db.record_player_document_event(
+                    player_id=deleted["player_id"],
+                    filename=deleted["filename"],
+                    action="auto_delete_non_series",
+                    performed_by=None,
+                )
+                file_path = Path(deleted.get("path") or "")
+                if file_path.exists() and file_path.is_file():
+                    try:
+                        file_path.unlink()
+                    except OSError as exc:
+                        logger.warning(f"Warning removing expired document file {file_path}: {exc}")
         db.close()
     except Exception as exc:
         logger.warning(f"Warning purging expired player documents: {exc}")

@@ -1776,6 +1776,39 @@ class PlayerDB:
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
+    def list_expired_non_series_player_documents(
+        self,
+        reference_ts: Optional[float] = None,
+        exclude_category: Optional[str] = "workout",
+    ) -> List[Dict[str, Any]]:
+        """
+        Return player documents not tied to a series that have aged out.
+
+        A "non-series" document is one with series_end IS NULL. By default we exclude
+        legacy workout documents (category == "workout") to avoid interfering with
+        the newer workouts iframe integration.
+        """
+        cursor = self.conn.cursor()
+        if reference_ts is None:
+            reference_ts = datetime.now().timestamp()
+
+        query = """
+            SELECT id, player_id, filename, path, uploaded_by, uploaded_at,
+                   category,
+                   series_opponent, series_label, series_start, series_end
+            FROM player_documents
+            WHERE series_end IS NULL
+              AND uploaded_at <= ?
+        """
+        params: List[Any] = [float(reference_ts)]
+        if exclude_category:
+            query += " AND (category IS NULL OR category != ?)"
+            params.append((exclude_category or "").strip().lower())
+
+        self._execute(cursor, query, tuple(params))
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
     def record_player_document_event(self, player_id: int, filename: str, action: str,
                                      performed_by: Optional[int]) -> int:
         """Log document actions such as upload/delete."""
