@@ -63,7 +63,7 @@
       <div class="matchup-reports">
         {% if game.reports %}
           {% for report in game.reports %}
-          <a class="report-chip" href="{{ report.url }}" target="_blank" rel="noopener">
+          <a class="report-chip" href="{{ report.url }}" rel="noopener">
             <i class="fas fa-file-pdf"></i> {{ report.title }}
           </a>
           {% endfor %}

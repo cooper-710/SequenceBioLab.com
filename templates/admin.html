@@ -413,6 +413,276 @@
         gap: 10px;
     }
 }
+
+/* Mobile-friendly styles */
+@media (max-width: 768px) {
+    .admin-page {
+        gap: 20px;
+        padding: 12px;
+    }
+    
+    .section-hero {
+        padding: 16px 0;
+    }
+    
+    .section-hero-heading h1 {
+        font-size: 1.75rem;
+    }
+    
+    .section-hero-meta {
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+    }
+    
+    .meta-pill {
+        font-size: 0.85rem;
+        padding: 6px 12px;
+    }
+    
+    .admin-grid {
+        gap: 20px;
+    }
+    
+    .summary-card {
+        padding: 16px;
+    }
+    
+    .summary-card.upload {
+        padding: 14px;
+    }
+    
+    .tab-toolbar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+    
+    .tab-toolbar > div:first-child {
+        width: 100%;
+    }
+    
+    .tab-toolbar > div:last-child {
+        width: 100%;
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .pdf-setall-control {
+        width: 100%;
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .pdf-setall-control select {
+        width: 100%;
+    }
+    
+    #pdfSetAllCurrentBtn,
+    #pdfUploadAllBtn {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .pdf-upload-grid {
+        max-height: none;
+        margin-top: 12px;
+    }
+    
+    .pdf-row {
+        grid-template-columns: 1fr;
+        gap: 12px;
+        padding: 12px;
+    }
+    
+    .pdf-player .name {
+        font-size: 0.95rem;
+    }
+    
+    .pdf-player .email {
+        font-size: 0.8rem;
+    }
+    
+    .pdf-drop {
+        width: 100%;
+        padding: 12px;
+        font-size: 0.9rem;
+    }
+    
+    .pdf-series select {
+        width: 100%;
+        font-size: 0.9rem;
+    }
+    
+    .pdf-status {
+        width: 100%;
+    }
+    
+    .pdf-status-top {
+        width: 100%;
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .pdf-status-top button {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .player-content {
+        width: 100%;
+    }
+    
+    .tab-card {
+        padding: 16px;
+        max-width: 100%;
+        overflow-x: auto;
+    }
+    
+    .player-picker {
+        flex-direction: column;
+        align-items: flex-start;
+        width: 100%;
+        gap: 8px;
+    }
+    
+    .player-picker select {
+        width: 100%;
+        min-width: 100%;
+    }
+    
+    .data-table {
+        font-size: 0.9rem;
+        min-width: 600px;
+    }
+    
+    .data-table th,
+    .data-table td {
+        padding: 10px 12px;
+    }
+    
+    .col-actions {
+        width: auto;
+        min-width: 120px;
+    }
+    
+    .note-actions {
+        flex-direction: column;
+        gap: 6px;
+    }
+    
+    .note-actions .btn-secondary {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .admin-card {
+        padding: 16px;
+        margin-bottom: 20px;
+    }
+    
+    .admin-card header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+    
+    .admin-card header > div:first-child {
+        width: 100%;
+    }
+    
+    .admin-card header button,
+    .admin-card header .filter-box {
+        width: 100%;
+    }
+    
+    .filter-box {
+        width: 100%;
+        max-width: 100%;
+    }
+    
+    .table-responsive {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .table-responsive .data-table {
+        min-width: 700px;
+    }
+    
+    .invite-codes-card .data-table {
+        min-width: 800px;
+    }
+    
+    .accounts-card .data-table {
+        min-width: 700px;
+    }
+    
+    .btn-primary,
+    .btn-secondary {
+        padding: 12px 16px;
+        font-size: 0.9rem;
+        min-height: 44px; /* Touch-friendly */
+    }
+    
+    .btn-sm {
+        padding: 8px 12px;
+        font-size: 0.85rem;
+        min-height: 40px;
+    }
+}
+
+@media (max-width: 480px) {
+    .admin-page {
+        padding: 8px;
+        gap: 16px;
+    }
+    
+    .section-hero-heading h1 {
+        font-size: 1.5rem;
+    }
+    
+    .summary-card,
+    .summary-card.upload,
+    .tab-card,
+    .admin-card {
+        padding: 12px;
+        border-radius: 12px;
+    }
+    
+    .tab-toolbar {
+        gap: 10px;
+    }
+    
+    .pdf-row {
+        padding: 10px;
+        gap: 10px;
+    }
+    
+    .data-table {
+        font-size: 0.85rem;
+    }
+    
+    .data-table th,
+    .data-table td {
+        padding: 8px 10px;
+    }
+    
+    .meta-pill {
+        font-size: 0.8rem;
+        padding: 5px 10px;
+    }
+    
+    .pdf-pill {
+        font-size: 0.7rem;
+        padding: 2px 6px;
+    }
+    
+    .badge {
+        font-size: 11px;
+        padding: 3px 8px;
+    }
+}
 .upload-slot input {
     display: none;
 }
@@ -833,6 +1103,61 @@
         max-width: 100%;
     }
 }
+
+/* Additional mobile improvements for tablets and smaller */
+@media (max-width: 768px) {
+    .admin-page.page-container {
+        padding: 24px 16px !important;
+    }
+    
+    .section-hero {
+        padding: 16px 12px;
+    }
+    
+    .section-hero-meta {
+        margin-top: 10px;
+    }
+}
+
+/* Ensure admin page respects mobile menu button spacing */
+@media (max-width: 1024px) {
+    .admin-page {
+        padding-top: 20px;
+    }
+}
+
+/* Mobile-friendly modal styles */
+@media (max-width: 480px) {
+    /* Target dynamically created modal buttons */
+    body > div[style*="position: fixed"] > div[style*="max-width: 400px"] {
+        padding: 20px 16px !important;
+        width: 95% !important;
+        max-width: 95% !important;
+    }
+    
+    body > div[style*="position: fixed"] > div[style*="max-width: 400px"] h3 {
+        font-size: 1.1rem !important;
+    }
+    
+    body > div[style*="position: fixed"] > div[style*="max-width: 400px"] p {
+        font-size: 13px !important;
+    }
+    
+    body > div[style*="position: fixed"] > div[style*="max-width: 400px"] input {
+        font-size: 16px !important; /* Prevents zoom on iOS */
+        padding: 14px !important;
+    }
+    
+    body > div[style*="position: fixed"] > div[style*="max-width: 400px"] > div[style*="display: flex"] {
+        flex-direction: column !important;
+        gap: 10px !important;
+    }
+    
+    body > div[style*="position: fixed"] > div[style*="max-width: 400px"] button {
+        width: 100% !important;
+        min-width: 100% !important;
+    }
+}
 </style>
 <script>
 (function() {
@@ -1249,7 +1574,7 @@
                 <td>${formatSeriesInfo(doc)}</td>
                 <td class="actions-col">
                     <div class="note-actions">
-                        <a href="${escapeHtml(doc.download_url)}" class="btn-secondary" target="_blank" rel="noopener">
+                        <a href="${escapeHtml(doc.download_url)}" class="btn-secondary player-docs-download" rel="noopener" download>
                             <i class="fas fa-download"></i> Download
                         </a>
                         <button data-doc-action="delete" class="btn-secondary">
@@ -1876,18 +2201,32 @@
             modalContent.style.cssText = 'background: var(--color-layer-card, #fff); padding: 24px; border-radius: 12px; max-width: 400px; width: 90%; box-shadow: 0 4px 20px rgba(0,0,0,0.3);';
             
             modalContent.innerHTML = `
-                <h3 style="margin: 0 0 16px 0; color: var(--color-text-primary, #000);">Generate Invite Code</h3>
-                <p style="margin: 0 0 12px 0; color: var(--color-text-secondary, #666); font-size: 14px;">
+                <h3 style="margin: 0 0 16px 0; color: var(--color-text-primary, #000); font-size: 1.25rem;">Generate Invite Code</h3>
+                <p style="margin: 0 0 12px 0; color: var(--color-text-secondary, #666); font-size: 14px; line-height: 1.5;">
                     Leave blank to generate a random 8-character code, or enter a custom code (min 6 characters).
                 </p>
                 <input type="text" id="customCodeInput" placeholder="Enter custom code or leave blank" 
-                    style="width: 100%; padding: 10px; margin-bottom: 16px; border: 1px solid var(--color-layer-border, #ddd); border-radius: 6px; text-transform: uppercase;"
+                    style="width: 100%; padding: 12px; margin-bottom: 16px; border: 1px solid var(--color-layer-border, #ddd); border-radius: 6px; text-transform: uppercase; font-size: 16px; min-height: 44px; box-sizing: border-box;"
                     maxlength="20">
-                <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                    <button id="cancelCodeBtn" style="padding: 8px 16px; border: 1px solid var(--color-layer-border, #ddd); background: transparent; border-radius: 6px; cursor: pointer;">Cancel</button>
-                    <button id="generateCodeBtn" style="padding: 8px 16px; background: var(--color-accent, #007bff); color: white; border: none; border-radius: 6px; cursor: pointer;">Generate</button>
+                <div id="modalButtonContainer" style="display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap;">
+                    <button id="cancelCodeBtn" style="flex: 1; min-width: 120px; padding: 12px 16px; border: 1px solid var(--color-layer-border, #ddd); background: transparent; border-radius: 6px; cursor: pointer; font-size: 14px; min-height: 44px;">Cancel</button>
+                    <button id="generateCodeBtn" style="flex: 1; min-width: 120px; padding: 12px 16px; background: var(--color-accent, #007bff); color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; min-height: 44px; font-weight: 600;">Generate</button>
                 </div>
             `;
+            
+            // Add mobile-specific styles for modal buttons
+            if (window.innerWidth <= 480) {
+                const buttonContainer = modalContent.querySelector('#modalButtonContainer');
+                if (buttonContainer) {
+                    buttonContainer.style.flexDirection = 'column';
+                    buttonContainer.style.gap = '10px';
+                }
+                const buttons = modalContent.querySelectorAll('#cancelCodeBtn, #generateCodeBtn');
+                buttons.forEach(btn => {
+                    btn.style.width = '100%';
+                    btn.style.minWidth = '100%';
+                });
+            }
             
             modal.appendChild(modalContent);
             document.body.appendChild(modal);

@@ -321,18 +321,31 @@
             }
 
             function startBackgroundDownload(url) {
-                const iframe = ensureDownloadIframe();
-
-                // Cache-bust so repeated clicks always trigger a request.
-                let u;
+                // Use a temporary anchor element for more reliable downloads
+                // This method works better than iframe for triggering browser downloads
+                const link = document.createElement('a');
+                link.style.display = 'none';
+                document.body.appendChild(link);
+                
+                // Cache-bust so repeated clicks always trigger a request
                 try {
-                    u = new URL(url, window.location.origin);
+                    const u = new URL(url, window.location.origin);
+                    u.searchParams.set('_dl', String(Date.now()));
+                    link.href = u.toString();
                 } catch (e) {
-                    iframe.src = url;
-                    return;
+                    // If URL parsing fails, use original URL
+                    link.href = url;
                 }
-                u.searchParams.set('_dl', String(Date.now()));
-                iframe.src = u.toString();
+                
+                // Trigger the download (server will set Content-Disposition header)
+                link.click();
+                
+                // Clean up after a short delay
+                setTimeout(() => {
+                    if (link.parentNode) {
+                        document.body.removeChild(link);
+                    }
+                }, 100);
             }
 
             // Capture-phase handler so it runs before navigation/loader interception.
