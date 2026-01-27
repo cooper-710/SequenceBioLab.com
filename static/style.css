@@ -1680,6 +1680,15 @@ body[data-theme='light'] .sidebar-overlay {
     position: relative;
     z-index: 2;
     filter: drop-shadow(0 10px 18px rgba(255, 149, 0, 0.35));
+    display: block;
+    min-width: 90px;
+    min-height: 90px;
+    object-fit: contain;
+}
+
+.idle-logo img[src=""],
+.idle-logo img:not([src]) {
+    display: none;
 }
 
 .idle-logo-ring {

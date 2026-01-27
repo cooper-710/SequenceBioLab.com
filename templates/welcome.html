@@ -305,20 +305,20 @@
                 </a>
             {% else %}
                 <!-- Non-Admin Navigation Items -->
-                <a href="{{ url_for('pages.tools') }}" class="action-card">
+                <a href="{{ url_for('pages.dashboard') }}" class="action-card">
                     <div class="action-card-icon">
-                        <i class="fas fa-tools"></i>
+                        <i class="fas fa-chart-line"></i>
                     </div>
-                    <h3 class="action-card-title">Tools</h3>
-                    <p class="action-card-desc">Helpful utilities</p>
+                    <h3 class="action-card-title">Dashboard</h3>
+                    <p class="action-card-desc">View your analytics</p>
                 </a>
 
-                <a href="{{ url_for('pages.video') }}" class="action-card">
+                <a href="{{ url_for('workouts') }}" class="action-card">
                     <div class="action-card-icon">
-                        <i class="fas fa-video"></i>
+                        <i class="fas fa-dumbbell"></i>
                     </div>
-                    <h3 class="action-card-title">Video</h3>
-                    <p class="action-card-desc">Video content</p>
+                    <h3 class="action-card-title">Workouts</h3>
+                    <p class="action-card-desc">Track your workouts</p>
                 </a>
 
                 <a href="{{ url_for('pages.matchups') }}" class="action-card">
