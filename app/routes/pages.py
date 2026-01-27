@@ -365,6 +365,36 @@ def live_scores():
     next_date_display = next_date.strftime("%b %d")
     is_today = target_date == today
     
+    # Get dates with games for calendar (3 months range: 1 month back, 2 months forward)
+    import statsapi
+    dates_with_games = set()
+    try:
+        start_range = today - timedelta(days=30)
+        end_range = today + timedelta(days=60)
+        schedule = statsapi.schedule(
+            start_date=start_range.isoformat(),
+            end_date=end_range.isoformat()
+        )
+        if schedule:
+            for game in schedule:
+                # Try multiple date field formats
+                game_date_str = game.get('game_date') or game.get('gameDate') or game.get('game_datetime')
+                if game_date_str:
+                    try:
+                        # Handle ISO datetime format (YYYY-MM-DDTHH:MM:SS)
+                        if 'T' in str(game_date_str):
+                            game_date = datetime.fromisoformat(str(game_date_str).replace('Z', '+00:00')).date()
+                        else:
+                            # Handle date-only format (YYYY-MM-DD)
+                            game_date = datetime.strptime(str(game_date_str), '%Y-%m-%d').date()
+                        dates_with_games.add(game_date.isoformat())
+                    except (ValueError, TypeError) as e:
+                        continue
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Error fetching dates with games: {e}")
+    
     return render_template(
         'live_scores.html',
         games=games,
@@ -377,7 +407,8 @@ def live_scores():
         prev_date_display=prev_date_display,
         next_date_display=next_date_display,
         date_display=date_display,
-        is_today=is_today
+        is_today=is_today,
+        dates_with_games=list(dates_with_games)
     )
 
 
@@ -594,6 +625,10 @@ def gameday():
     show_date_redirect_note = False
     requested_tab = "current"
 
+    # Load dashboard context data (calendar, deliverables, next_series)
+    from app.services.page_service import build_player_home_context
+    dashboard_context = build_player_home_context(target_user) if target_user else {}
+
     return render_template(
         'gameday.html',
         team_abbr=team_abbr,
@@ -613,6 +648,10 @@ def gameday():
         viewer_user=viewer_user,
         show_date_redirect_note=show_date_redirect_note,
         default_schedule_tab=requested_tab or "current",
+        # Dashboard context data
+        next_series=dashboard_context.get("next_series"),
+        schedule_calendar=dashboard_context.get("schedule_calendar", []),
+        deliverables=dashboard_context.get("deliverables", []),
     )
 
 

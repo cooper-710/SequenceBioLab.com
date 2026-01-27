@@ -48,6 +48,7 @@ def get_box_score(game_pk: int) -> Optional[Dict[str, Any]]:
         
         # Game date
         game_date = None
+        game_date_iso = None
         game_datetime = game_info.get('datetime', {})
         if game_datetime:
             # Try different date fields
@@ -63,6 +64,7 @@ def get_box_score(game_pk: int) -> Optional[Dict[str, Any]]:
                     else:
                         dt = datetime.fromisoformat(game_date_str)
                     game_date = dt.strftime("%A, %B %d, %Y")
+                    game_date_iso = dt.strftime("%Y-%m-%d")
                 except Exception:
                     pass
         
@@ -597,6 +599,7 @@ def get_box_score(game_pk: int) -> Optional[Dict[str, Any]]:
             'status': status,
             'venue': venue,
             'game_date': game_date,
+            'game_date_iso': game_date_iso,
             'innings': innings,
             'current_inning': current_inning,
             'inning_state': inning_state,

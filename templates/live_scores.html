@@ -4,23 +4,28 @@
 
 {% block content %}
 <div class="page-container live-scores-page">
-    <header class="section-hero">
-        <div class="section-hero-heading">
-            <h1 class="hero-content">Live Scores</h1>
-            {% if live_games_count > 0 %}
-            <div class="live-indicator">
-                <span class="live-dot"></span>
-                <span class="live-text">{{ live_games_count }} {{ 'game' if live_games_count == 1 else 'games' }} live</span>
+    <div class="gameday-hero-title">
+        <div class="gameday-title-main">
+            <div class="gameday-title-icon">
+                <i class="fas fa-baseball-ball"></i>
             </div>
-            {% endif %}
+            <span class="gameday-title-text">Live Scores</span>
+            <div class="gameday-title-right">
+                {% if live_games_count > 0 %}
+                <div class="live-indicator">
+                    <span class="live-dot"></span>
+                    <span class="live-text">{{ live_games_count }} {{ 'game' if live_games_count == 1 else 'games' }} live</span>
+                </div>
+                {% endif %}
+                <div class="gameday-title-actions">
+                    <button id="refreshScores" class="refresh-btn" title="Refresh scores">
+                        <i class="fas fa-sync-alt"></i>
+                        <span>Refresh</span>
+                    </button>
+                </div>
+            </div>
         </div>
-        <div class="section-hero-actions">
-            <button id="refreshScores" class="refresh-btn" title="Refresh scores">
-                <i class="fas fa-sync-alt"></i>
-                <span>Refresh</span>
-            </button>
-        </div>
-    </header>
+    </div>
 
     <!-- Date Navigation -->
     <div class="date-navigation">
@@ -29,20 +34,55 @@
             <span>{{ prev_date_display }}</span>
         </a>
         
-        <div class="date-selector">
+        <div class="date-selector" id="dateSelector" role="button" tabindex="0" aria-label="Select date">
             <div class="date-display">
+                <i class="fas fa-calendar-alt"></i>
                 {% if is_today %}
-                <span class="date-label">Today</span>
+                <span class="date-label">Today, {{ date_display }}</span>
                 {% else %}
                 <span class="date-label">{{ date_display }}</span>
                 {% endif %}
             </div>
             {% if not is_today %}
-            <a href="{{ url_for('pages.live_scores') }}" class="today-btn">
+            <a href="{{ url_for('pages.live_scores') }}" class="today-btn" onclick="event.stopPropagation();">
                 <i class="fas fa-calendar-day"></i>
                 <span>Today</span>
             </a>
             {% endif %}
+        </div>
+        
+        <!-- Calendar Picker Modal -->
+        <div class="calendar-picker-modal" id="calendarPickerModal" style="display: none;">
+            <div class="calendar-picker-overlay" onclick="closeCalendarPicker()"></div>
+            <div class="calendar-picker-container">
+                <div class="calendar-picker-header">
+                    <h3>Select Date</h3>
+                    <button class="calendar-picker-close" onclick="closeCalendarPicker()" aria-label="Close calendar">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="calendar-picker-content">
+                    <div class="calendar-picker-month-header">
+                        <button class="calendar-picker-nav-btn" id="calendarPickerPrev" aria-label="Previous month">
+                            <i class="fas fa-chevron-left"></i>
+                        </button>
+                        <span class="calendar-picker-month-text" id="calendarPickerMonthText"></span>
+                        <button class="calendar-picker-nav-btn" id="calendarPickerNext" aria-label="Next month">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div class="calendar-picker-weekdays">
+                        <div class="calendar-picker-weekday">Sun</div>
+                        <div class="calendar-picker-weekday">Mon</div>
+                        <div class="calendar-picker-weekday">Tue</div>
+                        <div class="calendar-picker-weekday">Wed</div>
+                        <div class="calendar-picker-weekday">Thu</div>
+                        <div class="calendar-picker-weekday">Fri</div>
+                        <div class="calendar-picker-weekday">Sat</div>
+                    </div>
+                    <div class="calendar-picker-days-grid" id="calendarPickerDaysGrid"></div>
+                </div>
+            </div>
         </div>
         
         <a href="{{ url_for('pages.live_scores', date=next_date_str) }}" class="date-nav-btn">
@@ -71,7 +111,9 @@
                     
                     <div class="score-header">
                         <div class="score-status">
+                            {% if game.status|upper != 'SCHEDULED' %}
                             <span class="status-label {{ game.status|lower|replace(' ', '-') }}">{{ game.status }}</span>
+                            {% endif %}
                             {% if game.inning_label %}
                             <span class="inning-label">{{ game.inning_label }}</span>
                             {% endif %}
@@ -88,7 +130,7 @@
                                 <div class="team-header">
                                     {% if game.away_id %}
                                     <div class="team-logo">
-                                        <span class="team-abbr-badge" style="background-color: {{ get_team_color_global(team_id=game.away_id) }}; color: white; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 14px; display: inline-block; min-width: 40px; text-align: center;">
+                                        <span class="team-abbr-badge" style="background-color: {{ get_team_color_global(team_id=game.away_id) }}; color: white; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 14px; min-width: 40px;">
                                             {{ game.away_abbr or (game.away_id|team_abbr_from_id) or 'AWY' }}
                                         </span>
                                     </div>
@@ -116,7 +158,7 @@
                                 <div class="team-header">
                                     {% if game.home_id %}
                                     <div class="team-logo">
-                                        <span class="team-abbr-badge" style="background-color: {{ get_team_color_global(team_id=game.home_id) }}; color: white; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 14px; display: inline-block; min-width: 40px; text-align: center;">
+                                        <span class="team-abbr-badge" style="background-color: {{ get_team_color_global(team_id=game.home_id) }}; color: white; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 14px; min-width: 40px;">
                                             {{ game.home_abbr or (game.home_id|team_abbr_from_id) or 'HME' }}
                                         </span>
                                     </div>
@@ -171,19 +213,64 @@
 </div>
 
 <style>
-.live-scores-page .section-hero {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 16px;
+.gameday-hero-title {
+    margin-bottom: 32px;
+    padding: 0;
+    position: relative;
 }
-
+.gameday-title-main {
+    background: rgba(255, 127, 0, 0.08);
+    border: 1px solid rgba(255, 127, 0, 0.3);
+    border-radius: 24px;
+    padding: 24px 32px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    position: relative;
+    margin: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+.gameday-title-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(255, 127, 0, 0.2), rgba(255, 149, 0, 0.1));
+    border: 1px solid rgba(255, 127, 0, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--color-accent);
+    font-size: 1.5rem;
+}
+.gameday-title-text {
+    font-size: clamp(1.5rem, 3vw, 2rem);
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin: 0;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    flex: 1;
+}
+.gameday-title-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+.gameday-title-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+}
 .live-indicator {
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-top: 8px;
+    flex-shrink: 0;
 }
 
 .live-dot {
@@ -211,11 +298,6 @@
     font-weight: 500;
 }
 
-.section-hero-actions {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-}
 
 .refresh-btn {
     display: flex;
@@ -286,12 +368,194 @@
     gap: 12px;
     flex: 1;
     justify-content: center;
+    cursor: pointer;
+    padding: 8px 16px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    user-select: none;
 }
-
+.date-selector:hover {
+    background: var(--color-layer-soft);
+    border-color: var(--color-accent);
+}
+.date-selector:active {
+    transform: scale(0.98);
+}
 .date-display {
     display: flex;
     align-items: center;
     gap: 8px;
+}
+.date-display i {
+    color: var(--color-accent);
+    font-size: 0.9rem;
+}
+/* Calendar Picker Modal */
+.calendar-picker-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.calendar-picker-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(4px);
+}
+.calendar-picker-container {
+    position: relative;
+    background: var(--color-layer-card);
+    border: 1px solid var(--color-layer-border);
+    border-radius: 20px;
+    padding: 24px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    z-index: 1;
+    min-width: 320px;
+    max-width: 400px;
+    width: 90%;
+}
+.calendar-picker-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid var(--color-accent);
+}
+.calendar-picker-header h3 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+}
+.calendar-picker-close {
+    background: transparent;
+    border: none;
+    color: var(--color-text-subtle);
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+    font-size: 1.1rem;
+}
+.calendar-picker-close:hover {
+    background: var(--color-layer-soft);
+    color: var(--color-text-primary);
+}
+.calendar-picker-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.calendar-picker-month-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+.calendar-picker-month-text {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    text-align: center;
+    flex: 1;
+}
+.calendar-picker-nav-btn {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-layer-border);
+    border-radius: 8px;
+    background: var(--color-layer-soft);
+    color: var(--color-text-primary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    padding: 0;
+    flex-shrink: 0;
+}
+.calendar-picker-nav-btn:hover {
+    background: var(--color-layer);
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+}
+.calendar-picker-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+}
+.calendar-picker-weekday {
+    text-align: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-text-subtle);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 8px 4px;
+}
+.calendar-picker-days-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+}
+.calendar-picker-day {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    border-radius: 8px;
+    background: var(--color-layer-soft);
+    border: 1px solid var(--color-layer-border);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    min-height: 40px;
+}
+.calendar-picker-day:hover {
+    background: var(--color-layer);
+    border-color: var(--color-accent);
+    transform: scale(1.05);
+}
+.calendar-picker-day.other-month {
+    opacity: 0.3;
+    cursor: default;
+}
+.calendar-picker-day.other-month:hover {
+    transform: none;
+    background: var(--color-layer-soft);
+    border-color: var(--color-layer-border);
+}
+.calendar-picker-day.today {
+    background: rgba(255, 127, 0, 0.2);
+    border-color: var(--color-accent);
+    font-weight: 700;
+}
+.calendar-picker-day.selected {
+    background: var(--color-accent);
+    color: var(--color-layer-card);
+    border-color: var(--color-accent);
+    font-weight: 700;
+}
+.calendar-picker-day.has-games {
+    position: relative;
+}
+.calendar-picker-day.has-games::after {
+    content: '';
+    position: absolute;
+    bottom: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--color-accent);
 }
 
 .date-label {
@@ -515,6 +779,13 @@
     filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
 }
 
+.team-abbr-badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+}
+
 .team-details {
     flex: 1;
     min-width: 0;
@@ -634,14 +905,35 @@
 }
 
 @media (max-width: 768px) {
-    .live-scores-page .section-hero {
-        flex-direction: column;
-        align-items: flex-start;
+    .gameday-hero-title {
+        margin-bottom: 28px !important;
     }
     
-    .section-hero-actions {
-        width: 100%;
-        justify-content: flex-end;
+    .gameday-title-main {
+        padding: 20px 24px !important;
+        gap: 16px !important;
+        flex-wrap: wrap !important;
+    }
+    
+    .gameday-title-icon {
+        width: 48px !important;
+        height: 48px !important;
+        font-size: 1.25rem !important;
+    }
+    
+    .gameday-title-text {
+        font-size: 1.5rem !important;
+    }
+    
+    .gameday-title-right {
+        width: 100% !important;
+        margin-left: 0 !important;
+        margin-top: 12px !important;
+        justify-content: space-between !important;
+    }
+    
+    .gameday-title-actions {
+        margin-left: auto !important;
     }
     
     .date-navigation {
@@ -676,6 +968,17 @@
     .date-display {
         flex: 1;
         min-width: 0;
+    }
+    
+    .calendar-picker-container {
+        min-width: 280px !important;
+        max-width: 90vw !important;
+        padding: 20px !important;
+    }
+    
+    .calendar-picker-day {
+        min-height: 36px !important;
+        font-size: 0.85rem !important;
     }
     
     .date-label {
@@ -729,6 +1032,7 @@
     }
 }
 </style>
+{% endblock %}
 
 {% block scripts %}
 <script>
@@ -781,11 +1085,17 @@
                 const currentLiveIndicator = document.querySelector('.live-indicator');
                 if (currentLiveIndicator) {
                     currentLiveIndicator.outerHTML = newLiveIndicator.outerHTML;
-                } else if (newLiveIndicator.parentNode) {
+                } else if (newLiveIndicator && newLiveIndicator.parentNode) {
                     // Add it if it doesn't exist
-                    const heroHeading = document.querySelector('.section-hero-heading');
-                    if (heroHeading) {
-                        heroHeading.appendChild(newLiveIndicator);
+                    const titleRight = document.querySelector('.gameday-title-right');
+                    if (titleRight) {
+                        // Insert before the actions div
+                        const actionsDiv = titleRight.querySelector('.gameday-title-actions');
+                        if (actionsDiv) {
+                            titleRight.insertBefore(newLiveIndicator, actionsDiv);
+                        } else {
+                            titleRight.appendChild(newLiveIndicator);
+                        }
                     }
                 }
             }
@@ -811,7 +1121,184 @@
 
 {# Custom Jinja filter for date formatting #}
 <script>
-// Helper function for date formatting in JavaScript (fallback)
+// Calendar Picker Functionality
+(function() {
+    const dateSelector = document.getElementById('dateSelector');
+    const calendarModal = document.getElementById('calendarPickerModal');
+    const calendarDaysGrid = document.getElementById('calendarPickerDaysGrid');
+    const calendarMonthText = document.getElementById('calendarPickerMonthText');
+    const calendarPrevBtn = document.getElementById('calendarPickerPrev');
+    const calendarNextBtn = document.getElementById('calendarPickerNext');
+    
+    if (!dateSelector || !calendarModal || !calendarDaysGrid) return;
+    
+    // Get current date from page
+    const currentDateStr = '{{ target_date_str }}';
+    let currentDate = new Date();
+    if (currentDateStr) {
+        try {
+            currentDate = new Date(currentDateStr + 'T00:00:00');
+        } catch (e) {
+            currentDate = new Date();
+        }
+    }
+    
+    let calendarMonth = currentDate.getMonth();
+    let calendarYear = currentDate.getFullYear();
+    const selectedDate = new Date(currentDate);
+    selectedDate.setHours(0, 0, 0, 0);
+    
+    // Get dates with games from backend
+    const datesWithGames = new Set({{ (dates_with_games or [])|tojson|safe }});
+    
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                       'July', 'August', 'September', 'October', 'November', 'December'];
+    
+    function renderCalendar(month, year) {
+        if (!calendarDaysGrid || !calendarMonthText) return;
+        
+        calendarMonthText.textContent = `${monthNames[month]} ${year}`;
+        calendarDaysGrid.innerHTML = '';
+        
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+        const daysInMonth = lastDay.getDate();
+        const startingDayOfWeek = firstDay.getDay();
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        // Add empty cells for days before month starts
+        for (let i = 0; i < startingDayOfWeek; i++) {
+            const emptyDiv = document.createElement('div');
+            emptyDiv.className = 'calendar-picker-day other-month';
+            calendarDaysGrid.appendChild(emptyDiv);
+        }
+        
+        // Add days of the month
+        for (let day = 1; day <= daysInMonth; day++) {
+            const date = new Date(year, month, day);
+            date.setHours(0, 0, 0, 0);
+            const dayDiv = document.createElement('div');
+            let classes = 'calendar-picker-day';
+            
+            // Check if it's today
+            if (date.getTime() === today.getTime()) {
+                classes += ' today';
+            }
+            
+            // Check if it's the selected date
+            if (date.getTime() === selectedDate.getTime()) {
+                classes += ' selected';
+            }
+            
+            // Only mark as having games if date is in datesWithGames set
+            const dateStr = date.toISOString().split('T')[0];
+            if (datesWithGames.has(dateStr)) {
+                classes += ' has-games';
+            }
+            
+            dayDiv.className = classes;
+            dayDiv.textContent = day;
+            dayDiv.setAttribute('data-date', dateStr);
+            
+            dayDiv.addEventListener('click', function() {
+                const dateStr = this.getAttribute('data-date');
+                if (dateStr && !this.classList.contains('other-month')) {
+                    window.location.href = '{{ url_for("pages.live_scores") }}?date=' + dateStr;
+                }
+            });
+            
+            calendarDaysGrid.appendChild(dayDiv);
+        }
+        
+        // Fill remaining cells to complete the grid
+        const totalCells = startingDayOfWeek + daysInMonth;
+        const remainingCells = 7 - (totalCells % 7);
+        if (remainingCells < 7) {
+            for (let i = 0; i < remainingCells; i++) {
+                const emptyDiv = document.createElement('div');
+                emptyDiv.className = 'calendar-picker-day other-month';
+                calendarDaysGrid.appendChild(emptyDiv);
+            }
+        }
+    }
+    
+    function openCalendarPicker() {
+        if (calendarModal) {
+            calendarModal.style.display = 'flex';
+            // Set calendar to current selected date
+            calendarMonth = selectedDate.getMonth();
+            calendarYear = selectedDate.getFullYear();
+            renderCalendar(calendarMonth, calendarYear);
+        }
+    }
+    
+    function closeCalendarPicker() {
+        if (calendarModal) {
+            calendarModal.style.display = 'none';
+        }
+        return false;
+    }
+    
+    // Make closeCalendarPicker available globally
+    window.closeCalendarPicker = closeCalendarPicker;
+    
+    // Open calendar on date selector click
+    dateSelector.addEventListener('click', function(e) {
+        e.preventDefault();
+        openCalendarPicker();
+    });
+    
+    // Open calendar on Enter key
+    dateSelector.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            openCalendarPicker();
+        }
+    });
+    
+    // Close on overlay click
+    const overlay = calendarModal.querySelector('.calendar-picker-overlay');
+    if (overlay) {
+        overlay.addEventListener('click', closeCalendarPicker);
+    }
+    
+    // Close on Escape key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && calendarModal.style.display === 'flex') {
+            closeCalendarPicker();
+        }
+    });
+    
+    // Month navigation
+    if (calendarPrevBtn) {
+        calendarPrevBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            calendarMonth--;
+            if (calendarMonth < 0) {
+                calendarMonth = 11;
+                calendarYear--;
+            }
+            renderCalendar(calendarMonth, calendarYear);
+        });
+    }
+    
+    if (calendarNextBtn) {
+        calendarNextBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            calendarMonth++;
+            if (calendarMonth > 11) {
+                calendarMonth = 0;
+                calendarYear++;
+            }
+            renderCalendar(calendarMonth, calendarYear);
+        });
+    }
+    
+    // Initial render (if modal is opened)
+    renderCalendar(calendarMonth, calendarYear);
+})();
 </script>
-{% endblock %}
 {% endblock %}

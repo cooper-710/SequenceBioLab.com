@@ -4,15 +4,20 @@
 
 {% block content %}
 <div class="page-container box-score-page">
-    <header class="section-hero">
-        <div class="section-hero-heading">
-            <a href="{{ url_for('pages.live_scores') }}" class="back-link">
-                <i class="fas fa-arrow-left"></i>
-                <span>Back to Live Scores</span>
-            </a>
-            <h1 class="hero-content">Box Score</h1>
+    <div class="gameday-hero-title">
+        <div class="gameday-title-main">
+            <div class="gameday-title-icon">
+                <i class="fas fa-table"></i>
+            </div>
+            <span class="gameday-title-text">Box Score</span>
+            <div class="gameday-title-right">
+                <a href="{{ url_for('pages.live_scores', date=game_date_iso) if game_date_iso else url_for('pages.live_scores') }}" class="back-link">
+                    <i class="fas fa-arrow-left"></i>
+                    <span>Back to Live Scores</span>
+                </a>
+            </div>
         </div>
-    </header>
+    </div>
 
     <div class="box-score-content">
         <!-- Game Header -->
@@ -21,7 +26,7 @@
                 <div class="team-box away-team">
                     <div class="team-logo-large">
                         {% if away_id %}
-                        <span class="team-abbr-badge-large" style="background-color: {{ get_team_color_global(team_id=away_id) }}; color: white; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 18px; display: inline-block; min-width: 60px; text-align: center;">
+                        <span class="team-abbr-badge-large" style="background-color: {{ get_team_color_global(team_id=away_id) }}; color: white; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 18px; min-width: 60px;">
                             {{ away_abbr or (away_id|team_abbr_from_id) or 'AWY' }}
                         </span>
                         {% endif %}
@@ -55,7 +60,7 @@
                 <div class="team-box home-team">
                     <div class="team-logo-large">
                         {% if home_id %}
-                        <span class="team-abbr-badge-large" style="background-color: {{ get_team_color_global(team_id=home_id) }}; color: white; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 18px; display: inline-block; min-width: 60px; text-align: center;">
+                        <span class="team-abbr-badge-large" style="background-color: {{ get_team_color_global(team_id=home_id) }}; color: white; padding: 8px 16px; border-radius: 6px; font-weight: 700; font-size: 18px; min-width: 60px;">
                             {{ home_abbr or (home_id|team_abbr_from_id) or 'HME' }}
                         </span>
                         {% endif %}
@@ -294,18 +299,73 @@
     max-width: 1200px;
 }
 
+/* Gameday Hero Title Styles */
+.gameday-hero-title {
+    margin-bottom: 32px;
+    padding: 0;
+    position: relative;
+}
+.gameday-title-main {
+    background: rgba(255, 127, 0, 0.08);
+    border: 1px solid rgba(255, 127, 0, 0.3);
+    border-radius: 24px;
+    padding: 24px 32px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    position: relative;
+    margin: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+.gameday-title-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(255, 127, 0, 0.2), rgba(255, 149, 0, 0.1));
+    border: 1px solid rgba(255, 127, 0, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--color-accent);
+    font-size: 1.5rem;
+}
+.gameday-title-text {
+    font-size: clamp(1.5rem, 3vw, 2rem);
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin: 0;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    flex: 1;
+}
+.gameday-title-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
 .back-link {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: 8px;
-    color: var(--color-text-secondary);
+    padding: 8px 16px;
+    background: var(--color-layer-soft);
+    border: 1px solid var(--color-layer-border);
+    border-radius: 8px;
+    color: var(--color-text-primary);
     text-decoration: none;
+    transition: all 0.2s ease;
     font-size: 0.875rem;
-    margin-bottom: 12px;
-    transition: color 0.2s ease;
+    white-space: nowrap;
 }
 
 .back-link:hover {
+    background: var(--color-layer-hover);
+    border-color: var(--color-accent);
     color: var(--color-accent);
 }
 
@@ -351,9 +411,13 @@
 }
 
 .team-info-large {
-    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
     width: 100%;
     min-width: 0;
+    text-align: center;
 }
 
 .team-name-large {
@@ -364,6 +428,11 @@
     word-wrap: break-word;
     overflow-wrap: break-word;
     max-width: 100%;
+    text-align: center;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
 }
 
 .pitcher-info {
@@ -712,9 +781,24 @@
         padding: 0 16px;
     }
     
-    .back-link {
-        font-size: 0.8125rem;
-        margin-bottom: 8px;
+    .box-score-page .gameday-title-main {
+        padding: 16px 20px !important;
+        gap: 12px !important;
+    }
+    
+    .box-score-page .gameday-title-icon {
+        width: 44px !important;
+        height: 44px !important;
+        font-size: 1.1rem !important;
+    }
+    
+    .box-score-page .gameday-title-text {
+        font-size: 1.25rem !important;
+    }
+    
+    .box-score-page .back-link {
+        font-size: 0.8125rem !important;
+        padding: 6px 12px !important;
     }
     
     .box-score-header {
@@ -736,6 +820,12 @@
         word-wrap: break-word;
         overflow-wrap: break-word;
         hyphens: auto;
+        text-align: center;
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin: 0 0 8px 0;
     }
     
     .team-score-large {
@@ -847,6 +937,34 @@
 }
 
 @media (max-width: 480px) {
+    .box-score-page .gameday-title-main {
+        padding: 16px !important;
+        gap: 12px !important;
+    }
+    
+    .box-score-page .gameday-title-icon {
+        width: 40px !important;
+        height: 40px !important;
+        font-size: 1rem !important;
+    }
+    
+    .box-score-page .gameday-title-text {
+        font-size: 1.125rem !important;
+    }
+    
+    .box-score-page .back-link {
+        font-size: 0.75rem !important;
+        padding: 6px 12px !important;
+    }
+    
+    .box-score-page .back-link span {
+        display: none;
+    }
+    
+    .box-score-page .back-link i {
+        margin: 0;
+    }
+    
     .table-wrapper {
         margin: 0 -16px;
         padding: 0 16px;
@@ -865,6 +983,12 @@
         word-wrap: break-word;
         overflow-wrap: break-word;
         hyphens: auto;
+        text-align: center;
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin: 0 0 8px 0;
     }
     
     .team-score-large {
@@ -997,17 +1121,35 @@
         box-sizing: border-box !important;
     }
 
-    .box-score-page .section-hero,
-    .box-score-page header.section-hero {
-        margin-bottom: 20px !important;
-        padding: 16px !important;
-        width: 100% !important;
-        box-sizing: border-box !important;
+    .box-score-page .gameday-hero-title {
+        margin-bottom: 24px !important;
     }
-
-    .box-score-page .section-hero-heading h1,
-    .box-score-page .section-hero-heading .hero-content {
+    
+    .box-score-page .gameday-title-main {
+        padding: 20px 24px !important;
+        gap: 16px !important;
+        flex-wrap: wrap !important;
+    }
+    
+    .box-score-page .gameday-title-icon {
+        width: 48px !important;
+        height: 48px !important;
+        font-size: 1.25rem !important;
+    }
+    
+    .box-score-page .gameday-title-text {
         font-size: 1.5rem !important;
+    }
+    
+    .box-score-page .gameday-title-right {
+        width: 100% !important;
+        margin-left: 0 !important;
+        margin-top: 8px !important;
+    }
+    
+    .box-score-page .back-link {
+        width: 100% !important;
+        justify-content: center !important;
     }
 
     /* Ensure header card respects container width */

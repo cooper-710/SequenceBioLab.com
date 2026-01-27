@@ -5153,3 +5153,11 @@ body[data-theme='light'] .journal-timeline::-webkit-scrollbar-thumb {
 .calendar-day.today {
     border: 2px solid rgba(255, 127, 0, 0.6);
 }
+
+/* Team abbreviation badge - ensure text is centered */
+.team-abbr-badge {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+}

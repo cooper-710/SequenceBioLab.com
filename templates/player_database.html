@@ -4,11 +4,14 @@
 
 {% block content %}
 <div class="page-container">
-    <header class="section-hero">
-        <div class="section-hero-heading">
-            <h1 class="hero-content">Player Search</h1>
+    <div class="gameday-hero-title">
+        <div class="gameday-title-main">
+            <div class="gameday-title-icon">
+                <i class="fas fa-magnifying-glass"></i>
+            </div>
+            <span class="gameday-title-text">Player Search</span>
         </div>
-    </header>
+    </div>
 
     <div class="content-wrapper">
         <!-- Search -->
@@ -127,6 +130,46 @@
 </div>
 
 <style>
+.gameday-hero-title {
+    margin-bottom: 32px;
+    padding: 0;
+    position: relative;
+}
+.gameday-title-main {
+    background: rgba(255, 127, 0, 0.08);
+    border: 1px solid rgba(255, 127, 0, 0.3);
+    border-radius: 24px;
+    padding: 24px 32px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    position: relative;
+    margin: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+.gameday-title-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(255, 127, 0, 0.2), rgba(255, 149, 0, 0.1));
+    border: 1px solid rgba(255, 127, 0, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--color-accent);
+    font-size: 1.5rem;
+}
+.gameday-title-text {
+    font-size: clamp(1.5rem, 3vw, 2rem);
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin: 0;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    flex: 1;
+}
 /* Ensure search container stays within main content area */
 .main-content .search-container {
     position: relative;
@@ -1183,6 +1226,25 @@
 }
 
 @media (max-width: 768px) {
+    .gameday-hero-title {
+        margin-bottom: 28px !important;
+    }
+    
+    .gameday-title-main {
+        padding: 20px 24px !important;
+        gap: 16px !important;
+    }
+    
+    .gameday-title-icon {
+        width: 48px !important;
+        height: 48px !important;
+        font-size: 1.25rem !important;
+    }
+    
+    .gameday-title-text {
+        font-size: 1.5rem !important;
+    }
+    
     .page-container {
         padding: 0 16px 32px !important;
         max-width: 100% !important;
@@ -1476,6 +1538,25 @@
 }
 
 @media (max-width: 480px) {
+    .gameday-hero-title {
+        margin-bottom: 24px !important;
+    }
+    
+    .gameday-title-main {
+        padding: 16px 20px !important;
+        gap: 12px !important;
+    }
+    
+    .gameday-title-icon {
+        width: 40px !important;
+        height: 40px !important;
+        font-size: 1.1rem !important;
+    }
+    
+    .gameday-title-text {
+        font-size: 1.25rem !important;
+    }
+    
     .page-container {
         padding: 0 12px 24px !important;
         width: 100% !important;

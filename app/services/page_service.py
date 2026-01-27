@@ -796,26 +796,192 @@ def build_focus_highlights(
     return highlights
 
 
-def build_performance_snapshot() -> Dict[str, Any]:
-    """Build performance snapshot for the home page."""
-    offense_values = [0.318, 0.327, 0.334, 0.329, 0.338, 0.345]
-    training_values = [78, 80, 82, 84, 87, 90]
-
-    offense_delta = offense_values[-1] - offense_values[-2]
-    training_delta = training_values[-1] - training_values[-2]
-
-    return {
-        "offense_metric": {
-            "value": f"{offense_values[-1]:.3f} xwOBA",
-            "delta_label": f"{offense_delta:+.3f} vs last 7",
-            "sparkline": build_sparkline_svg(offense_values, "#f97316"),
-        },
-        "training_metric": {
-            "value": f"{training_values[-1]:.0f}% readiness",
-            "delta_label": f"{training_delta:+.0f}% vs last week",
-            "sparkline": build_sparkline_svg(training_values, "#22d3ee"),
-        },
-    }
+def build_performance_snapshot(user: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Build performance snapshot for the home page using real player data."""
+    # Try to import CSVDataLoader
+    csv_loader = None
+    try:
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+        from csv_data_loader import CSVDataLoader
+        csv_loader = CSVDataLoader(str(Config.ROOT_DIR))
+    except (ImportError, Exception) as e:
+        logger.warning(f"Could not load CSVDataLoader for performance snapshot: {e}")
+        csv_loader = None
+    
+    # If no user or CSV loader, return empty/default snapshot
+    if not user or not csv_loader:
+        return {
+            "offense_metric": None,
+            "training_metric": None,
+        }
+    
+    # Get player name
+    first_name = (user.get("first_name") or "").strip()
+    last_name = (user.get("last_name") or "").strip()
+    if not first_name or not last_name:
+        return {
+            "offense_metric": None,
+            "training_metric": None,
+        }
+    
+    player_name = f"{first_name} {last_name}"
+    
+    try:
+        # Get recent trends (last 6 seasons for sparkline)
+        from datetime import datetime
+        current_year = datetime.now().year
+        season_start = current_year - 5  # Last 6 seasons
+        
+        trends_result = csv_loader.get_player_trends(
+            player_name=player_name,
+            stats=None,  # Get all stats
+            season_start=season_start,
+            season_end=current_year
+        )
+        
+        trends = trends_result.get('trends', [])
+        if not trends:
+            return {
+                "offense_metric": None,
+                "training_metric": None,
+            }
+        
+        # Determine if pitcher or hitter based on available stats
+        # Check the most recent season's data
+        latest_trend = trends[-1] if trends else {}
+        latest_stats = latest_trend.get('stats', {})
+        
+        is_pitcher = False
+        # Check if we have pitcher-specific stats (check CSV column names)
+        pitcher_keys = ['fg_ERA', 'fg_xFIP', 'fg_FIP', 'fg_WHIP', 'ERA', 'xFIP', 'FIP', 'WHIP']
+        hitter_keys = ['fg_xwOBA', 'fg_xSLG', 'fg_xBA', 'xwOBA', 'xSLG', 'xBA']
+        
+        has_pitcher_stats = any(key in latest_stats for key in pitcher_keys)
+        has_hitter_stats = any(key in latest_stats for key in hitter_keys)
+        
+        if has_pitcher_stats:
+            is_pitcher = True
+        elif has_hitter_stats:
+            is_pitcher = False
+        else:
+            # Try to determine from data source by checking which CSV has the player
+            fg_pitchers_df = csv_loader._load_fangraphs_pitchers()
+            if fg_pitchers_df is not None and 'Name' in fg_pitchers_df.columns:
+                pitcher_data = fg_pitchers_df[fg_pitchers_df['Name'].str.lower() == player_name.lower()]
+                if not pitcher_data.empty:
+                    is_pitcher = True
+                else:
+                    # Check hitter data
+                    fg_df = csv_loader._load_fangraphs()
+                    if fg_df is not None and 'Name' in fg_df.columns:
+                        hitter_data = fg_df[fg_df['Name'].str.lower() == player_name.lower()]
+                        if not hitter_data.empty:
+                            is_pitcher = False
+        
+        # Extract values for sparklines (last 6 data points)
+        recent_trends = trends[-6:] if len(trends) > 6 else trends
+        
+        if is_pitcher:
+            # Pitcher metrics: ERA and xFIP
+            era_values = []
+            xfip_values = []
+            
+            for trend in recent_trends:
+                stats = trend.get('stats', {})
+                # Try CSV column names first, then mapped names
+                era_val = stats.get('fg_ERA') or stats.get('ERA')
+                xfip_val = stats.get('fg_xFIP') or stats.get('xFIP')
+                
+                if era_val is not None:
+                    try:
+                        era_values.append(float(era_val))
+                    except (ValueError, TypeError):
+                        pass
+                if xfip_val is not None:
+                    try:
+                        xfip_values.append(float(xfip_val))
+                    except (ValueError, TypeError):
+                        pass
+            
+            # Get latest values
+            latest_era = era_values[-1] if era_values else None
+            latest_xfip = xfip_values[-1] if xfip_values else None
+            
+            # Calculate deltas
+            era_delta = None
+            xfip_delta = None
+            if len(era_values) >= 2:
+                era_delta = era_values[-1] - era_values[-2]
+            if len(xfip_values) >= 2:
+                xfip_delta = xfip_values[-1] - xfip_values[-2]
+            
+            return {
+                "offense_metric": {
+                    "value": f"{latest_era:.2f} ERA" if latest_era is not None else "N/A ERA",
+                    "delta_label": f"{era_delta:+.2f} vs last season" if era_delta is not None else "No trend data",
+                    "sparkline": build_sparkline_svg(era_values, "#f97316") if era_values else "",
+                } if latest_era is not None else None,
+                "training_metric": {
+                    "value": f"{latest_xfip:.2f} xFIP" if latest_xfip is not None else "N/A xFIP",
+                    "delta_label": f"{xfip_delta:+.2f} vs last season" if xfip_delta is not None else "No trend data",
+                    "sparkline": build_sparkline_svg(xfip_values, "#22d3ee") if xfip_values else "",
+                } if latest_xfip is not None else None,
+            }
+        else:
+            # Hitter metrics: xwOBA and xSLG
+            xwoba_values = []
+            xslg_values = []
+            
+            for trend in recent_trends:
+                stats = trend.get('stats', {})
+                # Try different column name variations
+                xwoba_val = stats.get('xwOBA') or stats.get('fg_xwOBA')
+                xslg_val = stats.get('xSLG') or stats.get('fg_xSLG')
+                
+                if xwoba_val is not None:
+                    try:
+                        xwoba_values.append(float(xwoba_val))
+                    except (ValueError, TypeError):
+                        pass
+                if xslg_val is not None:
+                    try:
+                        xslg_values.append(float(xslg_val))
+                    except (ValueError, TypeError):
+                        pass
+            
+            # Get latest values
+            latest_xwoba = xwoba_values[-1] if xwoba_values else None
+            latest_xslg = xslg_values[-1] if xslg_values else None
+            
+            # Calculate deltas
+            xwoba_delta = None
+            xslg_delta = None
+            if len(xwoba_values) >= 2:
+                xwoba_delta = xwoba_values[-1] - xwoba_values[-2]
+            if len(xslg_values) >= 2:
+                xslg_delta = xslg_values[-1] - xslg_values[-2]
+            
+            return {
+                "offense_metric": {
+                    "value": f"{latest_xwoba:.3f} xwOBA" if latest_xwoba is not None else "N/A xwOBA",
+                    "delta_label": f"{xwoba_delta:+.3f} vs last season" if xwoba_delta is not None else "No trend data",
+                    "sparkline": build_sparkline_svg(xwoba_values, "#f97316") if xwoba_values else "",
+                } if latest_xwoba is not None else None,
+                "training_metric": {
+                    "value": f"{latest_xslg:.3f} xSLG" if latest_xslg is not None else "N/A xSLG",
+                    "delta_label": f"{xslg_delta:+.3f} vs last season" if xslg_delta is not None else "No trend data",
+                    "sparkline": build_sparkline_svg(xslg_values, "#22d3ee") if xslg_values else "",
+                } if latest_xslg is not None else None,
+            }
+            
+    except Exception as e:
+        logger.warning(f"Error building performance snapshot for {player_name}: {e}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "offense_metric": None,
+            "training_metric": None,
+        }
 
 
 def build_sparkline_svg(values: List[float], stroke: str) -> str:
@@ -1572,7 +1738,6 @@ def build_player_home_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
     next_series = load_next_series_snapshot(user)
     latest_document, deliverables, outstanding_count = load_player_deliverables(user)
-    performance = build_performance_snapshot()
     journal_entries = load_journal_preview(user)
     resources = load_resource_links(user)
     support_team = load_support_contacts()
@@ -1594,7 +1759,6 @@ def build_player_home_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         "latest_document": latest_document,
         "deliverables": deliverables,
         "outstanding_count": outstanding_count,
-        "performance": performance,
         "journal_entries": journal_entries,
         "resources": resources,
         "support_team": support_team,

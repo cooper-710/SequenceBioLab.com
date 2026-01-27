@@ -32,7 +32,6 @@
                         <select id="pdfSetAllSeriesMode" aria-label="Set all series mode">
                             <option value="next" selected>Upcoming series</option>
                             <option value="current">Current series</option>
-                            <option value="none">No specific series (notes)</option>
                         </select>
                         <button type="button" class="btn-secondary btn-sm" id="pdfSetAllCurrentBtn">Set all to next series</button>
                     </div>
@@ -1366,9 +1365,7 @@
                     select.innerHTML = '<option value="">No series found</option>';
                     return;
                 }
-                const opts = [
-                    '<option value="__none__">No specific series (notes)</option>',
-                ];
+                const opts = [];
                 seriesList.forEach((s, idx) => {
                     const label = _seriesOptionLabel(s);
                     opts.push(`<option value="${idx}" data-opponent="${escapeHtml(s.opponent_abbr || '')}" data-label="${escapeHtml(s.series_label || label)}" data-start="${escapeHtml(s.start || '')}" data-end="${escapeHtml(s.end || '')}" data-status="${escapeHtml(s.status || '')}">${escapeHtml(label)}</option>`);
@@ -1376,11 +1373,7 @@
                 select.innerHTML = opts.join('');
 
                 const state = pdfUploads[pid];
-                // Persist explicit "no series" selection (notes) without auto-defaulting.
-                if (state?.series && String(state.series.id || '') === '__none__') {
-                    select.value = '__none__';
-                    _syncEnhancedSelect(select);
-                } else if (!state.series) {
+                if (!state.series) {
                     const def = _defaultSeriesForPlayer(seriesList);
                     if (def) {
                         const defIdx = seriesList.indexOf(def);
@@ -1391,12 +1384,6 @@
                 } else {
                     // If state series is invalid (e.g. list changed), re-default.
                     const desiredId = String(state.series.id || '');
-                    if (desiredId === '__none__') {
-                        select.value = '__none__';
-                        _syncEnhancedSelect(select);
-                        _setPdfUploadAllEnabled();
-                        return;
-                    }
                     const desiredIdx = parseInt(desiredId, 10);
                     if (!Number.isFinite(desiredIdx) || desiredIdx < 0 || desiredIdx >= seriesList.length) {
                         state.series = null;
@@ -1625,7 +1612,7 @@
 
             if (!_canUploadPdf(pid)) {
                 state.status = 'error';
-                state.error = 'Select a PDF first (series optional for notes).';
+                state.error = 'Select a PDF and series first.';
                 state.progress = 0;
                 _renderPdfUploadGrid();
                 _setPdfUploadAllEnabled();
@@ -1670,9 +1657,6 @@
                 const nextValue = String(event.target.value || '');
                 if (!opt || !nextValue) {
                     state.series = null;
-                } else if (nextValue === '__none__') {
-                    // Persist "no specific series" as a special sentinel so it doesn't get auto-defaulted.
-                    state.series = { id: '__none__', opponent: '', label: opt.textContent || 'No specific series (notes)', start: '', end: '', status: 'none' };
                 } else {
                     state.series = {
                         id: nextValue,
@@ -1735,10 +1719,8 @@
     function _canUploadPdf(pid) {
         const s = pdfUploads[pid];
         if (!s || !s.file) return false;
-        const seriesId = s.series ? String(s.series.id || '') : '';
         const hasRealSeries = !!(s.series && s.series.opponent && s.series.start && s.series.end);
-        const isNoSeries = seriesId === '__none__';
-        if (!hasRealSeries && !isNoSeries) return false;
+        if (!hasRealSeries) return false;
         const ext = (s.file.name || '').split('.').pop()?.toLowerCase();
         return ext === 'pdf';
     }
@@ -1757,12 +1739,9 @@
         formData.append('document', s.file);
         formData.append('player_id', String(pid));
         const seriesId = s.series ? String(s.series.id || '') : '';
-        const isNoSeries = seriesId === '__none__';
-        // Backend requires a series for category=report, but allows "__none__" for other categories.
-        // Treat "No specific series (notes)" uploads as a generic/scouting doc.
-        formData.append('category', isNoSeries ? 'scouting' : 'report');
-        formData.append('series_id', isNoSeries ? '__none__' : String(seriesId));
-        if (!isNoSeries && s.series) {
+        formData.append('category', 'report');
+        formData.append('series_id', String(seriesId));
+        if (s.series) {
             formData.append('series_opponent', s.series.opponent || '');
             formData.append('series_label', s.series.label || '');
             formData.append('series_start', s.series.start || '');
@@ -1879,9 +1858,7 @@
             pdfSetAllCurrentBtn.textContent =
                 mode === 'current'
                     ? 'Set all to current series'
-                    : mode === 'none'
-                        ? 'Set all to no specific series (notes)'
-                        : 'Set all to next series';
+                    : 'Set all to next series';
         }
         if (pdfSetAllSeriesMode) {
             pdfSetAllSeriesMode.addEventListener('change', _syncSetAllLabel);
@@ -1899,15 +1876,6 @@
                         const row = pdfUploadGrid ? pdfUploadGrid.querySelector(`[data-pdf-player-id="${pid}"]`) : null;
                         const select = row ? row.querySelector('[data-pdf-series]') : null;
                         const state = pdfUploads[pid] || (pdfUploads[pid] = { file: null, series: null, status: 'idle', progress: 0, error: null, xhr: null });
-
-                        if (mode === 'none') {
-                            state.series = { id: '__none__', opponent: '', label: 'No specific series (notes)', start: '', end: '', status: 'none' };
-                            if (select) {
-                                select.value = '__none__';
-                                _syncEnhancedSelect(select);
-                            }
-                            continue;
-                        }
 
                         if (!seriesList.length) continue;
 

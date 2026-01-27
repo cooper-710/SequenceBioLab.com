@@ -37,10 +37,6 @@
                         <span class="nav-icon"><i class="fas fa-house-chimney"></i></span>
                         <span class="nav-text">Home</span>
                     </a>
-                    <a href="{{ url_for('pages.dashboard') }}" class="nav-item {% if request.endpoint == 'pages.dashboard' %}active{% endif %}">
-                        <span class="nav-icon"><i class="fas fa-chart-line"></i></span>
-                        <span class="nav-text">Dashboard</span>
-                    </a>
                     <a href="{{ url_for('pages.admin_dashboard') }}" class="nav-item {% if request.endpoint == 'pages.admin_dashboard' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-shield-halved"></i></span>
                         <span class="nav-text">Admin</span>
@@ -122,10 +118,6 @@
                         <span class="nav-icon"><i class="fas fa-house-chimney"></i></span>
                         <span class="nav-text">Home</span>
                     </a>
-                    <a href="{{ url_for('pages.dashboard') }}" class="nav-item {% if request.endpoint == 'pages.dashboard' %}active{% endif %}">
-                        <span class="nav-icon"><i class="fas fa-chart-line"></i></span>
-                        <span class="nav-text">Dashboard</span>
-                    </a>
                     <a href="{{ url_for('pages.gameday') }}" class="nav-item {% if request.endpoint == 'pages.gameday' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-trophy"></i></span>
                         <span class="nav-text">Gameday</span>
@@ -150,6 +142,11 @@
                         <span class="nav-icon"><i class="fas fa-magnifying-glass"></i></span>
                         <span class="nav-text">Stats</span>
                     </a>
+                    <a href="{{ url_for('pages.live_scores') }}" class="nav-item {% if request.endpoint == 'pages.live_scores' %}active{% endif %}">
+                        <span class="nav-icon"><i class="fas fa-baseball-ball"></i></span>
+                        <span class="nav-text">Live Scores</span>
+                    </a>
+                    <div class="nav-divider"></div>
                     <a href="{{ url_for('pages.profile_settings') }}" class="nav-item {% if request.endpoint == 'pages.profile_settings' %}active{% endif %}">
                         <span class="nav-icon">
                             {% if current_user and current_user.profile_image_path %}

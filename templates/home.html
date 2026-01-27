@@ -11,7 +11,7 @@
             <div class="info-card-top">
                 <div class="info-card-icon">
                     {% if next_series.opponent_id %}
-                        <span class="team-abbr-badge" style="background-color: {{ get_team_color_global(team_id=next_series.opponent_id) }}; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 16px; display: inline-block;">
+                        <span class="team-abbr-badge" style="background-color: {{ get_team_color_global(team_id=next_series.opponent_id) }}; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 16px;">
                             {{ next_series.opponent_abbr or (next_series.opponent_id|team_abbr_from_id) or 'OPP' }}
                         </span>
                     {% else %}
@@ -55,7 +55,6 @@
             <article class="info-card info-card-calendar">
                 <header class="panel-header">
                     <h2>Schedule</h2>
-                    <a href="{{ url_for('pages.schedule') }}" class="panel-link">View full</a>
                 </header>
                 <div class="calendar-widget">
                     <div class="calendar-month-header" id="calendar-month-header">
@@ -133,38 +132,61 @@
             {% endif %}
         </article>
 
-        <!-- News & Media -->
-        <article class="content-panel content-panel-news">
+        <!-- Quick Actions -->
+        <article class="content-panel content-panel-actions">
             <header class="panel-header">
-                <h2>News & Updates</h2>
+                <h2>Quick Actions</h2>
             </header>
-            {% if player_news %}
-            <div class="news-list">
-                {% for news in player_news %}
-                <a href="{{ news.link }}" target="_blank" rel="noopener noreferrer" class="news-item" onclick="window.open(this.href, '_blank', 'noopener,noreferrer'); return false;">
-                    <div class="news-image">
-                        {% if news.image %}
-                            <img src="{{ news.image }}" alt="{{ news.title }}" class="news-image-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                        {% endif %}
-                        <div class="news-image-fallback" {% if news.image %}style="display: none;"{% endif %}>
-                            <div class="news-image-fallback-icon">
-                                <i class="fas fa-baseball-ball"></i>
-                            </div>
-                        </div>
+            <div class="action-items-list">
+                <a href="{{ url_for('pages.gameday') }}" class="action-item">
+                    <div class="action-item-icon">
+                        <i class="fas fa-trophy"></i>
                     </div>
-                    <div class="news-content">
-                        <h4>{{ news.title }}</h4>
-                        <span class="news-time">{{ news.time_ago }}</span>
+                    <div class="action-item-content">
+                        <span class="action-item-label">Game Preparation</span>
+                        <h4 class="action-item-value">Gameday</h4>
+                    </div>
+                    <div class="action-item-arrow">
+                        <i class="fas fa-chevron-right"></i>
                     </div>
                 </a>
-                {% endfor %}
+                <a href="{{ url_for('workouts') }}" class="action-item">
+                    <div class="action-item-icon">
+                        <i class="fas fa-dumbbell"></i>
+                    </div>
+                    <div class="action-item-content">
+                        <span class="action-item-label">Training</span>
+                        <h4 class="action-item-value">Workouts</h4>
+                    </div>
+                    <div class="action-item-arrow">
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                </a>
+                <a href="{{ url_for('mocap') }}" class="action-item">
+                    <div class="action-item-icon">
+                        <i class="fas fa-person-running"></i>
+                    </div>
+                    <div class="action-item-content">
+                        <span class="action-item-label">Movement Analysis</span>
+                        <h4 class="action-item-value">Mocap</h4>
+                    </div>
+                    <div class="action-item-arrow">
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                </a>
+                <a href="{{ url_for('pitchviz') }}" class="action-item">
+                    <div class="action-item-icon">
+                        <i class="fas fa-wave-square"></i>
+                    </div>
+                    <div class="action-item-content">
+                        <span class="action-item-label">Pitch Analysis</span>
+                        <h4 class="action-item-value">PitchViz</h4>
+                    </div>
+                    <div class="action-item-arrow">
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                </a>
             </div>
-            {% else %}
-            <div class="empty-state">
-                <i class="fas fa-newspaper"></i>
-                <p>No recent news available</p>
-            </div>
-            {% endif %}
         </article>
 
     </section>
@@ -943,20 +965,21 @@
     color: var(--color-text-subtle);
 }
 
-/* News Section */
-.content-panel-news {
+/* Action Items Section */
+.content-panel-actions {
     background: var(--color-layer);
 }
 
-.news-list {
+.action-items-list {
     display: grid;
-    gap: 20px;
+    gap: 16px;
 }
 
-.news-item {
+.action-item {
     display: flex;
+    align-items: flex-start;
     gap: 16px;
-    padding: 16px;
+    padding: 20px;
     border-radius: 16px;
     background: var(--color-layer-soft);
     border: 1px solid var(--color-layer-border);
@@ -964,96 +987,68 @@
     text-decoration: none;
     color: inherit;
     cursor: pointer;
-    align-items: center;
-    height: 112px;
-    box-sizing: border-box;
 }
 
-.news-item:hover {
-    border-color: var(--color-layer-border);
+.action-item:hover {
+    border-color: rgba(255, 127, 0, 0.4);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     transform: translateX(4px);
-    background: var(--color-layer-soft);
 }
 
-.news-image {
-    width: 80px;
-    height: 80px;
+.action-item-icon {
+    width: 48px;
+    height: 48px;
     border-radius: 12px;
-    background: var(--color-layer);
-    display: grid;
-    place-items: center;
-    overflow: hidden;
-    flex-shrink: 0;
-    border: 1px solid var(--color-layer-border);
-}
-
-.news-image-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-}
-
-.news-image-fallback {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     background: linear-gradient(135deg, rgba(255, 127, 0, 0.2), rgba(255, 149, 0, 0.1));
-    overflow: hidden;
-    position: relative;
-}
-
-.news-image-fallback-img {
-    width: 100%;
-    height: 120%;
-    object-fit: cover;
-    object-position: center center;
-    transform: translateY(-2%);
-}
-
-.news-image-fallback-logo {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: center center;
-    transform: none;
-}
-
-.news-image-fallback-icon {
-    width: 100%;
-    height: 100%;
+    border: 1px solid rgba(255, 127, 0, 0.3);
     display: grid;
     place-items: center;
-    font-size: 2rem;
+    flex-shrink: 0;
     color: var(--color-accent);
-    opacity: 0.8;
+    font-size: 1.25rem;
 }
 
-.news-content {
+.action-item-content {
     flex: 1;
     display: grid;
-    gap: 8px;
+    gap: 6px;
     min-width: 0;
-    overflow: hidden;
 }
 
-.news-content h4 {
+.action-item-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-subtle);
+}
+
+.action-item-value {
     margin: 0;
-    font-size: 1rem;
+    font-size: 1.1rem;
     font-weight: 600;
     color: var(--color-text-primary);
-    line-height: 1.4;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+    line-height: 1.3;
 }
 
-.news-time {
+.action-item-detail {
     font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    font-weight: 500;
+}
+
+.action-item-arrow {
     color: var(--color-text-subtle);
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+    align-self: center;
+    margin-left: auto;
+}
+
+.action-item:hover .action-item-arrow {
+    color: var(--color-accent);
+    transform: translateX(4px);
 }
 
 /* Calendar Widget with Sidebar */
@@ -1511,6 +1506,7 @@
         max-width: 36px;
         max-height: 36px;
     }
+
 }
 
 @media (max-width: 768px) {
@@ -1606,6 +1602,18 @@
         font-size: 0.7rem;
         padding-left: 3px;
     }
+
+    .action-item {
+        padding: 16px;
+        flex-wrap: wrap;
+    }
+
+    .action-item-icon {
+        width: 44px;
+        height: 44px;
+        font-size: 1.1rem;
+    }
+
 }
 
 @media (max-width: 480px) {
@@ -1654,6 +1662,25 @@
     .calendar-weekday {
         font-size: 0.7rem;
         padding: 6px 2px;
+    }
+
+    .action-item {
+        padding: 14px;
+    }
+
+    .action-item-icon {
+        width: 40px;
+        height: 40px;
+        font-size: 1rem;
+    }
+
+    .action-item-value {
+        font-size: 1rem;
+    }
+
+    .action-item-cta {
+        padding: 8px 14px;
+        font-size: 0.8rem;
     }
 }
 
@@ -1882,7 +1909,7 @@
                 const teamAbbr = game.opponent_abbr || (teamId && getTeamAbbrFromId(teamId)) || 'OPP';
                 const teamColor = teamId ? getTeamColor(teamId) : '#666666';
                 if (teamId || teamAbbr) {
-                    logoHtml = `<span class="calendar-team-badge" style="background-color: ${teamColor}; color: white; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px; display: inline-block; min-width: 32px; text-align: center;" title="${game.is_home ? 'vs' : '@'} ${game.opponent}">${teamAbbr}</span>`;
+                    logoHtml = `<span class="calendar-team-badge team-abbr-badge" style="background-color: ${teamColor}; color: white; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px; min-width: 32px;" title="${game.is_home ? 'vs' : '@'} ${game.opponent}">${teamAbbr}</span>`;
                 } else {
                     logoHtml = `<div class="calendar-game-indicator" title="${game.is_home ? 'vs' : '@'} ${game.opponent}"><i class="fas fa-baseball"></i></div>`;
                 }

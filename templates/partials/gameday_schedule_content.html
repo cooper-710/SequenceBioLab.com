@@ -20,56 +20,98 @@
   {% if upcoming_games %}
   <ul class="matchups-list">
     {% for game in upcoming_games %}
-    <li data-status="{{ game.status or '' }}" data-opponent="{{ (game.opponent_abbr or game.opponent)|lower }}" data-category="{{ game.category or 'future' }}">
-      <div class="matchup-head">
-        <span class="matchup-date">{{ game.date }}</span>
-        {% if game.series %}
-        <span class="matchup-series">{{ game.series }}</span>
-        {% endif %}
+    <li data-status="{{ game.status or '' }}" data-opponent="{{ (game.opponent_abbr or game.opponent)|lower }}" data-category="{{ game.category or 'future' }}" class="matchup-card">
+      <!-- Header Block: Date & Series -->
+      <div class="matchup-header-block">
+        <div class="matchup-header-content">
+          <div class="matchup-date-block">
+            <i class="fas fa-calendar-days"></i>
+            <span class="matchup-date">{{ game.date }}</span>
+          </div>
+          {% if game.series %}
+          <div class="matchup-series-block">
+            <span class="matchup-series">{{ game.series }}</span>
+          </div>
+          {% endif %}
+        </div>
       </div>
-      <div class="matchup-row">
-        <span class="matchup-opponent">
-          <span class="matchup-badge">
+
+      <!-- Main Opponent Block -->
+      <div class="matchup-opponent-block">
+        <div class="matchup-opponent-main">
+          <div class="matchup-badge-large">
             {% if game.opponent_id %}
-            <span class="team-abbr-badge" style="background-color: {{ get_team_color_global(team_id=game.opponent_id) }}; color: white; padding: 4px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; display: inline-block;">
+            <span class="team-abbr-badge-large" style="background-color: {{ get_team_color_global(team_id=game.opponent_id) }}; color: white;">
               {{ game.opponent_abbr or (game.opponent_id|team_abbr_from_id) or game.opponent }}
             </span>
             {% else %}
-            {{ game.opponent_abbr or game.opponent }}
+            <span class="team-abbr-badge-large">{{ game.opponent_abbr or game.opponent }}</span>
             {% endif %}
-          </span>
-          {% if game.home %}Home vs{% else %}Road @{% endif %} {{ game.opponent }}
-        </span>
-        <span class="matchup-time">{{ game.time }}</span>
+          </div>
+          <div class="matchup-opponent-info">
+            <div class="matchup-opponent-label">
+              {% if game.home %}<i class="fas fa-home"></i> Home{% else %}<i class="fas fa-plane"></i> Road{% endif %}
+            </div>
+            <div class="matchup-opponent-name">{{ game.opponent }}</div>
+          </div>
+        </div>
       </div>
 
-      {% if game.venue or game.status %}
-      <div class="matchup-meta">
+      <!-- Details Block: Time, Venue -->
+      <div class="matchup-details-block">
+        <div class="matchup-detail-item">
+          <div class="matchup-detail-icon"><i class="fas fa-clock"></i></div>
+          <div class="matchup-detail-content">
+            <div class="matchup-detail-label">Game Time</div>
+            <div class="matchup-detail-value">{{ game.time }}</div>
+          </div>
+        </div>
         {% if game.venue %}
-        <span><i class="fas fa-location-dot"></i> {{ game.venue }}</span>
-        {% endif %}
-        {% if game.status %}
-        <span><i class="fas fa-flag"></i> {{ game.status }}</span>
+        <div class="matchup-detail-item">
+          <div class="matchup-detail-icon"><i class="fas fa-location-dot"></i></div>
+          <div class="matchup-detail-content">
+            <div class="matchup-detail-label">Venue</div>
+            <div class="matchup-detail-value">{{ game.venue }}</div>
+          </div>
+        </div>
         {% endif %}
       </div>
-      {% endif %}
 
-      {% if game.probable_pitchers %}
-      <div class="matchup-probables">
-        <i class="fas fa-user"></i> Probable: {{ game.probable_pitchers|join(', ') }}
+      <!-- Pitcher Block -->
+      <div class="matchup-pitcher-block">
+        <div class="matchup-pitcher-header">
+          <i class="fas fa-user"></i>
+          <span>Probable Pitcher</span>
+        </div>
+        <div class="matchup-pitcher-name">
+          {% if game.probable_pitchers and game.probable_pitchers|length > 0 %}
+            {% for pitcher in game.probable_pitchers %}
+              {% if loop.index > 1 %}, {% endif %}
+              <a href="{{ url_for('player_database') }}?player={{ pitcher|urlencode }}" class="pitcher-link">{{ pitcher }}</a>
+            {% endfor %}
+          {% else %}
+            <span class="pitcher-unknown">Unknown</span>
+          {% endif %}
+        </div>
       </div>
-      {% endif %}
 
-      <div class="matchup-reports">
-        {% if game.reports %}
-          {% for report in game.reports %}
-          <a class="report-chip" href="{{ report.url }}" rel="noopener">
-            <i class="fas fa-file-pdf"></i> {{ report.title }}
-          </a>
-          {% endfor %}
-        {% else %}
-          <span class="empty-note">No report linked yet</span>
-        {% endif %}
+      <!-- Reports Block -->
+      <div class="matchup-reports-block">
+        <div class="matchup-reports-header">
+          <i class="fas fa-file-pdf"></i>
+          <span>Reports</span>
+        </div>
+        <div class="matchup-reports-content">
+          {% if game.reports %}
+            {% for report in game.reports %}
+            <a class="report-chip" href="{{ report.url }}" rel="noopener">
+              <i class="fas fa-file-pdf"></i> {{ report.title }}
+            </a>
+            {% endfor %}
+          {% else %}
+            <span class="empty-note">No report linked yet</span>
+          {% endif %}
+        </div>
       </div>
     </li>
     {% endfor %}
