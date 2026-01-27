@@ -8875,9 +8875,10 @@ def api_admin_player_docs_by_player(player_id: int):
         docs = []
         # Generic docs (category NULL)
         docs.extend(db.list_player_documents(int(player_id)) or [])
-        # Reports + workouts
+        # Reports + workouts + scouting (notes)
         docs.extend(db.list_player_documents(int(player_id), category=Config.REPORT_DOC_CATEGORY) or [])
         docs.extend(db.list_player_documents(int(player_id), category=Config.WORKOUT_CATEGORY) or [])
+        docs.extend(db.list_player_documents(int(player_id), category='scouting') or [])
         db.close()
         docs.sort(key=lambda d: d.get("uploaded_at") or 0, reverse=True)
         return jsonify({"documents": [_format_player_document(doc) for doc in docs]})

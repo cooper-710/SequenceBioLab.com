@@ -1520,9 +1520,10 @@ def api_admin_player_docs_by_player(player_id: int):
         docs: List[Dict[str, Any]] = []
         # Generic docs (category NULL)
         docs.extend(db.list_player_documents(int(player_id)) or [])
-        # Reports + workouts
+        # Reports + workouts + scouting (notes)
         docs.extend(db.list_player_documents(int(player_id), category=Config.REPORT_DOC_CATEGORY) or [])
         docs.extend(db.list_player_documents(int(player_id), category=Config.WORKOUT_CATEGORY) or [])
+        docs.extend(db.list_player_documents(int(player_id), category='scouting') or [])
         db.close()
 
         # Sort newest first (uploaded_at is stored as a unix timestamp).
