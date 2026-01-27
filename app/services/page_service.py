@@ -425,13 +425,17 @@ def format_player_document(doc: Dict[str, Any]) -> Dict[str, Any]:
         except Exception:
             pass
 
+    # Generate download URL - construct manually to ensure correct blueprint route
+    doc_id = doc.get("id")
+    download_url = f"/api/admin/player-docs/{doc_id}" if doc_id else None
+
     return {
         "id": doc.get("id"),
         "player_id": doc.get("player_id"),
         "filename": doc.get("filename"),
         "uploaded_at": _fmt(uploaded_ts),
         "uploaded_at_iso": _iso(uploaded_ts),
-        "download_url": url_for("download_player_document", doc_id=doc.get("id")),
+        "download_url": download_url,
         "uploaded_by": doc.get("uploaded_by"),
         "category": category,
         "viewer_url": viewer_url,
