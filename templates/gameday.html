@@ -128,10 +128,10 @@
                 </section>
 
                 <!-- Game Prep Tools -->
-                <section class="gameday-card quick-actions-card">
-                    <div class="card-header">
-                        <h2><i class="fas fa-bolt"></i> Game Prep Tools</h2>
-                    </div>
+                <section class="gameday-card content-panel">
+                    <header class="panel-header">
+                        <h2>Tools</h2>
+                    </header>
                     <div class="quick-actions-grid">
                         <a href="{{ url_for('pages.live_scores') }}" class="quick-action-item">
                             <div class="quick-action-icon">
@@ -439,13 +439,6 @@
     font-weight: 700;
     box-shadow: 0 0 0 2px rgba(255, 127, 0, 0.3), 0 2px 8px rgba(255, 127, 0, 0.4);
 }
-.calendar-day.has-game {
-    cursor: pointer;
-}
-.calendar-day.has-game:hover {
-    transform: scale(1.05);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
 .calendar-day.has-game.game-home {
     background: rgba(255, 127, 0, 0.15);
     border-color: rgba(255, 127, 0, 0.4);
@@ -691,6 +684,32 @@
     gap: 18px;
     width: 100%;
     box-sizing: border-box;
+}
+.content-panel {
+    background: var(--color-layer);
+    border: 1px solid var(--color-layer-border);
+    border-radius: 24px;
+    padding: 32px;
+    display: grid;
+    gap: 24px;
+}
+.content-panel .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    border-bottom: 2px solid var(--color-accent);
+    padding-top: 0;
+    padding-bottom: 12px;
+    margin-bottom: 0;
+    height: 48px;
+    box-sizing: border-box;
+}
+.content-panel .panel-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
 }
 .card-header h2 {
     margin: 0;
@@ -2220,9 +2239,18 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     }
 
-    // Load schedule on page load
-    loadGamedaySchedule();
-    initSchedule();
+    // Load schedule on page load (deferred for better initial render performance)
+    if (window.requestIdleCallback) {
+        requestIdleCallback(function() {
+            loadGamedaySchedule();
+        }, { timeout: 2000 });
+    } else {
+        // Fallback for browsers without requestIdleCallback
+        setTimeout(function() {
+            loadGamedaySchedule();
+        }, 100);
+    }
+    // initSchedule will be called after schedule loads via loadGamedaySchedule
 });
 
 // Countdown clock for next game
@@ -2279,10 +2307,12 @@ document.addEventListener('DOMContentLoaded', function () {
     setInterval(updateCountdown, 60000);
 })();
 
-// Calendar widget initialization
+// Calendar widget initialization (deferred for performance)
 (function() {
-    // Team abbreviation to MLB team ID mapping
-    const TEAM_ABBR_TO_ID = {
+    // Defer calendar initialization until browser is idle to improve page load
+    function initCalendar() {
+        // Team abbreviation to MLB team ID mapping
+        const TEAM_ABBR_TO_ID = {
         "ARI": 109, "ATL": 144, "BAL": 110, "BOS": 111, "CHC": 112, "CWS": 145, "CIN": 113,
         "CLE": 114, "COL": 115, "DET": 116, "HOU": 117, "KC": 118, "LAA": 108, "LAD": 119,
         "MIA": 146, "MIL": 158, "MIN": 142, "NYM": 121, "NYY": 147, "OAK": 133, "PHI": 143,
@@ -2386,14 +2416,6 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             
             dayDiv.className = classes;
-            
-            // Make clickable if there's a game
-            if (game) {
-                dayDiv.style.cursor = 'pointer';
-                dayDiv.addEventListener('click', function() {
-                    window.location.href = `{{ url_for('pages.gameday') }}?date=${dateStr}`;
-                });
-            }
             
             // Get team ID for badge
             let logoHtml = '';
@@ -2558,6 +2580,15 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     } else if (upcomingGamesList) {
         upcomingGamesList.innerHTML = '<div class="upcoming-game-empty">No upcoming games scheduled</div>';
+    }
+    }
+    
+    // Defer calendar initialization to improve initial page load performance
+    if (window.requestIdleCallback) {
+        requestIdleCallback(initCalendar, { timeout: 3000 });
+    } else {
+        // Fallback for browsers without requestIdleCallback
+        setTimeout(initCalendar, 500);
     }
 })();
 </script>
