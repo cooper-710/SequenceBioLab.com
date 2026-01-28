@@ -58,44 +58,47 @@
     <!-- Featured Quick Actions - Inspired by Enblox -->
     <section class="welcome-featured-actions">
         <div class="featured-actions-grid">
-            <a href="{{ url_for('pages.dashboard') }}" class="featured-action-card featured-primary">
-                <div class="featured-card-icon">
-                        <i class="fas fa-chart-line"></i>
-                    </div>
-                <div class="featured-card-content">
-                    <h3 class="featured-card-title">Dashboard</h3>
-                    <p class="featured-card-desc">View your full dashboard with stats, schedule, and reports</p>
-                </div>
-                <div class="featured-card-arrow">
-                        <i class="fas fa-arrow-right"></i>
-                    </div>
-                </a>
-
-            <a href="{{ url_for('pages.gameday') }}" class="featured-action-card">
+            <!-- First: Gameday (primary) -->
+            <a href="{{ url_for('pages.gameday') }}" class="featured-action-card featured-primary">
                 <div class="featured-card-icon">
                     <i class="fas fa-trophy"></i>
-                    </div>
+                </div>
                 <div class="featured-card-content">
                     <h3 class="featured-card-title">Gameday</h3>
                     <p class="featured-card-desc">View your next opponent analysis and game preparation</p>
                 </div>
                 <div class="featured-card-arrow">
-                        <i class="fas fa-arrow-right"></i>
-                    </div>
-                </a>
+                    <i class="fas fa-arrow-right"></i>
+                </div>
+            </a>
 
+            <!-- Second: PitchViz -->
+            <a href="{{ url_for('pitchviz') }}" class="featured-action-card">
+                <div class="featured-card-icon">
+                    <i class="fas fa-baseball-ball"></i>
+                </div>
+                <div class="featured-card-content">
+                    <h3 class="featured-card-title">PitchViz</h3>
+                    <p class="featured-card-desc">Visualize pitch shapes, tunnels, and movement</p>
+                </div>
+                <div class="featured-card-arrow">
+                    <i class="fas fa-arrow-right"></i>
+                </div>
+            </a>
+
+            <!-- Third: Workouts (unchanged link/text) -->
             <a href="{{ url_for('workouts') }}" class="featured-action-card">
                 <div class="featured-card-icon">
                     <i class="fas fa-dumbbell"></i>
-                    </div>
+                </div>
                 <div class="featured-card-content">
                     <h3 class="featured-card-title">Workouts</h3>
                     <p class="featured-card-desc">Track and manage your workouts</p>
                 </div>
                 <div class="featured-card-arrow">
-                        <i class="fas fa-arrow-right"></i>
-                    </div>
-                </a>
+                    <i class="fas fa-arrow-right"></i>
+                </div>
+            </a>
         </div>
     </section>
 
@@ -148,10 +151,10 @@
             <div class="feature-content">
                 <span class="feature-label">GET STARTED</span>
                 <h2 class="feature-title">Your Performance Hub</h2>
-                <p class="feature-description">Track your stats, view your schedule, and access your reports. Everything you need to monitor your performance is right here.</p>
+                <p class="feature-description">See today’s matchups, opponent scouting notes, and key game details so you know exactly what you’re walking into.</p>
                 <div class="feature-actions">
-                    <a href="{{ url_for('pages.dashboard') }}" class="feature-link">View Dashboard <i class="fas fa-arrow-right"></i></a>
-                    </div>
+                    <a href="{{ url_for('pages.gameday') }}" class="feature-link">Gameday <i class="fas fa-arrow-right"></i></a>
+                </div>
                     </div>
                     </div>
 
@@ -161,9 +164,9 @@
                 <h2 class="feature-title">Prepare For Your Next Game</h2>
                 <p class="feature-description">Analyze your next opponent, review matchup data, and get strategic insights. Walk onto the field with confidence.</p>
                 <div class="feature-actions">
-                    <a href="{{ url_for('pages.gameday') }}" class="feature-link">Gameday Analysis <i class="fas fa-arrow-right"></i></a>
+                    <a href="{{ url_for('pages.matchups') }}" class="feature-link">Matchups <i class="fas fa-arrow-right"></i></a>
                     <a href="{{ url_for('pitchviz') }}" class="feature-link">PitchViz <i class="fas fa-arrow-right"></i></a>
-                    </div>
+                </div>
                     </div>
             <div class="feature-number">02</div>
         </div>
@@ -173,7 +176,7 @@
             <div class="feature-content">
                 <span class="feature-label">TRAINING & DEVELOPMENT</span>
                 <h2 class="feature-title">Elevate Your Game</h2>
-                <p class="feature-description">Track workouts, analyze motion capture data, and visualize pitch mechanics. Continuous improvement is the path to excellence.</p>
+                <p class="feature-description">Track workouts, analyze motion capture data, and dial in your training plan. Continuous improvement is the path to excellence.</p>
                 <div class="feature-actions">
                     <a href="{{ url_for('workouts') }}" class="feature-link">Workouts <i class="fas fa-arrow-right"></i></a>
                     <a href="{{ url_for('mocap') }}" class="feature-link">Mocap <i class="fas fa-arrow-right"></i></a>
@@ -305,12 +308,12 @@
                 </a>
             {% else %}
                 <!-- Non-Admin Navigation Items -->
-                <a href="{{ url_for('pages.dashboard') }}" class="action-card">
+                <a href="{{ url_for('pages.live_scores') }}" class="action-card">
                     <div class="action-card-icon">
-                        <i class="fas fa-chart-line"></i>
+                        <i class="fas fa-baseball-ball"></i>
                     </div>
-                    <h3 class="action-card-title">Dashboard</h3>
-                    <p class="action-card-desc">View your analytics</p>
+                    <h3 class="action-card-title">Live Scores</h3>
+                    <p class="action-card-desc">Track live games</p>
                 </a>
 
                 <a href="{{ url_for('workouts') }}" class="action-card">

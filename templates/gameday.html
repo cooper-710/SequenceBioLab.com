@@ -1369,6 +1369,66 @@
     font-size: 0.85rem;
     color: var(--color-text-subtle);
 }
+
+/* Full screen mode (sidebar collapsed) - make quick actions bigger */
+.main-content.sidebar-collapsed .quick-actions-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+}
+
+.main-content.sidebar-collapsed .quick-action-item {
+    padding: 24px;
+    border-radius: 16px;
+    gap: 18px;
+}
+
+.main-content.sidebar-collapsed .quick-action-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 14px;
+    font-size: 1.6rem;
+}
+
+.main-content.sidebar-collapsed .quick-action-content h3 {
+    font-size: 1.25rem;
+    margin-bottom: 6px;
+}
+
+.main-content.sidebar-collapsed .quick-action-content p {
+    font-size: 0.95rem;
+}
+
+/* Responsive adjustments for full screen mode */
+@media (max-width: 1400px) {
+    .main-content.sidebar-collapsed .quick-actions-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .main-content.sidebar-collapsed .quick-actions-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .main-content.sidebar-collapsed .quick-action-item {
+        padding: 20px;
+    }
+    
+    .main-content.sidebar-collapsed .quick-action-icon {
+        width: 56px;
+        height: 56px;
+        font-size: 1.4rem;
+    }
+    
+    .main-content.sidebar-collapsed .quick-action-content h3 {
+        font-size: 1.1rem;
+    }
+    
+    .main-content.sidebar-collapsed .quick-action-content p {
+        font-size: 0.9rem;
+    }
+}
+
 @media (max-width: 1100px) {
     .gameday-reports-tools-grid {
         grid-template-columns: 1fr;

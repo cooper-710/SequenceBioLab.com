@@ -12,9 +12,10 @@ from io import BytesIO
 from app.middleware.auth import login_required, admin_required, invalidate_user_cache, refresh_user_cache_with_db
 from app.services.page_service import (
     build_player_home_context,
+    build_gameday_context,
     load_full_season_schedule,
     purge_concluded_series_documents,
-    format_player_document
+    format_player_document,
 )
 from app.config import Config
 from app.services.analytics_service import (
@@ -625,9 +626,8 @@ def gameday():
     show_date_redirect_note = False
     requested_tab = "current"
 
-    # Load dashboard context data (calendar, deliverables, next_series)
-    from app.services.page_service import build_player_home_context
-    dashboard_context = build_player_home_context(target_user) if target_user else {}
+    # Load lightweight gameday context data (next_series, calendar, deliverables)
+    gameday_ctx = build_gameday_context(target_user) if target_user else {}
 
     return render_template(
         'gameday.html',
@@ -648,10 +648,10 @@ def gameday():
         viewer_user=viewer_user,
         show_date_redirect_note=show_date_redirect_note,
         default_schedule_tab=requested_tab or "current",
-        # Dashboard context data
-        next_series=dashboard_context.get("next_series"),
-        schedule_calendar=dashboard_context.get("schedule_calendar", []),
-        deliverables=dashboard_context.get("deliverables", []),
+        # Gameday context data
+        next_series=gameday_ctx.get("next_series"),
+        schedule_calendar=gameday_ctx.get("schedule_calendar", []),
+        deliverables=gameday_ctx.get("deliverables", []),
     )
 
 

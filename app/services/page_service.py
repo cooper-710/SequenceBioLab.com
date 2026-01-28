@@ -1723,6 +1723,55 @@ def load_player_news(user: Dict[str, Any]) -> List[Dict[str, Any]]:
     return result
 
 
+def build_gameday_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Build a lightweight context for the Gameday page only.
+
+    This intentionally avoids the heavier work in build_player_home_context
+    (player news, full dashboard highlights, etc.) to keep the /gameday
+    route fast. It focuses on:
+      - next_series: for the countdown clock (first game of current/next series)
+      - schedule_calendar: full-season schedule for the calendar + upcoming games
+      - deliverables: latest reports/documents list
+    """
+    if not user:
+        return {
+            "next_series": {},
+            "schedule_calendar": [],
+            "deliverables": [],
+        }
+
+    user_id = user.get("id")
+    cache_payload: Optional[Dict[str, Any]] = {"user_id": int(user_id)} if user_id else None
+
+    # Short‑TTL persistent cache to avoid repeated DB / API work for this page.
+    if cache_payload:
+        cached_ctx = persistent_cache_get_json("gameday_context", cache_payload)
+        if isinstance(cached_ctx, dict) and cached_ctx:
+            return cached_ctx
+
+    next_series = load_next_series_snapshot(user)
+    _, deliverables, _ = load_player_deliverables(user)
+    schedule_calendar = load_schedule_calendar(user)
+    if not isinstance(schedule_calendar, list):
+        schedule_calendar = []
+
+    ctx = {
+        "next_series": next_series or {},
+        "schedule_calendar": schedule_calendar,
+        "deliverables": deliverables,
+    }
+
+    if cache_payload:
+        try:
+            # Keep this fresher than the full dashboard; 15 minutes is enough.
+            from app.services.persistent_cache import set_json as persistent_cache_set_json
+            persistent_cache_set_json("gameday_context", cache_payload, ctx, ttl_seconds=15 * 60)
+        except Exception:
+            pass
+
+    return ctx
+
+
 def build_player_home_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Build the complete home page context for a user."""
     if not user:
