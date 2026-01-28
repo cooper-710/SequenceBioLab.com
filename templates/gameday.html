@@ -105,7 +105,7 @@
                     </header>
                     {% if deliverables %}
                         <div class="deliverables-list">
-                            {% for item in deliverables[:4] %}
+                            {% for item in deliverables[:3] %}
                             <a href="{{ item.link }}" class="deliverable-item{% if '/player-docs/' in item.link or '/api/admin/player-docs/' in item.link %} player-docs-download{% endif %}"{% if '/player-docs/' in item.link or '/api/admin/player-docs/' in item.link %} download{% endif %}>
                                 <div class="deliverable-image">
                                     <div class="deliverable-image-icon">
