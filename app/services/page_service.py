@@ -244,13 +244,14 @@ def load_schedule_calendar(user: Dict[str, Any]) -> List[Dict[str, Any]]:
 def load_gameday_schedule_window(user: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Load only the portion of the schedule needed for Gameday.
 
-    This uses a much shorter window than the full-season loader so that
+    This uses a shorter window than the full-season loader so that
     first-time loads are faster while still providing enough future games
-    for the calendar and upcoming-games sidebar.
+    for the calendar and upcoming-games sidebar. Increased to 180 days to
+    ensure we capture the next game even if it's further out.
     """
     try:
         today = datetime.now().date()
-        end_date = today + timedelta(days=90)
+        end_date = today + timedelta(days=180)
         return load_full_season_schedule(
             user,
             start_date=today.isoformat(),
@@ -522,7 +523,11 @@ def build_series_from_games(raw_games: List[Dict[str, Any]], today: date) -> Lis
 
 
 def collect_series_for_gameday(user: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Return a cached list of series for the Gameday schedule card."""
+    """Return a cached list of series for the Gameday schedule card.
+    
+    Uses the same schedule window as the calendar to ensure consistency.
+    Falls back to building from the calendar's data source if cache is empty.
+    """
     try:
         team_abbr = determine_user_team(user)
     except Exception as exc:
@@ -530,7 +535,8 @@ def collect_series_for_gameday(user: Dict[str, Any]) -> List[Dict[str, Any]]:
         return []
 
     today = datetime.now().date()
-    end_date = today + timedelta(days=365)
+    # Use same window as calendar (180 days) for consistency
+    end_date = today + timedelta(days=180)
 
     cache_payload = {
         "team_abbr": (team_abbr or "").upper(),
@@ -539,11 +545,15 @@ def collect_series_for_gameday(user: Dict[str, Any]) -> List[Dict[str, Any]]:
     }
 
     def _builder() -> List[Dict[str, Any]]:
-        raw_games = load_full_season_schedule(
-            user,
-            start_date=today.isoformat(),
-            end_date=end_date.isoformat(),
-        ) or []
+        # Use the same loader as the calendar to ensure consistency
+        raw_games = load_gameday_schedule_window(user) or []
+        if not raw_games:
+            # Fallback: try full season schedule if the shorter window returns nothing
+            raw_games = load_full_season_schedule(
+                user,
+                start_date=today.isoformat(),
+                end_date=(today + timedelta(days=365)).isoformat(),
+            ) or []
         return build_series_from_games(raw_games, today)
 
     series = persistent_get_or_set_json(
@@ -552,6 +562,27 @@ def collect_series_for_gameday(user: Dict[str, Any]) -> List[Dict[str, Any]]:
         ttl_seconds=6 * 60 * 60,
         builder=_builder,
     )
+    
+    # If cached result is empty, try building fresh as fallback
+    if not series or not isinstance(series, list) or len(series) == 0:
+        logger.warning(f"Gameday series cache returned empty, rebuilding fresh for {team_abbr}")
+        try:
+            raw_games = load_gameday_schedule_window(user) or []
+            if raw_games:
+                series = build_series_from_games(raw_games, today)
+            else:
+                # Last resort: try full season
+                raw_games = load_full_season_schedule(
+                    user,
+                    start_date=today.isoformat(),
+                    end_date=(today + timedelta(days=365)).isoformat(),
+                ) or []
+                if raw_games:
+                    series = build_series_from_games(raw_games, today)
+        except Exception as exc:
+            logger.warning(f"Warning rebuilding gameday series fallback: {exc}")
+            series = []
+    
     return series if isinstance(series, list) else []
 
 
