@@ -197,14 +197,8 @@ def load_schedule_calendar(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                         "venue": "TBD",
                     })
         elif next_games:
-            # Reuse the full-season schedule loader (now persistently cached)
-            today = datetime.now().date()
-            end_date = today + timedelta(days=365)
-            games = load_full_season_schedule(
-                user,
-                start_date=today.isoformat(),
-                end_date=end_date.isoformat(),
-            )
+            # Use a shorter schedule window for the Gameday calendar to keep first load fast.
+            games = load_gameday_schedule_window(user)
         else:
             return []
         
@@ -244,6 +238,26 @@ def load_schedule_calendar(user: Dict[str, Any]) -> List[Dict[str, Any]]:
         return calendar_data
     except Exception as e:
         logger.warning(f"Warning loading schedule calendar: {e}")
+        return []
+
+
+def load_gameday_schedule_window(user: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Load only the portion of the schedule needed for Gameday.
+
+    This uses a much shorter window than the full-season loader so that
+    first-time loads are faster while still providing enough future games
+    for the calendar and upcoming-games sidebar.
+    """
+    try:
+        today = datetime.now().date()
+        end_date = today + timedelta(days=90)
+        return load_full_season_schedule(
+            user,
+            start_date=today.isoformat(),
+            end_date=end_date.isoformat(),
+        )
+    except Exception as exc:
+        logger.warning(f"Warning loading gameday schedule window: {exc}")
         return []
 
 
@@ -360,6 +374,185 @@ def load_full_season_schedule(user: Dict[str, Any], start_date: Optional[str] = 
     except Exception as e:
         logger.warning(f"Warning loading full season schedule: {e}")
         return []
+
+
+def build_series_from_games(raw_games: List[Dict[str, Any]], today: date) -> List[Dict[str, Any]]:
+    """Group raw games into opponent series and categorize them for Gameday."""
+    if not raw_games:
+        return []
+
+    series_groups: List[Dict[str, Any]] = []
+    current_series: Optional[Dict[str, Any]] = None
+    last_opponent_id = None
+    last_game_date: Optional[date] = None
+
+    sorted_games = sorted(raw_games, key=lambda g: g.get("game_date", ""))
+    for game in sorted_games:
+        date_str = game.get("game_date") or game.get("game_date_iso") or game.get("date")
+        if not date_str:
+            continue
+        try:
+            if isinstance(date_str, str):
+                game_date = datetime.fromisoformat(
+                    date_str.split("T")[0] if "T" in date_str else date_str
+                ).date()
+            else:
+                game_date = date_str if isinstance(date_str, date) else datetime.combine(
+                    date_str, datetime.min.time()
+                ).date()
+        except Exception:
+            continue
+
+        opponent_id = game.get("opponent_id")
+        if last_opponent_id is not None and (
+            opponent_id != last_opponent_id
+            or (last_game_date and (game_date - last_game_date).days > 1)
+        ):
+            if current_series:
+                series_groups.append(current_series)
+            current_series = None
+
+        if not current_series:
+            current_series = {
+                "opponent_id": opponent_id,
+                "opponent_name": game.get("opponent_name") or game.get("opponent"),
+                "opponent_abbr": game.get("opponent_abbr"),
+                "games": [],
+                "start_date": game_date,
+                "end_date": game_date,
+            }
+
+        current_series["games"].append(game)
+        current_series["end_date"] = max(current_series["end_date"], game_date)
+        last_opponent_id = opponent_id
+        last_game_date = game_date
+
+    if current_series:
+        series_groups.append(current_series)
+
+    # Determine if there is an active series and which future series is next.
+    next_upcoming_series_key = None
+    has_current_series = False
+    for series in series_groups:
+        if not series["games"]:
+            continue
+        series_start = series["start_date"]
+        series_end = series["end_date"]
+        if series_start <= today <= series_end:
+            has_current_series = True
+            break
+        elif series_start > today and next_upcoming_series_key is None:
+            next_upcoming_series_key = (series["opponent_id"], series["start_date"])
+
+    formatted: List[Dict[str, Any]] = []
+    for series in series_groups:
+        if not series["games"]:
+            continue
+
+        first_game = series["games"][0]
+        series_start = series["start_date"]
+        series_end = series["end_date"]
+
+        if series_end < today:
+            category = "past"
+        elif series_start <= today <= series_end:
+            category = "current"
+        elif (
+            not has_current_series
+            and next_upcoming_series_key
+            and (series["opponent_id"], series["start_date"]) == next_upcoming_series_key
+        ):
+            category = "current"
+        else:
+            category = "future"
+
+        if series_start == series_end:
+            display_date = series_start.strftime("%a, %b %d")
+        else:
+            display_date = f"{series_start.strftime('%a, %b %d')} - {series_end.strftime('%b %d')}"
+
+        game_time = first_game.get("game_datetime")
+        display_time = "TBD"
+        if game_time:
+            try:
+                display_time = datetime.fromisoformat(
+                    game_time.replace("Z", "+00:00")
+                ).astimezone().strftime("%I:%M %p %Z")
+            except Exception:
+                display_time = "TBD"
+
+        series_label = (
+            f"{len(series['games'])}-game series"
+            if len(series["games"]) > 1
+            else "Single game"
+        )
+        status = first_game.get("status", "Scheduled")
+
+        probables_raw = first_game.get("probable_pitchers") or []
+        probables: List[str] = []
+        for p in probables_raw:
+            if isinstance(p, dict):
+                name = p.get("name")
+                if name:
+                    probables.append(name)
+            elif isinstance(p, str):
+                probables.append(p)
+
+        formatted.append(
+            {
+                "date": display_date,
+                "time": display_time,
+                "opponent": series["opponent_name"],
+                "opponent_abbr": team_abbr_from_id(series["opponent_id"]),
+                "opponent_id": series["opponent_id"],
+                "home": first_game.get("is_home"),
+                "venue": first_game.get("venue"),
+                "series": series_label,
+                "status": status,
+                "game_pk": first_game.get("game_pk"),
+                "probable_pitchers": probables,
+                "reports": [],
+                "category": category,
+                "_series_start_date": series_start,
+                "_series_end_date": series_end,
+            }
+        )
+
+    return formatted
+
+
+def collect_series_for_gameday(user: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return a cached list of series for the Gameday schedule card."""
+    try:
+        team_abbr = determine_user_team(user)
+    except Exception as exc:
+        logger.warning(f"Warning resolving team for gameday series: {exc}")
+        return []
+
+    today = datetime.now().date()
+    end_date = today + timedelta(days=365)
+
+    cache_payload = {
+        "team_abbr": (team_abbr or "").upper(),
+        "start_date": today.isoformat(),
+        "end_date": end_date.isoformat(),
+    }
+
+    def _builder() -> List[Dict[str, Any]]:
+        raw_games = load_full_season_schedule(
+            user,
+            start_date=today.isoformat(),
+            end_date=end_date.isoformat(),
+        ) or []
+        return build_series_from_games(raw_games, today)
+
+    series = persistent_get_or_set_json(
+        "gameday_series",
+        cache_payload,
+        ttl_seconds=6 * 60 * 60,
+        builder=_builder,
+    )
+    return series if isinstance(series, list) else []
 
 
 def format_player_document(doc: Dict[str, Any]) -> Dict[str, Any]:

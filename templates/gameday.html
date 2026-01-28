@@ -1321,7 +1321,7 @@
 }
 .quick-actions-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
 }
 .quick-action-item {
@@ -1370,9 +1370,9 @@
     color: var(--color-text-subtle);
 }
 
-/* Full screen mode (sidebar collapsed) - make quick actions bigger */
+/* Full screen mode (sidebar collapsed) - make quick actions bigger, but not cramped */
 .main-content.sidebar-collapsed .quick-actions-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 20px;
 }
 
@@ -1398,10 +1398,10 @@
     font-size: 0.95rem;
 }
 
-/* Responsive adjustments for full screen mode */
-@media (max-width: 1400px) {
+/* On ultra-wide screens, we can safely show 3 columns */
+@media (min-width: 1920px) {
     .main-content.sidebar-collapsed .quick-actions-grid {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 }
 
@@ -2299,16 +2299,11 @@ document.addEventListener('DOMContentLoaded', function () {
             });
     }
 
-    // Load schedule on page load (deferred for better initial render performance)
-    if (window.requestIdleCallback) {
-        requestIdleCallback(function() {
-            loadGamedaySchedule();
-        }, { timeout: 2000 });
-    } else {
-        // Fallback for browsers without requestIdleCallback
-        setTimeout(function() {
-            loadGamedaySchedule();
-        }, 100);
+    // Load schedule as soon as the DOM is ready so the card appears quickly.
+    try {
+        loadGamedaySchedule();
+    } catch (e) {
+        console.error("Error loading gameday schedule:", e);
     }
     // initSchedule will be called after schedule loads via loadGamedaySchedule
 });

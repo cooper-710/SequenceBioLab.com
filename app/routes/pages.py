@@ -16,6 +16,7 @@ from app.services.page_service import (
     load_full_season_schedule,
     purge_concluded_series_documents,
     format_player_document,
+    collect_series_for_gameday,
 )
 from app.config import Config
 from app.services.analytics_service import (
@@ -679,147 +680,11 @@ def gameday_schedule():
             except Exception:
                 pass
 
-    team_abbr = determine_user_team(target_user)
     purge_concluded_series_documents()
 
-    # Build upcoming series list (uses cached full season schedule)
-    from datetime import date as date_type
-    today = date_type.today()
-    end_date = today + timedelta(days=365)
-
-    try:
-        raw_games = load_full_season_schedule(
-            target_user,
-            start_date=today.isoformat(),
-            end_date=end_date.isoformat()
-        ) or []
-    except Exception:
-        raw_games = []
-
     upcoming_games: List[Dict[str, Any]] = []
-    if raw_games:
-        series_groups = []
-        current_series = None
-        last_opponent_id = None
-        last_game_date = None
-
-        sorted_games = sorted(raw_games, key=lambda g: g.get("game_date", ""))
-        for game in sorted_games:
-            date_str = game.get("game_date") or game.get("game_date_iso") or game.get("date")
-            if not date_str:
-                continue
-            try:
-                if isinstance(date_str, str):
-                    game_date = datetime.fromisoformat(date_str.split('T')[0] if 'T' in date_str else date_str).date()
-                else:
-                    game_date = date_str if isinstance(date_str, date_type) else datetime.combine(date_str, datetime.min.time()).date()
-            except Exception:
-                continue
-
-            opponent_id = game.get("opponent_id")
-            if (last_opponent_id is not None and
-                (opponent_id != last_opponent_id or
-                 (last_game_date and (game_date - last_game_date).days > 1))):
-                if current_series:
-                    series_groups.append(current_series)
-                current_series = None
-
-            if not current_series:
-                current_series = {
-                    "opponent_id": opponent_id,
-                    "opponent_name": game.get("opponent_name") or game.get("opponent"),
-                    "opponent_abbr": game.get("opponent_abbr"),
-                    "games": [],
-                    "start_date": game_date,
-                    "end_date": game_date,
-                }
-
-            current_series["games"].append(game)
-            current_series["end_date"] = max(current_series["end_date"], game_date)
-            last_opponent_id = opponent_id
-            last_game_date = game_date
-
-        if current_series:
-            series_groups.append(current_series)
-
-        series_groups.sort(key=lambda s: s["start_date"])
-
-        next_upcoming_series_key = None
-        has_current_series = False
-        for series in series_groups:
-            if not series["games"]:
-                continue
-            series_start = series["start_date"]
-            series_end = series["end_date"]
-            if series_start <= today <= series_end:
-                has_current_series = True
-                break
-            elif series_start > today and next_upcoming_series_key is None:
-                next_upcoming_series_key = (series["opponent_id"], series["start_date"])
-
-        formatted = []
-        for series in series_groups:
-            if not series["games"]:
-                continue
-
-            first_game = series["games"][0]
-            series_start = series["start_date"]
-            series_end = series["end_date"]
-
-            if series_end < today:
-                category = "past"
-            elif series_start <= today <= series_end:
-                category = "current"
-            elif not has_current_series and next_upcoming_series_key and (series["opponent_id"], series["start_date"]) == next_upcoming_series_key:
-                category = "current"
-            else:
-                category = "future"
-
-            if series_start == series_end:
-                display_date = series_start.strftime("%a, %b %d")
-            else:
-                display_date = f"{series_start.strftime('%a, %b %d')} - {series_end.strftime('%b %d')}"
-
-            game_time = first_game.get("game_datetime")
-            display_time = "TBD"
-            if game_time:
-                try:
-                    display_time = datetime.fromisoformat(game_time.replace("Z", "+00:00")).astimezone().strftime("%I:%M %p %Z")
-                except Exception:
-                    display_time = "TBD"
-
-            series_label = f"{len(series['games'])}-game series" if len(series["games"]) > 1 else "Single game"
-            status = first_game.get("status", "Scheduled")
-
-            probables_raw = first_game.get("probable_pitchers") or []
-            probables = []
-            for p in probables_raw:
-                if isinstance(p, dict):
-                    name = p.get("name")
-                    if name:
-                        probables.append(name)
-                elif isinstance(p, str):
-                    probables.append(p)
-
-            formatted.append({
-                "date": display_date,
-                "time": display_time,
-                "opponent": series["opponent_name"],
-                "opponent_abbr": team_abbr_from_id(series["opponent_id"]),
-                "opponent_id": series["opponent_id"],
-                "home": first_game.get("is_home"),
-                "venue": first_game.get("venue"),
-                "series": series_label,
-                "status": status,
-                "game_pk": first_game.get("game_pk"),
-                "probable_pitchers": probables,
-                "reports": [],
-                "category": category,
-                "_series_start_date": series_start,
-                "_series_end_date": series_end,
-            })
-
-        upcoming_games = formatted
+    # Use cached series list for gameday (built from full-season schedule).
+    upcoming_games = collect_series_for_gameday(target_user) or []
 
     # Attach admin-uploaded series reports (stored as player documents) to the series cards.
     report_docs: List[Dict[str, Any]] = []
