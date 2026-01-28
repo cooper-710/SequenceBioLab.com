@@ -11,7 +11,8 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from collections import defaultdict
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+# repo_root/app/routes/auth.py -> repo_root is 3 levels up
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 try:
     from database import PlayerDB
 except ImportError:

@@ -12,14 +12,15 @@ bp = Blueprint('players', __name__)
 
 # Import PlayerDB if available
 try:
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+    # repo_root/app/routes/api/players.py -> repo_root is 4 levels up
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
     from database import PlayerDB
 except ImportError:
     PlayerDB = None
 
 # Import CSV data loader if available
 try:
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
     from csv_data_loader import CSVDataLoader
     from app.config import Config
     csv_loader = CSVDataLoader(str(Config.ROOT_DIR))
@@ -247,7 +248,7 @@ def api_player_type():
         return jsonify({"error": "Player name is required"}), 400
     
     try:
-        sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
         from scrape_savant import lookup_batter_id
         import statsapi
         
@@ -362,7 +363,7 @@ def api_matchups_seasons():
     """Get available seasons with matchup data for a player vs opponent (optimized with caching)"""
     
     try:
-        sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
         from scrape_savant import lookup_batter_id, fetch_batter_statcast, fetch_pitcher_statcast
     except ImportError:
         return jsonify({"error": "Statcast module not available"}), 500
@@ -597,7 +598,7 @@ def api_matchups():
     """Get historical matchup data between a player and opponent using Statcast ONLY with proper filtering"""
     
     try:
-        sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
         from scrape_savant import lookup_batter_id, fetch_batter_statcast, fetch_pitcher_statcast
     except ImportError:
         return jsonify({"error": "Statcast module not available"}), 500

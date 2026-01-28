@@ -46,7 +46,8 @@ bp = Blueprint('pages', __name__)
 
 # Import PlayerDB if available
 try:
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+    # repo_root/app/routes/pages.py -> repo_root is 3 levels up
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
     from database import PlayerDB
 except ImportError:
     PlayerDB = None

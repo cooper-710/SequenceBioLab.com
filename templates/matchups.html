@@ -663,6 +663,80 @@
     color: var(--color-text-secondary);
 }
 
+/* Enhanced loading state for matchups */
+.loading-card {
+    max-width: 420px;
+    margin: 0 auto;
+    padding: 2rem 2.25rem;
+    background: var(--color-layer-card);
+    border: 1px solid var(--color-layer-border);
+    border-radius: 16px;
+    box-shadow: var(--shadow-elevated);
+    text-align: center;
+}
+
+.loading-card .loading-spinner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    margin-bottom: 1.25rem;
+    font-size: 1.5rem;
+    color: var(--color-accent);
+}
+
+.loading-card .loading-headline {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 1rem;
+}
+
+.loading-card .loading-season-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.25rem;
+}
+
+.loading-card .loading-season-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: linear-gradient(135deg, rgba(255, 127, 0, 0.15), rgba(255, 149, 0, 0.08));
+    border: 1px solid rgba(255, 127, 0, 0.35);
+    border-radius: 999px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--color-accent);
+}
+
+.loading-card .loading-progress-wrap {
+    width: 100%;
+    height: 6px;
+    background: var(--color-layer-base);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.loading-card .loading-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--color-accent), var(--color-accent-bright));
+    border-radius: 999px;
+    transition: width 0.35s ease;
+}
+
+.loading-card .loading-progress-text {
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+}
+
 .error {
     background: var(--color-danger-soft);
     color: var(--color-danger);
@@ -786,6 +860,34 @@
     box-shadow: 0 6px 16px rgba(255, 127, 0, 0.5);
 }
 
+/* Season filter pills (results area) */
+.season-filter-pill {
+    display: inline-block;
+    padding: 10px 18px;
+    background: linear-gradient(145deg, var(--color-surface), color-mix(in srgb, var(--color-surface) 90%, var(--color-main-bg)));
+    border: 2px solid var(--color-border);
+    border-radius: 999px;
+    color: var(--color-text-secondary);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s ease;
+    line-height: 1;
+}
+
+.season-filter-pill:hover {
+    border-color: var(--color-border-strong);
+    transform: translateY(-1px);
+}
+
+.season-filter-pill.active {
+    background: linear-gradient(145deg, var(--color-accent), var(--color-accent-bright));
+    border-color: var(--color-accent);
+    color: var(--color-text-primary);
+    box-shadow: 0 4px 12px rgba(255, 127, 0, 0.35);
+}
+
 @media (max-width: 768px) {
     .gameday-hero-title {
         margin-bottom: 28px !important;
@@ -880,17 +982,8 @@
                 <strong>Detected Roles:</strong> <span id="roleInfoText"></span>
             </div>
             
-            <div class="form-group">
-                <label>Season</label>
-                <div class="season-selector-wrapper">
-                    <select id="seasonSelect" name="season" class="form-control" required>
-                        <option value="">Select a season...</option>
-                    </select>
-                </div>
-            </div>
-            
             <button type="submit" class="search-btn">
-                Generate Matchup
+                Load Matchups
             </button>
         </form>
     </div>
@@ -898,7 +991,22 @@
     <div id="results" class="results-section">
         <div id="errorMessage" class="error" style="display: none;"></div>
         <div id="loading" class="loading" style="display: none;">
-            <i class="fas fa-spinner fa-spin"></i> Loading matchup data...
+            <div class="loading-card">
+                <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i></div>
+                <div class="loading-headline">Loading matchup data...</div>
+                <div class="loading-season-row" id="loadingSeasonRow" style="display: none;">
+                    <span class="loading-season-badge" id="loadingSeasonBadge"></span>
+                </div>
+                <div class="loading-progress-wrap" id="loadingProgressWrap" style="display: none;">
+                    <div class="loading-progress-bar" id="loadingProgressBar" style="width: 0%;"></div>
+                </div>
+                <div class="loading-progress-text" id="loadingProgressText" style="display: none;"></div>
+            </div>
+        </div>
+
+        <div id="seasonFilterSection" style="display: none; margin-bottom: 1.5rem;">
+            <h2 class="matchup-title" style="font-size: 1.1rem; margin-bottom: 0.75rem;">Season Filter</h2>
+            <div id="seasonFilterPills" class="season-checkboxes"></div>
         </div>
         
         <div id="summarySection" style="display: none;">
@@ -1087,7 +1195,6 @@ async function detectPlayerType(playerName, playerNumber) {
         if (playerNumber === 1) player1Type = null;
         if (playerNumber === 2) player2Type = null;
         updateRoleInfo();
-        updateAvailableSeasons();
         return null;
     }
     
@@ -1104,9 +1211,6 @@ async function detectPlayerType(playerName, playerNumber) {
             }
             
             updateRoleInfo();
-            // Always try to update seasons when a type is detected
-            // This ensures it updates as soon as both types are available
-            updateAvailableSeasons();
             return isPitcher ? 'pitcher' : 'batter';
         }
     } catch (error) {
@@ -1116,107 +1220,191 @@ async function detectPlayerType(playerName, playerNumber) {
     return null;
 }
 
-let seasonsUpdateTimeout = null; // Debounce timer for season updates
+// Global results state (all seasons)
+let allMatchups = [];
+let availableSeasonYears = [];
+let selectedSeasonFilter = 'all';
 
-async function updateAvailableSeasons() {
-    const player1Name = document.getElementById('playerName').value.trim();
-    const player2Name = document.getElementById('opponentName').value.trim();
-    const seasonSelect = document.getElementById('seasonSelect');
-    
-    // Only fetch available seasons if both players are selected and detected
-    if (!player1Name || !player2Name || !player1Type || !player2Type) {
-        // Reset to show all seasons if players not selected
-        initializeSeasonSelect();
-        return;
+async function fetchAvailableSeasons(player1Name, player2Name, role) {
+    const params = new URLSearchParams();
+    params.append('player', player1Name);
+    params.append('opponent', player2Name);
+    params.append('role', role);
+
+    const response = await fetch(`/api/matchups/seasons?${params}`);
+    const data = await response.json();
+    if (!response.ok) {
+        throw new Error(data.error || 'Error fetching available seasons');
     }
-    
-    // Check for same type error - don't fetch seasons in this case
-    if (player1Type === player2Type) {
-        initializeSeasonSelect();
-        return;
-    }
-    
-    // Clear any pending update
-    if (seasonsUpdateTimeout) {
-        clearTimeout(seasonsUpdateTimeout);
-    }
-    
-    // Show loading state immediately when both players are detected
-    seasonSelect.innerHTML = '<option value="">Loading available seasons...</option>';
-    seasonSelect.disabled = true;
-    
-    // Fetch immediately - no debounce needed since we're checking for both types being detected
-    // This ensures it updates as soon as the second player type is detected
-    seasonsUpdateTimeout = setTimeout(async () => {
-        try {
-            // Determine role based on player 1's type
-            const role = player1Type;
-            
-            // Double-check both types are still available (in case user changed inputs)
-            const currentPlayer1Name = document.getElementById('playerName').value.trim();
-            const currentPlayer2Name = document.getElementById('opponentName').value.trim();
-            
-            if (!currentPlayer1Name || !currentPlayer2Name || !player1Type || !player2Type) {
-                return; // Don't update if inputs changed
-            }
-            
-            const params = new URLSearchParams();
-            params.append('player', currentPlayer1Name);
-            params.append('opponent', currentPlayer2Name);
-            params.append('role', role);
-            
-            const response = await fetch(`/api/matchups/seasons?${params}`);
-            if (response.ok) {
-                const data = await response.json();
-                if (data.seasons && data.seasons.length > 0) {
-                    initializeSeasonSelect(data.seasons);
-                } else {
-                    // No matchup data found - show message instead of all seasons
-                    seasonSelect.innerHTML = '<option value="">No matchup data found between these players</option>';
-                    seasonSelect.disabled = true;
-                }
-            } else {
-                // Error fetching seasons - show message
-                seasonSelect.innerHTML = '<option value="">Unable to check available seasons</option>';
-                seasonSelect.disabled = true;
-            }
-        } catch (error) {
-            console.warn('Error fetching available seasons:', error);
-            // On error, show message
-            seasonSelect.innerHTML = '<option value="">Unable to check available seasons</option>';
-            seasonSelect.disabled = true;
-        }
-    }, 100); // Small 100ms delay to ensure state is settled, but fast enough to feel immediate
+    return (data.seasons || []).map(s => parseInt(s, 10)).filter(Boolean);
 }
 
-// Initialize season select dropdown
-function initializeSeasonSelect(availableSeasons = null) {
-    const currentYear = {{ current_year }};
-    const startYear = 2015;
-    const seasonSelect = document.getElementById('seasonSelect');
-    
-    let seasonsToShow = [];
-    
-    if (availableSeasons && availableSeasons.length > 0) {
-        // Only show seasons with available matchup data
-        seasonsToShow = availableSeasons.filter(s => s >= startYear && s <= currentYear);
-        // Sort descending (most recent first)
-        seasonsToShow.sort((a, b) => b - a);
+function buildSeasonFilterUI(seasons) {
+    const section = document.getElementById('seasonFilterSection');
+    const pills = document.getElementById('seasonFilterPills');
+
+    if (!seasons || seasons.length === 0) {
+        section.style.display = 'none';
+        pills.innerHTML = '';
+        return;
+    }
+
+    section.style.display = 'block';
+    pills.innerHTML = '';
+
+    const createPill = (label, value, isActive) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `season-filter-pill ${isActive ? 'active' : ''}`;
+        btn.textContent = label;
+        btn.dataset.season = value;
+        btn.addEventListener('click', () => {
+            selectedSeasonFilter = value;
+            pills.querySelectorAll('.season-filter-pill').forEach(p => p.classList.remove('active'));
+            btn.classList.add('active');
+            renderFromFilter();
+        });
+        return btn;
+    };
+
+    pills.appendChild(createPill('All Seasons', 'all', true));
+    seasons.sort((a, b) => b - a).forEach(year => {
+        pills.appendChild(createPill(String(year), String(year), false));
+    });
+}
+
+function computeSummary(matchups) {
+    if (!matchups || matchups.length === 0) return null;
+
+    let hits = 0;
+    let walks = 0;
+    let strikeouts = 0;
+    let homeRuns = 0;
+    let totalBases = 0;
+    let atBats = 0;
+    let sacFlies = 0;
+
+    for (const ab of matchups) {
+        const outcome = String(ab.outcome || '').toLowerCase();
+
+        const isWalk = outcome.includes('walk') || outcome.includes('hit_by_pitch') || outcome.includes('intent_walk');
+        const isSacFly = outcome.includes('sac_fly');
+
+        if (isWalk) walks++;
+        else if (isSacFly) sacFlies++;
+        else atBats++;
+
+        if (outcome.includes('single')) { hits++; totalBases += 1; }
+        else if (outcome.includes('double')) { hits++; totalBases += 2; }
+        else if (outcome.includes('triple')) { hits++; totalBases += 3; }
+        else if (outcome.includes('home_run')) { hits++; homeRuns++; totalBases += 4; }
+
+        if (outcome.includes('strikeout') || outcome.includes('strike_out')) strikeouts++;
+    }
+
+    const totalPA = atBats + walks + sacFlies;
+    const average = atBats > 0 ? hits / atBats : 0;
+    const onBasePercentage = totalPA > 0 ? (hits + walks) / totalPA : 0;
+    const sluggingPercentage = atBats > 0 ? totalBases / atBats : 0;
+    const ops = onBasePercentage + sluggingPercentage;
+
+    return {
+        total_at_bats: atBats,
+        hits,
+        average,
+        on_base_percentage: onBasePercentage,
+        slugging_percentage: sluggingPercentage,
+        ops,
+        home_runs: homeRuns,
+        strikeouts,
+        walks
+    };
+}
+
+function renderSummary(summary) {
+    const summarySection = document.getElementById('summarySection');
+    const summaryStats = document.getElementById('summaryStats');
+
+    if (!summary || summary.total_at_bats <= 0) {
+        summarySection.style.display = 'none';
+        summaryStats.innerHTML = '';
+        return;
+    }
+
+    summaryStats.innerHTML = `
+        <div class="stat-card">
+            <div class="stat-value">${summary.total_at_bats}</div>
+            <div class="stat-label">At-Bats</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">${summary.hits}</div>
+            <div class="stat-label">Hits</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">${summary.average.toFixed(3)}</div>
+            <div class="stat-label">Average</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">${summary.on_base_percentage.toFixed(3)}</div>
+            <div class="stat-label">OBP</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">${summary.slugging_percentage.toFixed(3)}</div>
+            <div class="stat-label">SLG</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">${summary.ops.toFixed(3)}</div>
+            <div class="stat-label">OPS</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">${summary.home_runs}</div>
+            <div class="stat-label">Home Runs</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">${summary.strikeouts}</div>
+            <div class="stat-label">Strikeouts</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">${summary.walks}</div>
+            <div class="stat-label">Walks</div>
+        </div>
+    `;
+    summarySection.style.display = 'block';
+}
+
+function filterMatchupsBySeason(matchups, seasonFilter) {
+    if (seasonFilter === 'all') return matchups;
+    const year = parseInt(seasonFilter, 10);
+    return matchups.filter(ab => String(ab.game_date || '').startsWith(String(year)));
+}
+
+function renderFromFilter() {
+    const debugSection = document.getElementById('debugSection');
+    debugSection.style.display = 'none'; // debug is per-season; hide when aggregating
+
+    const filtered = filterMatchupsBySeason(allMatchups, selectedSeasonFilter);
+    renderSummary(computeSummary(filtered));
+
+    // Filter already-rendered at-bat cards in the DOM (no re-render needed)
+    const cards = document.querySelectorAll('.at-bat-card');
+    let visibleCount = 0;
+    cards.forEach(card => {
+        const yr = card.getAttribute('data-season') || '';
+        const shouldShow = (selectedSeasonFilter === 'all') || (yr === String(selectedSeasonFilter));
+        card.style.display = shouldShow ? '' : 'none';
+        if (shouldShow) visibleCount++;
+    });
+
+    const errorDiv = document.getElementById('errorMessage');
+    if (visibleCount === 0) {
+        errorDiv.textContent = 'No at-bats found for this season.';
+        errorDiv.style.display = 'block';
     } else {
-        // Show all seasons from startYear to currentYear (most recent first)
-        for (let year = currentYear; year >= startYear; year--) {
-            seasonsToShow.push(year);
+        // Keep any existing errors hidden when we have results
+        if (errorDiv.textContent === 'No at-bats found for this season.') {
+            errorDiv.style.display = 'none';
         }
     }
-    
-    // Generate select options for each season
-    let html = '<option value="">Select a season...</option>';
-    for (const year of seasonsToShow) {
-        html += `<option value="${year}">${year}</option>`;
-    }
-    
-    seasonSelect.innerHTML = html;
-    seasonSelect.disabled = false;
 }
 
 function updateRoleInfo() {
@@ -1318,9 +1506,8 @@ document.addEventListener('click', (e) => {
     }
 });
 
-// Initialize season select on page load
 document.addEventListener('DOMContentLoaded', () => {
-    initializeSeasonSelect();
+    // Season selector removed; filter is shown after data loads
 });
 
 document.getElementById('matchupForm').addEventListener('submit', async (e) => {
@@ -1360,30 +1547,13 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
     // Determine role based on player 1's type
     const role = player1Type; // 'pitcher' or 'batter'
     
-    // Get selected season from dropdown (required)
-    const seasonSelect = document.getElementById('seasonSelect');
-    const selectedSeason = seasonSelect ? seasonSelect.value : null;
-    
-    // Validate season is selected
-    if (!selectedSeason) {
-        const errorDiv = document.getElementById('errorMessage');
-        errorDiv.textContent = 'Please select a season.';
-        errorDiv.style.display = 'block';
-        return;
-    }
-    
-    const params = new URLSearchParams();
-    params.append('player', player1Name);
-    params.append('opponent', player2Name);
-    params.append('role', role);
-    params.append('season', selectedSeason);
-    
     const resultsDiv = document.getElementById('results');
     const loadingDiv = document.getElementById('loading');
     const errorDiv = document.getElementById('errorMessage');
     const summarySection = document.getElementById('summarySection');
     const atBatsSection = document.getElementById('atBatsSection');
     const debugSection = document.getElementById('debugSection');
+    const seasonFilterSection = document.getElementById('seasonFilterSection');
     
     resultsDiv.style.display = 'block';
     loadingDiv.style.display = 'block';
@@ -1391,24 +1561,95 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
     summarySection.style.display = 'none';
     atBatsSection.style.display = 'none';
     debugSection.style.display = 'none';
+    seasonFilterSection.style.display = 'none';
+    selectedSeasonFilter = 'all';
+    allMatchups = [];
+
+    const seasonRowEl = document.getElementById('loadingSeasonRow');
+    const progressWrapEl = document.getElementById('loadingProgressWrap');
+    const progressBarEl = document.getElementById('loadingProgressBar');
+    const progressTextEl = document.getElementById('loadingProgressText');
+    if (seasonRowEl) seasonRowEl.style.display = 'none';
+    if (progressWrapEl) progressWrapEl.style.display = 'none';
+    if (progressBarEl) progressBarEl.style.width = '0%';
+    if (progressTextEl) progressTextEl.style.display = 'none';
     
     try {
-        const response = await fetch(`/api/matchups?${params}`);
-        const data = await response.json();
-        
+        // 1) Fetch seasons with matchup data between these two players
+        const seasons = await fetchAvailableSeasons(player1Name, player2Name, role);
+        if (!seasons || seasons.length === 0) {
+            loadingDiv.style.display = 'none';
+            errorDiv.textContent = 'No matchup data found between these players.';
+            errorDiv.style.display = 'block';
+            return;
+        }
+
+        // 2) Load each season (backend is optimized for 1 season per request)
+        const combined = [];
+        const errors = [];
+        seasons.sort((a, b) => b - a);
+
+        const seasonRow = document.getElementById('loadingSeasonRow');
+        const seasonBadge = document.getElementById('loadingSeasonBadge');
+        const progressWrap = document.getElementById('loadingProgressWrap');
+        const progressBar = document.getElementById('loadingProgressBar');
+        const progressText = document.getElementById('loadingProgressText');
+        const total = seasons.length;
+
+        for (let i = 0; i < seasons.length; i++) {
+            const year = seasons[i];
+            const current = i + 1;
+            const pct = Math.round((current / total) * 100);
+
+            if (seasonRow) { seasonRow.style.display = 'flex'; }
+            if (seasonBadge) { seasonBadge.textContent = year; }
+            if (progressWrap) { progressWrap.style.display = 'block'; }
+            if (progressBar) { progressBar.style.width = pct + '%'; }
+            if (progressText) {
+                progressText.style.display = 'block';
+                progressText.textContent = current + ' of ' + total + ' seasons';
+            }
+
+            const params = new URLSearchParams();
+            params.append('player', player1Name);
+            params.append('opponent', player2Name);
+            params.append('role', role);
+            params.append('season', String(year));
+
+            try {
+                const resp = await fetch(`/api/matchups?${params}`);
+                const seasonData = await resp.json();
+                if (resp.ok && seasonData.matchups && seasonData.matchups.length > 0) {
+                    combined.push(...seasonData.matchups);
+                } else if (seasonData && (seasonData.error || seasonData.message)) {
+                    errors.push(`${year}: ${seasonData.error || seasonData.message}`);
+                }
+            } catch (err) {
+                errors.push(`${year}: ${err.message || err}`);
+            }
+        }
+
         loadingDiv.style.display = 'none';
-        
-        if (!response.ok) {
-            errorDiv.textContent = data.error || 'Error fetching matchup data';
+
+        if (combined.length === 0) {
+            errorDiv.textContent = errors.length ? `No matchup data found. (${errors.join(' | ')})` : 'No matchup data found.';
             errorDiv.style.display = 'block';
             return;
         }
-        
-        if (data.message) {
-            errorDiv.textContent = data.message;
-            errorDiv.style.display = 'block';
-            return;
-        }
+
+        // Sort newest first
+        combined.sort((a, b) => String(b.game_date || '').localeCompare(String(a.game_date || '')));
+
+        // Expose globals for filtering
+        allMatchups = combined;
+        availableSeasonYears = Array.from(new Set(combined.map(ab => parseInt(String(ab.game_date || '').slice(0, 4), 10)).filter(Boolean)));
+        buildSeasonFilterUI(availableSeasonYears);
+
+        // Build a data object compatible with existing rendering code below
+        const data = {
+            matchups: combined,
+            summary: computeSummary(combined) || {},
+        };
         
         // Display summary
         if (data.summary && data.summary.total_at_bats > 0) {
@@ -1918,7 +2159,7 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
                 const combinedStrikeZone = renderCombinedStrikeZone(ab.pitches || []);
                 
                 return `
-                    <div class="at-bat-card">
+                    <div class="at-bat-card" data-season="${String(ab.game_date || '').slice(0, 4)}">
                         <div class="at-bat-header">
                             <div class="at-bat-meta">
                                 <span class="at-bat-date">${dateFormatted}</span>

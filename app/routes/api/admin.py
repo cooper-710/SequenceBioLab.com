@@ -17,7 +17,8 @@ bp = Blueprint('admin', __name__)
 
 # Import dependencies
 import sys
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+# repo_root/app/routes/api/admin.py -> repo_root is 4 levels up
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
 try:
     from database import PlayerDB
 except ImportError:

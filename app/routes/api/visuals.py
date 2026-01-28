@@ -12,7 +12,8 @@ bp = Blueprint('visuals', __name__)
 
 # Import CSV data loader if available
 try:
-    sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+    # repo_root/app/routes/api/visuals.py -> repo_root is 4 levels up
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
     from csv_data_loader import CSVDataLoader
     from app.config import Config
     csv_loader = CSVDataLoader(str(Config.ROOT_DIR))

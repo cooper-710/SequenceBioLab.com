@@ -131,42 +131,37 @@ class CSVDataLoader:
             if season is not None:
                 players[normalized_key]['seasons'].add(season)
         
+        # IMPORTANT: DataFrames are cached on this loader instance. Avoid mutating them
+        # (adding/dropping columns) because requests can run concurrently.
+
         # Search in fangraphs
         fg_df = self._load_fangraphs()
         if fg_df is not None and 'Name' in fg_df.columns:
-            # Create normalized name column for comparison
-            fg_df['_normalized_name'] = fg_df['Name'].astype(str).apply(self._normalize_name)
-            matches = fg_df[fg_df['_normalized_name'].str.contains(search_term_normalized, na=False, regex=False)]
+            normalized_names = fg_df['Name'].astype(str).apply(self._normalize_name)
+            matches = fg_df[normalized_names.str.contains(search_term_normalized, na=False, regex=False)]
             for _, row in matches.iterrows():
                 name = row['Name']
                 season = row.get('Season') if 'Season' in row else None
                 add_player(name, season)
-            # Clean up temporary column
-            if '_normalized_name' in fg_df.columns:
-                fg_df.drop('_normalized_name', axis=1, inplace=True)
         
         # Search in positions
         pos_df = self._load_positions()
         if pos_df is not None and 'player_name' in pos_df.columns:
-            pos_df['_normalized_name'] = pos_df['player_name'].astype(str).apply(self._normalize_name)
-            matches = pos_df[pos_df['_normalized_name'].str.contains(search_term_normalized, na=False, regex=False)]
+            normalized_names = pos_df['player_name'].astype(str).apply(self._normalize_name)
+            matches = pos_df[normalized_names.str.contains(search_term_normalized, na=False, regex=False)]
             for _, row in matches.iterrows():
                 name = row['player_name']
                 add_player(name)
-            if '_normalized_name' in pos_df.columns:
-                pos_df.drop('_normalized_name', axis=1, inplace=True)
         
         # Search in fangraphs_pitchers
         fg_pitchers_df = self._load_fangraphs_pitchers()
         if fg_pitchers_df is not None and 'Name' in fg_pitchers_df.columns:
-            fg_pitchers_df['_normalized_name'] = fg_pitchers_df['Name'].astype(str).apply(self._normalize_name)
-            matches = fg_pitchers_df[fg_pitchers_df['_normalized_name'].str.contains(search_term_normalized, na=False, regex=False)]
+            normalized_names = fg_pitchers_df['Name'].astype(str).apply(self._normalize_name)
+            matches = fg_pitchers_df[normalized_names.str.contains(search_term_normalized, na=False, regex=False)]
             for _, row in matches.iterrows():
                 name = row['Name']
                 season = row.get('Season') if 'Season' in row else None
                 add_player(name, season)
-            if '_normalized_name' in fg_pitchers_df.columns:
-                fg_pitchers_df.drop('_normalized_name', axis=1, inplace=True)
         
         # Search in statscast
         sc_df = self._load_statscast()
@@ -182,15 +177,13 @@ class CSVDataLoader:
             if name_col:
                 # Handle cases where name might be in "Last, First" format
                 try:
-                    sc_df['_normalized_name'] = sc_df[name_col].astype(str).apply(self._normalize_name)
-                    matches = sc_df[sc_df['_normalized_name'].str.contains(search_term_normalized, na=False, regex=False)]
+                    normalized_names = sc_df[name_col].astype(str).apply(self._normalize_name)
+                    matches = sc_df[normalized_names.str.contains(search_term_normalized, na=False, regex=False)]
                     for _, row in matches.iterrows():
                         name = str(row[name_col])
                         # Convert "Last, First" format to "First Last" format
                         name = self._format_name_first_last(name)
                         add_player(name)
-                    if '_normalized_name' in sc_df.columns:
-                        sc_df.drop('_normalized_name', axis=1, inplace=True)
                 except Exception as e:
                     # If search fails, continue without this data source
                     pass

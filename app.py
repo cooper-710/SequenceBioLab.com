@@ -2551,6 +2551,58 @@ def api_teams():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/player-type', methods=['GET'])
+def api_player_type():
+    """Detect if a player is a pitcher or batter (used by Matchups UI)."""
+    player_name = request.args.get('player', '').strip()
+    if not player_name:
+        return jsonify({"error": "Player name is required"}), 400
+
+    # Default safe fallback
+    default_result = {"player": player_name, "is_pitcher": False, "player_type": "batter"}
+
+    # Try live MLB data first (if dependencies are present)
+    try:
+        try:
+            from scrape_savant import lookup_batter_id
+            import statsapi
+            from datetime import datetime
+
+            player_id = lookup_batter_id(player_name)
+            current_year = datetime.now().year
+
+            # If they have pitching stats in recent years, treat as pitcher
+            for year in range(current_year, current_year - 5, -1):
+                try:
+                    pitching_stats = statsapi.player_stat_data(player_id, group='[pitching]', type='season', season=year)
+                    if pitching_stats and pitching_stats.get('stats'):
+                        return jsonify({"player": player_name, "is_pitcher": True, "player_type": "pitcher"})
+                except Exception:
+                    continue
+
+            return jsonify(default_result)
+        except Exception:
+            pass
+
+        # Fallback: infer from CSV (if available)
+        if csv_loader:
+            try:
+                player_data = csv_loader.get_player_data(player_name)
+                positions = []
+                if player_data and player_data.get('fangraphs'):
+                    for row in player_data['fangraphs']:
+                        pos = row.get('Pos')
+                        if pos:
+                            positions.append(str(pos))
+                if any('P' in pos.upper() for pos in positions):
+                    return jsonify({"player": player_name, "is_pitcher": True, "player_type": "pitcher"})
+            except Exception:
+                pass
+
+        return jsonify(default_result)
+    except Exception as e:
+        return jsonify({"error": f"Error detecting player type: {str(e)}"}), 500
+
 # CSV-based Player Search API Routes
 @app.route('/api/csv/search', methods=['GET'])
 def api_csv_search():
