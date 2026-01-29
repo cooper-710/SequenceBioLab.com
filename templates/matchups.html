@@ -805,6 +805,11 @@
     transition: r 0.2s ease;
 }
 
+.mock-pitch-circle {
+    cursor: pointer;
+    pointer-events: all;
+}
+
 .strike-zone-missing {
     width: 100%;
     max-width: 300px;
@@ -1214,7 +1219,7 @@
             <div class="at-bat-header">
                 <div class="at-bat-meta">
                     <span class="at-bat-date">May 12, 2025</span>
-                    <span class="at-bat-number">At-Bat #1</span>
+                    <span class="at-bat-number">Mock At-Bat</span>
                 </div>
             </div>
 
@@ -1303,35 +1308,126 @@
                             <!-- Pitch markers (filled = swing, outline = take) -->
                             <g class="pitch-marker-group">
                                 <!-- Pitch 1: Sinker - Ball (take, outlined, outside zone) -->
-                                <circle cx="50" cy="140" r="10" fill="none" stroke="#FFA500" stroke-width="3" fill-opacity="0" stroke-opacity="0.95"></circle>
-                                <text x="50" y="144" text-anchor="middle" font-size="10" font-weight="700" fill="#FFA500">1</text>
+                                <circle 
+                                    class="mock-pitch-circle"
+                                    cx="50" cy="140" r="10" 
+                                    fill="#000000" stroke="#FFA500" stroke-width="3" 
+                                    fill-opacity="0.03" stroke-opacity="0.95"
+                                    data-pitch-type="Sinker"
+                                    data-velocity="94.8 mph"
+                                    data-ivb="8.9 in"
+                                    data-hvb="14.2 in"
+                                    data-spin="2250 rpm"
+                                    data-axis="215°"
+                                    data-is-hit="false"
+                                    data-exit-velocity="N/A"
+                                    data-launch-angle="N/A"
+                                    data-hit-distance="N/A"
+                                ></circle>
+                                <text x="50" y="144" text-anchor="middle" font-size="10" font-weight="700" fill="#FFA500" pointer-events="none">1</text>
                             </g>
                             <g class="pitch-marker-group">
                                 <!-- Pitch 2: Sinker - Called strike (take, outlined, in zone) -->
-                                <circle cx="80" cy="115" r="10" fill="none" stroke="#FFA500" stroke-width="3" fill-opacity="0" stroke-opacity="0.95"></circle>
-                                <text x="80" y="119" text-anchor="middle" font-size="10" font-weight="700" fill="#FFA500">2</text>
+                                <circle 
+                                    class="mock-pitch-circle"
+                                    cx="80" cy="115" r="10" 
+                                    fill="#000000" stroke="#FFA500" stroke-width="3" 
+                                    fill-opacity="0.03" stroke-opacity="0.95"
+                                    data-pitch-type="Sinker"
+                                    data-velocity="95.6 mph"
+                                    data-ivb="9.4 in"
+                                    data-hvb="14.7 in"
+                                    data-spin="2285 rpm"
+                                    data-axis="218°"
+                                    data-is-hit="false"
+                                    data-exit-velocity="N/A"
+                                    data-launch-angle="N/A"
+                                    data-hit-distance="N/A"
+                                ></circle>
+                                <text x="80" y="119" text-anchor="middle" font-size="10" font-weight="700" fill="#FFA500" pointer-events="none">2</text>
                             </g>
                             <g class="pitch-marker-group">
                                 <!-- Pitch 3: Sinker - Swinging strike (swing, filled, in zone) -->
-                                <circle cx="95" cy="105" r="10" fill="#FFA500" stroke="#FFA500" stroke-width="2.5" fill-opacity="0.9" stroke-opacity="0.95"></circle>
-                                <text x="95" y="109" text-anchor="middle" font-size="10" font-weight="700" fill="#111827">3</text>
+                                <circle 
+                                    class="mock-pitch-circle"
+                                    cx="95" cy="105" r="10" 
+                                    fill="#FFA500" stroke="#FFA500" stroke-width="2.5" 
+                                    fill-opacity="0.9" stroke-opacity="0.95"
+                                    data-pitch-type="Sinker"
+                                    data-velocity="96.1 mph"
+                                    data-ivb="9.8 in"
+                                    data-hvb="15.1 in"
+                                    data-spin="2310 rpm"
+                                    data-axis="220°"
+                                    data-is-hit="false"
+                                    data-exit-velocity="N/A"
+                                    data-launch-angle="N/A"
+                                    data-hit-distance="N/A"
+                                ></circle>
+                                <text x="95" y="109" text-anchor="middle" font-size="10" font-weight="700" fill="#111827" pointer-events="none">3</text>
                             </g>
                             <g class="pitch-marker-group">
                                 <!-- Pitch 4: Four-Seam - Foul (swing, filled, up in zone) -->
-                                <circle cx="130" cy="40" r="10" fill="#FF0000" stroke="#FF0000" stroke-width="2.5" fill-opacity="0.9" stroke-opacity="0.95"></circle>
-                                <text x="130" y="44" text-anchor="middle" font-size="10" font-weight="700" fill="#111827">4</text>
+                                <circle 
+                                    class="mock-pitch-circle"
+                                    cx="130" cy="40" r="10" 
+                                    fill="#FF0000" stroke="#FF0000" stroke-width="2.5" 
+                                    fill-opacity="0.9" stroke-opacity="0.95"
+                                    data-pitch-type="Four-Seam"
+                                    data-velocity="98.6 mph"
+                                    data-ivb="10.7 in"
+                                    data-hvb="15.4 in"
+                                    data-spin="2391 rpm"
+                                    data-axis="238°"
+                                    data-is-hit="false"
+                                    data-exit-velocity="N/A"
+                                    data-launch-angle="N/A"
+                                    data-hit-distance="N/A"
+                                ></circle>
+                                <text x="130" y="44" text-anchor="middle" font-size="10" font-weight="700" fill="#111827" pointer-events="none">4</text>
                             </g>
                             <g class="pitch-marker-group">
                                 <!-- Pitch 5: Sinker - Ball (take, outlined, outside zone to the right) -->
-                                <circle cx="155" cy="120" r="10" fill="none" stroke="#FFA500" stroke-width="3" fill-opacity="0" stroke-opacity="0.95"></circle>
-                                <text x="155" y="124" text-anchor="middle" font-size="10" font-weight="700" fill="#FFA500">5</text>
+                                <circle 
+                                    class="mock-pitch-circle"
+                                    cx="155" cy="120" r="10" 
+                                    fill="#000000" stroke="#FFA500" stroke-width="3" 
+                                    fill-opacity="0.03" stroke-opacity="0.95"
+                                    data-pitch-type="Sinker"
+                                    data-velocity="95.1 mph"
+                                    data-ivb="9.2 in"
+                                    data-hvb="14.9 in"
+                                    data-spin="2268 rpm"
+                                    data-axis="217°"
+                                    data-is-hit="false"
+                                    data-exit-velocity="N/A"
+                                    data-launch-angle="N/A"
+                                    data-hit-distance="N/A"
+                                ></circle>
+                                <text x="155" y="124" text-anchor="middle" font-size="10" font-weight="700" fill="#FFA500" pointer-events="none">5</text>
                             </g>
                             <g class="pitch-marker-group">
                                 <!-- Pitch 6: Sweeper - Take (outlined teal, matching legend) -->
-                                <circle cx="110" cy="70" r="10" fill="none" stroke="#008080" stroke-width="3" fill-opacity="0" stroke-opacity="0.95"></circle>
-                                <text x="110" y="74" text-anchor="middle" font-size="10" font-weight="700" fill="#008080">6</text>
+                                <circle 
+                                    class="mock-pitch-circle"
+                                    cx="110" cy="70" r="10" 
+                                    fill="#000000" stroke="#008080" stroke-width="3" 
+                                    fill-opacity="0.03" stroke-opacity="0.95"
+                                    data-pitch-type="Sweeper"
+                                    data-velocity="84.3 mph"
+                                    data-ivb="-1.2 in"
+                                    data-hvb="-17.8 in"
+                                    data-spin="2650 rpm"
+                                    data-axis="285°"
+                                    data-is-hit="true"
+                                    data-exit-velocity="101.4 mph"
+                                    data-launch-angle="-3°"
+                                    data-hit-distance="112 ft"
+                                ></circle>
+                                <text x="110" y="74" text-anchor="middle" font-size="10" font-weight="700" fill="#008080" pointer-events="none">6</text>
                             </g>
                         </svg>
+                        <div class="pitch-tooltip" id="mockPitchTooltip"></div>
                     </div>
                     <div class="strike-zone-legend">
                         <div class="strike-zone-legend-item">
@@ -2699,6 +2795,124 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
         errorDiv.textContent = 'Error: ' + error.message;
         errorDiv.style.display = 'block';
     }
+});
+</script>
+
+<script>
+// Mock strike zone tooltips (static preview) – mirror real pitch tooltip behavior for the six demo pitches
+document.addEventListener('DOMContentLoaded', () => {
+    const mockWrapper = document.querySelector('.matchup-mock-screen .strike-zone-wrapper');
+    if (!mockWrapper) return;
+
+    const svg = mockWrapper.querySelector('svg');
+    const tooltip = mockWrapper.querySelector('#mockPitchTooltip');
+    if (!svg || !tooltip) return;
+
+    const hideTooltip = () => {
+        tooltip.classList.remove('show');
+    };
+
+    const showTooltipForCircle = (circle) => {
+        const velocity = circle.getAttribute('data-velocity') || 'N/A';
+        const ivb = circle.getAttribute('data-ivb') || 'N/A';
+        const hvb = circle.getAttribute('data-hvb') || 'N/A';
+        const spin = circle.getAttribute('data-spin') || 'N/A';
+        const axis = circle.getAttribute('data-axis') || 'N/A';
+        const pitchType = circle.getAttribute('data-pitch-type') || 'Unknown';
+        const isHit = circle.getAttribute('data-is-hit') === 'true';
+        const exitVelocity = circle.getAttribute('data-exit-velocity') || 'N/A';
+        const launchAngle = circle.getAttribute('data-launch-angle') || 'N/A';
+        const hitDistance = circle.getAttribute('data-hit-distance') || 'N/A';
+
+        let tooltipContent = `
+            <div class="pitch-tooltip-header">${pitchType}</div>
+            <div class="pitch-tooltip-metric">
+                <span class="pitch-tooltip-label">Velo:</span>
+                <span class="pitch-tooltip-value">${velocity}</span>
+            </div>
+            <div class="pitch-tooltip-metric">
+                <span class="pitch-tooltip-label">IVB:</span>
+                <span class="pitch-tooltip-value">${ivb}</span>
+            </div>
+            <div class="pitch-tooltip-metric">
+                <span class="pitch-tooltip-label">HVB:</span>
+                <span class="pitch-tooltip-value">${hvb}</span>
+            </div>
+            <div class="pitch-tooltip-metric">
+                <span class="pitch-tooltip-label">Spin:</span>
+                <span class="pitch-tooltip-value">${spin}</span>
+            </div>
+            <div class="pitch-tooltip-metric">
+                <span class="pitch-tooltip-label">Axis:</span>
+                <span class="pitch-tooltip-value">${axis}</span>
+            </div>
+        `;
+
+        if (isHit && exitVelocity !== 'N/A') {
+            tooltipContent += `
+                <div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--color-layer-border);">
+                    <div class="pitch-tooltip-header" style="margin-bottom: 0.5rem;">Exit Stats</div>
+                    <div class="pitch-tooltip-metric">
+                        <span class="pitch-tooltip-label">Exit Velo:</span>
+                        <span class="pitch-tooltip-value">${exitVelocity}</span>
+                    </div>
+                    <div class="pitch-tooltip-metric">
+                        <span class="pitch-tooltip-label">Launch Angle:</span>
+                        <span class="pitch-tooltip-value">${launchAngle}</span>
+                    </div>
+                    <div class="pitch-tooltip-metric">
+                        <span class="pitch-tooltip-label">Distance:</span>
+                        <span class="pitch-tooltip-value">${hitDistance}</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        tooltip.innerHTML = tooltipContent;
+
+        const viewBox = svg.viewBox.baseVal;
+        const wrapperRect = mockWrapper.getBoundingClientRect();
+        const svgRect = svg.getBoundingClientRect();
+
+        const cx = parseFloat(circle.getAttribute('cx'));
+        const cy = parseFloat(circle.getAttribute('cy'));
+
+        const xPercent = cx / viewBox.width;
+        const yPercent = cy / viewBox.height;
+
+        const xPos = wrapperRect.left + (svgRect.width * xPercent);
+        const yPos = wrapperRect.top + (svgRect.height * yPercent);
+
+        const tooltipWidth = 180;
+        const tooltipHeight = isHit && exitVelocity !== 'N/A' ? 220 : 160;
+        let tooltipX = xPos + 15;
+        let tooltipY = yPos - tooltipHeight / 2;
+
+        if (tooltipX + tooltipWidth > window.innerWidth - 20) {
+            tooltipX = xPos - tooltipWidth - 15;
+        }
+        if (tooltipY + tooltipHeight > window.innerHeight - 20) {
+            tooltipY = window.innerHeight - tooltipHeight - 20;
+        }
+        if (tooltipY < 20) {
+            tooltipY = 20;
+        }
+
+        tooltip.style.left = tooltipX + 'px';
+        tooltip.style.top = tooltipY + 'px';
+        tooltip.classList.add('show');
+    };
+
+    svg.querySelectorAll('.mock-pitch-circle').forEach(circle => {
+        circle.addEventListener('mouseenter', () => showTooltipForCircle(circle));
+        circle.addEventListener('mouseleave', hideTooltip);
+        circle.addEventListener('click', (event) => {
+            event.stopPropagation();
+            showTooltipForCircle(circle);
+        });
+    });
+
+    document.addEventListener('click', hideTooltip);
 });
 </script>
 {% endblock %}
