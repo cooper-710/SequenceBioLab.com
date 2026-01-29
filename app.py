@@ -9450,8 +9450,9 @@ if __name__ == '__main__':
     except (TypeError, ValueError):
         port = 5001
 
+    debug = os.environ.get("FLASK_DEBUG", "1").strip().lower() in ("1", "true", "yes")
     print(f"Starting Scouting Report Web UI...")
     print(f"Reports will be saved to: {OUT_DIR}")
     print(f"Open http://127.0.0.1:{port} in your browser")
-    app.run(debug=True, host='127.0.0.1', port=port)
+    app.run(debug=debug, host='127.0.0.1', port=port)
 
