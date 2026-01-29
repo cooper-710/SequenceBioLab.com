@@ -56,6 +56,218 @@
     margin-bottom: 32px;
     border: 1px solid var(--color-layer-border);
     box-shadow: var(--shadow-elevated);
+    /* Ensure form stays above any previews */
+    position: relative;
+    z-index: 2;
+}
+
+.matchup-mock-screen {
+    background: var(--color-layer-card);
+    border-radius: 12px;
+    padding: 24px;
+    border: 1px solid var(--color-layer-border);
+    box-shadow: var(--shadow-floating);
+    margin-bottom: 32px;
+    display: grid;
+    gap: 16px;
+    margin-top: 24px;
+    /* This is a visual mock only, but we still allow hover for the tooltip */
+    position: relative;
+    z-index: 1;
+}
+
+.matchup-mock-title {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+.matchup-mock-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    gap: 16px;
+}
+
+.matchup-mock-panel {
+    border-radius: 10px;
+    border: 1px solid var(--color-layer-border);
+    background: var(--color-layer-soft);
+    padding: 12px;
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+}
+
+.matchup-mock-panel-header {
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--color-text-primary);
+}
+
+.matchup-mock-caption {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+}
+
+.matchup-mock-caption li {
+    margin-bottom: 4px;
+}
+
+.mock-pitch-tooltip {
+    position: absolute;
+    top: 6%;
+    right: 0;
+    min-width: 150px;
+    max-width: 190px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    background: var(--color-layer-card);
+    border: 1px solid var(--color-layer-border);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.45);
+    font-size: 0.75rem;
+    color: var(--color-text-primary);
+    pointer-events: none;
+    opacity: 1;
+}
+
+.mock-pitch-tooltip-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-accent);
+    margin-bottom: 6px;
+    border-bottom: 1px solid var(--color-layer-border);
+    padding-bottom: 4px;
+}
+
+.mock-pitch-tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 2px;
+}
+
+.mock-pitch-tooltip-label {
+    color: var(--color-text-secondary);
+}
+
+.mock-pitch-tooltip-value {
+    font-weight: 600;
+}
+
+/* Responsive behavior for the mock tooltip so it stays near Pitch 4 without covering the zone */
+@media (max-width: 900px) {
+    .matchup-mock-screen .strike-zone-wrapper {
+        max-width: 320px;
+        margin: 0 auto;
+    }
+
+    .matchup-mock-screen .mock-pitch-tooltip {
+        right: 4px;
+        top: 4%;
+        min-width: 0;
+        width: 38%;
+        max-width: 160px;
+    }
+}
+
+.matchup-mock-summary-line {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.75rem;
+    margin-top: 8px;
+}
+
+.matchup-mock-summary-line span {
+    background: var(--color-layer-card);
+    border-radius: 4px;
+    padding: 3px 6px;
+    text-align: center;
+}
+
+.matchup-mock-timeline {
+    margin-top: 8px;
+    display: grid;
+    gap: 4px;
+}
+
+.matchup-mock-timeline-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: var(--color-layer-card);
+    font-size: 0.75rem;
+}
+
+.matchup-mock-timeline-count {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(255, 127, 0, 0.1);
+    color: var(--color-accent);
+}
+
+.matchup-mock-timeline-pitch {
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+.matchup-mock-strike-zone {
+    margin-top: 8px;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 8px;
+    background: radial-gradient(circle at 50% 0%, rgba(148, 163, 184, 0.15), transparent 55%),
+                var(--color-layer-card);
+    border: 1px solid var(--color-layer-border);
+    position: relative;
+    padding: 10%;
+    box-sizing: border-box;
+}
+
+.matchup-mock-strike-zone-box {
+    position: absolute;
+    inset: 18%;
+    border-radius: 4px;
+    border: 2px solid rgba(148, 163, 184, 0.8);
+}
+
+.matchup-mock-strike-zone-pitch {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(255, 127, 0, 0.95);
+    box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.9);
+}
+
+.matchup-mock-strike-zone-pitch.take {
+    background: transparent;
+    box-shadow: 0 0 0 2px rgba(255, 127, 0, 0.9);
+}
+
+.matchup-mock-table {
+    margin-top: 8px;
+    display: grid;
+    gap: 4px;
+    font-size: 0.75rem;
+}
+
+.matchup-mock-table-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: 4px;
+}
+
+.matchup-mock-table-row span {
+    padding: 3px 6px;
+    border-radius: 4px;
+    background: var(--color-layer-card);
 }
 
 .form-group {
@@ -988,6 +1200,160 @@
         </form>
     </div>
     
+    <section class="matchup-mock-screen" id="matchupMockScreen" aria-hidden="true">
+        <h2 class="matchup-mock-title">What you&apos;ll see after loading a matchup</h2>
+        <!-- Mock season filter pills to match the real UI -->
+        <div class="season-checkboxes" style="margin: 0 0 1rem 0;">
+            <button type="button" class="season-filter-pill">All seasons</button>
+            <button type="button" class="season-filter-pill active">2025</button>
+            <button type="button" class="season-filter-pill">2024</button>
+            <button type="button" class="season-filter-pill">2023</button>
+        </div>
+        <!-- Use the same structure/classes as the real at-bat UI so the preview matches what users will see -->
+        <div class="at-bat-card" style="margin: 0;">
+            <div class="at-bat-header">
+                <div class="at-bat-meta">
+                    <span class="at-bat-date">May 12, 2025</span>
+                    <span class="at-bat-number">At-Bat #1</span>
+                </div>
+            </div>
+
+            <div class="pitches-visualization">
+                <div class="pitches-timeline">
+                    <div class="timeline-label">Pitch Sequence</div>
+                    <div class="pitches-sequence">
+                        <div class="pitch-step">
+                            <div class="pitch-number">Pitch 1</div>
+                            <div class="pitch-count-badge">0-0</div>
+                            <div class="pitch-info">
+                                <span class="pitch-type">Sinker</span>
+                                <span class="pitch-description pitch-ball">Ball</span>
+                            </div>
+                            <span class="pitch-video-link" aria-hidden="true"><i class="fas fa-video"></i></span>
+                        </div>
+
+                        <div class="pitch-step">
+                            <div class="pitch-number">Pitch 2</div>
+                            <div class="pitch-count-badge">1-0</div>
+                            <div class="pitch-info">
+                                <span class="pitch-type">Sinker</span>
+                                <span class="pitch-description pitch-strike">Called strike</span>
+                            </div>
+                            <span class="pitch-video-link" aria-hidden="true"><i class="fas fa-video"></i></span>
+                        </div>
+
+                        <div class="pitch-step">
+                            <div class="pitch-number">Pitch 3</div>
+                            <div class="pitch-count-badge">1-1</div>
+                            <div class="pitch-info">
+                                <span class="pitch-type">Sinker</span>
+                                <span class="pitch-description pitch-strike">Swinging strike</span>
+                            </div>
+                            <span class="pitch-video-link" aria-hidden="true"><i class="fas fa-video"></i></span>
+                        </div>
+
+                        <div class="pitch-step">
+                            <div class="pitch-number">Pitch 4</div>
+                            <div class="pitch-count-badge">1-2</div>
+                            <div class="pitch-info">
+                                <span class="pitch-type">Four-Seam</span>
+                                <span class="pitch-description pitch-contact">Foul</span>
+                            </div>
+                            <span class="pitch-video-link" aria-hidden="true"><i class="fas fa-video"></i></span>
+                        </div>
+
+                        <div class="pitch-step">
+                            <div class="pitch-number">Pitch 5</div>
+                            <div class="pitch-count-badge">1-2</div>
+                            <div class="pitch-info">
+                                <span class="pitch-type">Sinker</span>
+                                <span class="pitch-description pitch-ball">Ball</span>
+                            </div>
+                            <span class="pitch-video-link" aria-hidden="true"><i class="fas fa-video"></i></span>
+                        </div>
+
+                        <div class="pitch-step pitch-final pitch-full-count">
+                            <div class="pitch-number">Pitch 6</div>
+                            <div class="pitch-count-badge count-full">2-2</div>
+                            <div class="pitch-info">
+                                <span class="pitch-type">Sweeper</span>
+                                <span class="pitch-description pitch-contact">Hit into play</span>
+                                <div class="pitch-outcome-badge hit">Grounded Into Double Play</div>
+                            </div>
+                            <span class="pitch-video-link" aria-hidden="true"><i class="fas fa-video"></i></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="strike-zone-container">
+                    <div class="strike-zone-label">Pitch Locations</div>
+                    <div class="strike-zone-wrapper">
+                        <svg class="combined-strike-zone" viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+                            <!-- Strike zone grid (3x3) -->
+                            <g opacity="0.12">
+                                <line x1="80" y1="25" x2="80" y2="135" stroke="var(--color-text-secondary)" stroke-width="0.8"></line>
+                                <line x1="120" y1="25" x2="120" y2="135" stroke="var(--color-text-secondary)" stroke-width="0.8"></line>
+                                <line x1="60" y1="61.7" x2="140" y2="61.7" stroke="var(--color-text-secondary)" stroke-width="0.8"></line>
+                                <line x1="60" y1="98.3" x2="140" y2="98.3" stroke="var(--color-text-secondary)" stroke-width="0.8"></line>
+                            </g>
+
+                            <!-- Strike zone outline -->
+                            <rect x="60" y="25" width="80" height="110" fill="rgba(255,255,255,0.02)" stroke="var(--color-text-secondary)" stroke-width="2" opacity="0.4" rx="2"></rect>
+
+                            <!-- Pitch markers (filled = swing, outline = take) -->
+                            <g class="pitch-marker-group">
+                                <!-- Pitch 1: Sinker - Ball (take, outlined, outside zone) -->
+                                <circle cx="50" cy="140" r="10" fill="none" stroke="#FFA500" stroke-width="3" fill-opacity="0" stroke-opacity="0.95"></circle>
+                                <text x="50" y="144" text-anchor="middle" font-size="10" font-weight="700" fill="#FFA500">1</text>
+                            </g>
+                            <g class="pitch-marker-group">
+                                <!-- Pitch 2: Sinker - Called strike (take, outlined, in zone) -->
+                                <circle cx="80" cy="115" r="10" fill="none" stroke="#FFA500" stroke-width="3" fill-opacity="0" stroke-opacity="0.95"></circle>
+                                <text x="80" y="119" text-anchor="middle" font-size="10" font-weight="700" fill="#FFA500">2</text>
+                            </g>
+                            <g class="pitch-marker-group">
+                                <!-- Pitch 3: Sinker - Swinging strike (swing, filled, in zone) -->
+                                <circle cx="95" cy="105" r="10" fill="#FFA500" stroke="#FFA500" stroke-width="2.5" fill-opacity="0.9" stroke-opacity="0.95"></circle>
+                                <text x="95" y="109" text-anchor="middle" font-size="10" font-weight="700" fill="#111827">3</text>
+                            </g>
+                            <g class="pitch-marker-group">
+                                <!-- Pitch 4: Four-Seam - Foul (swing, filled, up in zone) -->
+                                <circle cx="130" cy="40" r="10" fill="#FF0000" stroke="#FF0000" stroke-width="2.5" fill-opacity="0.9" stroke-opacity="0.95"></circle>
+                                <text x="130" y="44" text-anchor="middle" font-size="10" font-weight="700" fill="#111827">4</text>
+                            </g>
+                            <g class="pitch-marker-group">
+                                <!-- Pitch 5: Sinker - Ball (take, outlined, outside zone to the right) -->
+                                <circle cx="155" cy="120" r="10" fill="none" stroke="#FFA500" stroke-width="3" fill-opacity="0" stroke-opacity="0.95"></circle>
+                                <text x="155" y="124" text-anchor="middle" font-size="10" font-weight="700" fill="#FFA500">5</text>
+                            </g>
+                            <g class="pitch-marker-group">
+                                <!-- Pitch 6: Sweeper - Take (outlined teal, matching legend) -->
+                                <circle cx="110" cy="70" r="10" fill="none" stroke="#008080" stroke-width="3" fill-opacity="0" stroke-opacity="0.95"></circle>
+                                <text x="110" y="74" text-anchor="middle" font-size="10" font-weight="700" fill="#008080">6</text>
+                            </g>
+                        </svg>
+                    </div>
+                    <div class="strike-zone-legend">
+                        <div class="strike-zone-legend-item">
+                            <div class="strike-zone-legend-circle filled"></div>
+                            <span>Swing</span>
+                        </div>
+                        <div class="strike-zone-legend-item">
+                            <div class="strike-zone-legend-circle outlined"></div>
+                            <span>Take</span>
+                        </div>
+                    </div>
+                    <div class="strike-zone-pov">Hitter&apos;s POV</div>
+                </div>
+            </div>
+        </div>
+        <ul class="matchup-mock-caption">
+            <li>Click the <strong>camera icon</strong> on any pitch row to open the pitch video.</li>
+            <li>Hover / click a <strong>pitch dot</strong> in the zone to see full pitch metrics and exit data for balls in play.</li>
+            <li>Use the <strong>season pills</strong> above to flip between individual years or view all seasons together.</li>
+        </ul>
+    </section>
+    
     <div id="results" class="results-section">
         <div id="errorMessage" class="error" style="display: none;"></div>
         <div id="loading" class="loading" style="display: none;">
@@ -1512,6 +1878,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 document.getElementById('matchupForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+
+    // Hide the preview once the user actually runs a matchup
+    const mockEl = document.getElementById('matchupMockScreen');
+    if (mockEl) mockEl.style.display = 'none';
     
     const player1Name = document.getElementById('playerName').value.trim();
     const player2Name = document.getElementById('opponentName').value.trim();
