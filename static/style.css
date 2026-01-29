@@ -4068,7 +4068,7 @@ body[data-theme='light'] .journal-timeline::-webkit-scrollbar-thumb {
 .profile-avatar-shell {
     display: flex;
     gap: 1.5rem;
-    align-items: center;
+    align-items: flex-start;
     flex-wrap: wrap;
 }
 
@@ -4103,6 +4103,19 @@ body[data-theme='light'] .journal-timeline::-webkit-scrollbar-thumb {
     gap: 0.75rem;
 }
 
+.avatar-actions-row {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+}
+
+.avatar-actions-row > .file-input,
+.avatar-actions-row > .btn {
+    width: 100%;
+    justify-content: center;
+}
+
 .avatar-form .file-input {
     position: relative;
     display: inline-flex;
@@ -4117,6 +4130,11 @@ body[data-theme='light'] .journal-timeline::-webkit-scrollbar-thumb {
     font-weight: 500;
     cursor: pointer;
     transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.avatar-actions-row .btn-ghost {
+    padding-inline: 1.4rem;
+    justify-content: center;
 }
 
 .avatar-form .file-input.is-invalid {
@@ -4313,7 +4331,7 @@ body[data-theme='light'] .journal-timeline::-webkit-scrollbar-thumb {
     cursor: pointer;
 }
 
-.theme-pill span {
+.theme-pill > span {
     display: flex;
     gap: 0.6rem;
     align-items: center;
@@ -4327,7 +4345,7 @@ body[data-theme='light'] .journal-timeline::-webkit-scrollbar-thumb {
     color: var(--color-text-primary);
 }
 
-.theme-pill.is-active span,
+.theme-pill.is-active > span,
 .theme-pill input:checked + span {
     border-color: var(--color-accent);
     box-shadow: 0 0 0 3px var(--color-accent-soft);
@@ -4381,12 +4399,12 @@ body[data-theme='light'] .journal-timeline::-webkit-scrollbar-thumb {
     }
 
     .profile-side-column {
-        flex-direction: row;
-        flex-wrap: wrap;
+        flex-direction: column;
+        flex-wrap: nowrap;
     }
 
     .profile-side-column > .profile-panel {
-        flex: 1 1 320px;
+        flex: 1 1 100%;
     }
 }
 

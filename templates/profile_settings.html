@@ -4,11 +4,14 @@
 
 {% block content %}
 <div class="page-container profile-settings">
-    <header class="section-hero">
-        <div class="section-hero-heading">
-            <h1 class="hero-content">Profile Settings</h1>
+    <div class="gameday-hero-title">
+        <div class="gameday-title-main">
+            <div class="gameday-title-icon">
+                <i class="fas fa-user-gear"></i>
+            </div>
+            <span class="gameday-title-text">Profile Settings</span>
         </div>
-    </header>
+    </div>
 
     <div class="content-wrapper">
         <section class="profile-panel profile-panel--primary">
@@ -30,28 +33,29 @@
                         <form method="post" enctype="multipart/form-data" class="avatar-form" data-avatar-form novalidate>
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <input type="hidden" name="form_name" value="avatar">
-                            <label class="file-input" data-avatar-trigger>
-                                <input
-                                    type="file"
-                                    id="profileImageInput"
-                                    name="profile_image"
-                                    accept="image/png,image/jpeg,image/jpg,image/gif,image/webp,image/heic,image/heif"
-                                    data-avatar-input
-                                >
-                                <span class="file-input-label">
-                                    <i class="fas fa-camera"></i>
-                                    <span data-avatar-label>Select photo</span>
-                                </span>
-                            </label>
+                            <div class="avatar-actions-row">
+                                <label class="file-input" data-avatar-trigger>
+                                    <input
+                                        type="file"
+                                        id="profileImageInput"
+                                        name="profile_image"
+                                        accept="image/png,image/jpeg,image/jpg,image/gif,image/webp,image/heic,image/heif"
+                                        data-avatar-input
+                                    >
+                                    <span class="file-input-label">
+                                        <i class="fas fa-camera"></i>
+                                        <span data-avatar-label>Select photo</span>
+                                    </span>
+                                </label>
+                                <button type="submit" class="btn btn-primary btn-ghost" data-avatar-submit>
+                                    <i class="fas fa-upload" aria-hidden="true"></i>
+                                    <span data-avatar-submit-label>Upload</span>
+                                </button>
+                            </div>
                             <p class="help-text" data-avatar-help>
-                                <span data-avatar-instructions>PNG, JPG, GIF, WebP, or HEIC • 5&nbsp;MB max</span>
                                 <span class="file-meta" data-avatar-filemeta></span>
                             </p>
                             <div class="avatar-feedback" data-avatar-feedback aria-live="polite"></div>
-                            <button type="submit" class="btn btn-primary btn-ghost" data-avatar-submit>
-                                <i class="fas fa-upload" aria-hidden="true"></i>
-                                <span data-avatar-submit-label>Upload</span>
-                            </button>
                         </form>
                     </div>
                 </div>
@@ -69,29 +73,6 @@
                             <input type="text" name="last_name" value="{{ current_user.last_name }}" autocomplete="family-name" required>
                         </label>
                     </div>
-
-                    <div class="field-group two-column">
-                        <label class="input-field">
-                            <span class="field-label">Phone</span>
-                            <input type="tel" name="phone" value="{{ current_user.phone or '' }}" autocomplete="tel" placeholder="(555) 123-4567">
-                        </label>
-                        <label class="input-field">
-                            <span class="field-label">Timezone</span>
-                            <div class="select-wrapper">
-                                <select name="timezone">
-                                    <option value="">Select timezone</option>
-                                    {% for tz in timezones %}
-                                    <option value="{{ tz }}" {% if current_user.timezone == tz %}selected{% endif %}>{{ tz }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                        </label>
-                    </div>
-
-                    <label class="input-field">
-                        <span class="field-label">Bio</span>
-                        <textarea name="bio" rows="4" placeholder="Share context about your role, focus areas, and how teammates can best collaborate.">{{ current_user.bio or '' }}</textarea>
-                    </label>
 
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary">
@@ -116,68 +97,43 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <input type="hidden" name="form_name" value="appearance">
                         <div class="theme-toggle-row">
-                            <label class="theme-pill {% if app_theme == 'dark' %}is-active{% endif %}">
+                            <label class="theme-pill">
                                 <input type="radio" name="theme_preference" value="dark" {% if app_theme == 'dark' %}checked{% endif %} data-theme-choice>
-                                <span>
-                                    <i class="fas fa-moon"></i>
-                                    <span>Dark mode</span>
+                                <span class="theme-pill-ui">
+                                    <span class="theme-pill-header">
+                                        <span class="theme-pill-icon">
+                                            <i class="fas fa-moon" aria-hidden="true"></i>
+                                        </span>
+                                        <span class="theme-pill-copy">
+                                            <span class="theme-pill-title">Dark</span>
+                                        </span>
+                                    </span>
+                                    <span class="theme-pill-preview theme-pill-preview--dark" aria-hidden="true">
+                                        <span class="theme-preview-topbar"></span>
+                                        <span class="theme-preview-card theme-preview-card--primary"></span>
+                                        <span class="theme-preview-card theme-preview-card--secondary"></span>
+                                    </span>
                                 </span>
                             </label>
-                            <label class="theme-pill {% if app_theme == 'light' %}is-active{% endif %}">
+                            <label class="theme-pill">
                                 <input type="radio" name="theme_preference" value="light" {% if app_theme == 'light' %}checked{% endif %} data-theme-choice>
-                                <span>
-                                    <i class="fas fa-sun"></i>
-                                    <span>Light mode</span>
+                                <span class="theme-pill-ui">
+                                    <span class="theme-pill-header">
+                                        <span class="theme-pill-icon">
+                                            <i class="fas fa-sun" aria-hidden="true"></i>
+                                        </span>
+                                        <span class="theme-pill-copy">
+                                            <span class="theme-pill-title">Light</span>
+                                        </span>
+                                    </span>
+                                    <span class="theme-pill-preview theme-pill-preview--light" aria-hidden="true">
+                                        <span class="theme-preview-topbar"></span>
+                                        <span class="theme-preview-card theme-preview-card--primary"></span>
+                                        <span class="theme-preview-card theme-preview-card--secondary"></span>
+                                    </span>
                                 </span>
                             </label>
                         </div>
-                        <button type="submit" class="btn btn-secondary full-width">Save appearance</button>
-                    </form>
-                </div>
-            </section>
-
-            <section class="profile-panel notifications-panel">
-                <div class="panel-heading">
-                    <div>
-                        <h2>Notifications</h2>
-                        <p>Decide when Sequence should tap you on the shoulder.</p>
-                    </div>
-                </div>
-                <div class="panel-body">
-                    <form method="post" class="notifications-form">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <input type="hidden" name="form_name" value="notifications">
-                        <div class="switch-card">
-                            <div class="switch-copy">
-                                <strong>Weekly digest</strong>
-                                <p>Highlights of new reports, notes, and upcoming opponents.</p>
-                            </div>
-                            <label class="switch">
-                                <input type="checkbox" name="weekly_digest" {% if notification_prefs.weekly_digest %}checked{% endif %}>
-                                <span class="slider"></span>
-                            </label>
-                        </div>
-                        <div class="switch-card">
-                            <div class="switch-copy">
-                                <strong>Reports ready</strong>
-                                <p>Ping me as soon as a report finishes rendering.</p>
-                            </div>
-                            <label class="switch">
-                                <input type="checkbox" name="reports_ready" {% if notification_prefs.reports_ready %}checked{% endif %}>
-                                <span class="slider"></span>
-                            </label>
-                        </div>
-                        <div class="switch-card">
-                            <div class="switch-copy">
-                                <strong>System updates</strong>
-                                <p>Get alerted for maintenance windows or downtime.</p>
-                            </div>
-                            <label class="switch">
-                                <input type="checkbox" name="system_updates" {% if notification_prefs.system_updates %}checked{% endif %}>
-                                <span class="slider"></span>
-                            </label>
-                        </div>
-                        <button type="submit" class="btn btn-primary full-width">Save notifications</button>
                     </form>
                 </div>
             </section>
@@ -207,7 +163,7 @@
                                 <input type="password" name="confirm_password" autocomplete="new-password" required>
                             </label>
                         </div>
-                        <button type="submit" class="btn btn-secondary full-width">Update password</button>
+                        <button type="submit" class="btn btn-primary full-width">Update password</button>
                     </form>
                 </div>
             </section>
@@ -222,7 +178,7 @@
                 <div class="panel-body">
                     <form method="post" action="{{ url_for('auth.logout') }}" class="logout-form">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <button type="submit" class="btn btn-secondary full-width logout-button">
+                        <button type="submit" class="btn btn-primary full-width logout-button">
                             <i class="fas fa-right-from-bracket"></i>
                             <span>Logout</span>
                         </button>
@@ -238,19 +194,254 @@
     {{ super() }}
     <script src="{{ url_for('static', filename='avatar-upload.js') }}" defer></script>
     <script>
-    document.querySelectorAll('[data-theme-choice]').forEach(function (input) {
-        input.addEventListener('change', function (event) {
-            var theme = event.target.value;
-            if (theme === 'light' || theme === 'dark') {
-                document.body.dataset.theme = theme;
-            }
+    (function () {
+        var appearanceForm = document.querySelector('.appearance-form');
+        if (!appearanceForm) return;
+
+        var isSubmitting = false;
+
+        document.querySelectorAll('[data-theme-choice]').forEach(function (input) {
+            input.addEventListener('change', function (event) {
+                var theme = event.target.value;
+                if (theme === 'light' || theme === 'dark') {
+                    // Apply immediately for preview
+                    document.body.dataset.theme = theme;
+                }
+
+                // Persist immediately (no Save button), without a full page reload.
+                if (isSubmitting) return;
+                isSubmitting = true;
+                try {
+                    var formData = new FormData(appearanceForm);
+                    // Ensure value matches the clicked option
+                    formData.set('theme_preference', theme);
+
+                    fetch(appearanceForm.getAttribute('action') || window.location.href, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: formData
+                    }).catch(function () {
+                        // Non-fatal: theme preview already applied locally
+                    }).finally(function () {
+                        isSubmitting = false;
+                    });
+                } catch (e) {
+                    isSubmitting = false;
+                }
+            });
         });
-    });
+    })();
     </script>
     <style>
+    /* Match Live Scores header styling */
+    .profile-settings .gameday-hero-title {
+        margin-bottom: 32px;
+        padding: 0;
+        position: relative;
+    }
+    .profile-settings .gameday-title-main {
+        background: rgba(255, 127, 0, 0.08);
+        border: 1px solid rgba(255, 127, 0, 0.3);
+        border-radius: 24px;
+        padding: 24px 32px;
+        display: flex;
+        align-items: center;
+        gap: 20px;
+        position: relative;
+        margin: 0;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .profile-settings .gameday-title-icon {
+        width: 56px;
+        height: 56px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, rgba(255, 127, 0, 0.2), rgba(255, 149, 0, 0.1));
+        border: 1px solid rgba(255, 127, 0, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        color: var(--color-accent);
+        font-size: 1.5rem;
+    }
+    .profile-settings .gameday-title-text {
+        font-size: clamp(1.5rem, 3vw, 2rem);
+        font-weight: 700;
+        color: var(--color-text-primary);
+        margin: 0;
+        letter-spacing: -0.01em;
+        line-height: 1.2;
+        flex: 1;
+    }
+
+    /* Appearance panel: upgraded theme picker */
+    .profile-settings .appearance-panel .panel-body {
+        display: grid;
+        gap: 14px;
+    }
+    .profile-settings .appearance-form {
+        display: grid;
+        gap: 14px;
+    }
+    .profile-settings .appearance-panel .theme-toggle-row {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        margin-bottom: 0;
+    }
+    .profile-settings .appearance-panel .theme-pill {
+        position: relative;
+        flex: unset;
+    }
+    .profile-settings .appearance-panel .theme-pill > input {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        cursor: pointer;
+        margin: 0;
+        z-index: 2;
+    }
+    .profile-settings .appearance-panel .theme-pill-ui {
+        position: relative;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        gap: 14px;
+        padding: 18px;
+        border-radius: 20px;
+        border: 1px solid var(--color-layer-border);
+        background: linear-gradient(180deg, var(--color-layer-soft), var(--color-layer-card));
+        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, background 0.2s ease;
+        min-height: 148px;
+    }
+    .profile-settings .appearance-panel .theme-pill:hover .theme-pill-ui {
+        border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-layer-border));
+        box-shadow: 0 10px 22px rgba(0, 0, 0, 0.22);
+        transform: translateY(-2px);
+    }
+    .profile-settings .appearance-panel .theme-pill > input:checked + .theme-pill-ui {
+        border-color: var(--color-accent);
+        border-width: 2px;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.22);
+        background: linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--color-accent) 12%, var(--color-layer-soft)),
+            var(--color-layer-card)
+        );
+    }
+    /* No extra icon/line overlay for selection – border + background handle it */
+    .profile-settings .appearance-panel .theme-pill > input:focus-visible + .theme-pill-ui {
+        outline: 3px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
+        outline-offset: 2px;
+    }
+    .profile-settings .appearance-panel .theme-pill-header {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 10px;
+    }
+    .profile-settings .appearance-panel .theme-pill-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+        border: 1px solid color-mix(in srgb, var(--color-accent) 22%, var(--color-layer-border));
+        color: var(--color-accent);
+        flex-shrink: 0;
+        font-size: 1.05rem;
+    }
+    .profile-settings .appearance-panel .theme-pill-copy {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        flex: 1;
+    }
+    .profile-settings .appearance-panel .theme-pill-title {
+        font-weight: 800;
+        letter-spacing: -0.01em;
+        color: var(--color-text-primary);
+        font-size: 1.15rem;
+        line-height: 1.2;
+    }
+    .profile-settings .appearance-panel .theme-pill-subtitle {
+        color: var(--color-text-subtle);
+        font-size: 0.85rem;
+        line-height: 1.25;
+    }
+    .profile-settings .appearance-panel .theme-pill-preview {
+        position: relative;
+        border-radius: 14px;
+        border: 1px solid var(--color-layer-border);
+        overflow: hidden;
+        height: 72px;
+        padding: 4px;
+    }
+    .profile-settings .appearance-panel .theme-preview-topbar {
+        position: absolute;
+        top: 6px;
+        left: 4px;
+        right: 4px;
+        height: 14px;
+        border-radius: 10px;
+        opacity: 0.95;
+    }
+    .profile-settings .appearance-panel .theme-preview-card {
+        position: absolute;
+        display: block;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+    }
+    .profile-settings .appearance-panel .theme-preview-card--primary {
+        left: 4px;
+        right: 4px;
+        bottom: 6px;
+        height: 32px;
+        z-index: 1;
+    }
+    .profile-settings .appearance-panel .theme-preview-card--secondary {
+        display: none;
+    }
+    .profile-settings .appearance-panel .theme-pill-preview--dark {
+        background: radial-gradient(120px 80px at 20% 0%, rgba(255, 127, 0, 0.18), transparent 65%),
+                    linear-gradient(180deg, rgba(10, 10, 10, 0.95), rgba(6, 6, 6, 0.98));
+    }
+    .profile-settings .appearance-panel .theme-pill-preview--dark .theme-preview-topbar {
+        background: rgba(255, 255, 255, 0.08);
+    }
+    .profile-settings .appearance-panel .theme-pill-preview--dark .theme-preview-card--primary {
+        background: rgba(255, 255, 255, 0.06);
+    }
+    .profile-settings .appearance-panel .theme-pill-preview--dark .theme-preview-card--secondary {
+        background: rgba(255, 255, 255, 0.04);
+    }
+    .profile-settings .appearance-panel .theme-pill-preview--light {
+        background: radial-gradient(120px 80px at 20% 0%, rgba(255, 127, 0, 0.22), transparent 65%),
+                    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(244, 245, 249, 0.96));
+    }
+    .profile-settings .appearance-panel .theme-pill-preview--light .theme-preview-topbar {
+        background: rgba(15, 23, 42, 0.08);
+    }
+    .profile-settings .appearance-panel .theme-pill-preview--light .theme-preview-card--primary {
+        background: rgba(255, 255, 255, 0.98);
+        border-color: rgba(15, 23, 42, 0.12);
+        box-shadow: 0 10px 18px rgba(46, 64, 87, 0.12);
+    }
+    .profile-settings .appearance-panel .theme-pill-preview--light .theme-preview-card--secondary {
+        background: rgba(255, 255, 255, 0.92);
+        border-color: rgba(15, 23, 42, 0.10);
+        box-shadow: 0 8px 16px rgba(46, 64, 87, 0.10);
+    }
+
     /* Mobile responsive styles for profile settings */
     @media (max-width: 768px) {
-        .profile-settings .page-container {
+        .page-container.profile-settings {
             padding: 0 16px 32px !important;
             width: 100% !important;
             max-width: 100% !important;
@@ -258,12 +449,24 @@
             overflow-x: hidden !important;
         }
 
-        .profile-settings .section-hero {
-            padding: 16px !important;
-            margin-bottom: 16px !important;
+        .profile-settings .gameday-hero-title {
+            padding: 0 !important;
+            margin-bottom: 28px !important;
         }
 
-        .profile-settings .section-hero-heading h1 {
+        .profile-settings .gameday-title-main {
+            padding: 20px 24px !important;
+            gap: 16px !important;
+            flex-wrap: wrap !important;
+        }
+
+        .profile-settings .gameday-title-icon {
+            width: 48px !important;
+            height: 48px !important;
+            font-size: 1.25rem !important;
+        }
+
+        .profile-settings .gameday-title-text {
             font-size: 1.5rem !important;
         }
 
@@ -411,15 +614,28 @@
     }
 
     @media (max-width: 480px) {
-        .profile-settings .page-container {
+        .page-container.profile-settings {
             padding: 0 12px 24px !important;
         }
 
-        .profile-settings .section-hero {
-            padding: 12px !important;
+        .profile-settings .gameday-hero-title {
+            padding: 0 !important;
+            margin-bottom: 24px !important;
         }
 
-        .profile-settings .section-hero-heading h1 {
+        .profile-settings .gameday-title-main {
+            padding: 16px 20px !important;
+            gap: 12px !important;
+            flex-wrap: wrap !important;
+        }
+
+        .profile-settings .gameday-title-icon {
+            width: 40px !important;
+            height: 40px !important;
+            font-size: 1.1rem !important;
+        }
+
+        .profile-settings .gameday-title-text {
             font-size: 1.25rem !important;
         }
 

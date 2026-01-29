@@ -1477,21 +1477,19 @@ def profile_settings():
         try:
             db = PlayerDB()
             if form_name == "basic-info":
-                updates = {
-                    "first_name": clean_str(request.form.get("first_name")),
-                    "last_name": clean_str(request.form.get("last_name")),
-                    "pronouns": clean_str(request.form.get("pronouns")),
-                    "job_title": clean_str(request.form.get("job_title")),
-                    "phone": clean_str(request.form.get("phone")),
-                    "timezone": clean_str(request.form.get("timezone")),
-                    "bio": (request.form.get("bio") or "").strip(),
-                }
-                # Normalize optional fields
-                for key, value in list(updates.items()):
-                    if value is not None:
-                        value = value.strip()
-                        updates[key] = value or None
-                success = db.update_user_profile(viewer["id"], **updates)
+                # Only update fields that are present in the submitted form.
+                # This prevents "missing input" fields from being overwritten to NULL.
+                updates = {}
+                if "first_name" in request.form:
+                    updates["first_name"] = (clean_str(request.form.get("first_name")) or "").strip() or None
+                if "last_name" in request.form:
+                    updates["last_name"] = (clean_str(request.form.get("last_name")) or "").strip() or None
+
+                if not updates:
+                    flash("No profile changes detected.", "info")
+                    success = False
+                else:
+                    success = db.update_user_profile(viewer["id"], **updates)
                 if success:
                     # Invalidate and refresh cache to ensure latest data
                     invalidate_user_cache(viewer["id"])
@@ -1531,7 +1529,15 @@ def profile_settings():
                 current_pw = request.form.get("current_password") or ""
                 new_pw = request.form.get("new_password") or ""
                 confirm_pw = request.form.get("confirm_password") or ""
-                stored_hash = viewer.get("password_hash") or ""
+                # `g.user` is usually sourced from session cache and intentionally
+                # excludes `password_hash`. Fetch the full record from DB so the
+                # current password check actually works.
+                full_user = db.get_user_by_id(viewer["id"]) if viewer.get("id") else None
+                stored_hash = ""
+                if isinstance(full_user, dict):
+                    stored_hash = full_user.get("password_hash") or ""
+                if not stored_hash:
+                    stored_hash = viewer.get("password_hash") or ""
 
                 if not check_password_hash(stored_hash, current_pw):
                     flash("Current password is incorrect.", "error")
@@ -1543,6 +1549,7 @@ def profile_settings():
                     db.update_user_password(viewer["id"], generate_password_hash(new_pw))
                     # Invalidate cache after password change (security best practice)
                     invalidate_user_cache(viewer["id"])
+                    g.user = refresh_user_cache_with_db(db, viewer["id"])
                     flash("Password updated.", "success")
 
             elif form_name == "avatar":
@@ -1611,16 +1618,9 @@ def profile_settings():
 
         return redirect(url_for("pages.profile_settings"))
 
-    common_timezones = [
-        "US/Pacific", "US/Mountain", "US/Central", "US/Eastern",
-        "US/Arizona", "US/Hawaii", "Canada/Eastern", "Europe/London",
-        "Europe/Paris", "Asia/Tokyo", "Australia/Sydney"
-    ]
-
     return render_template(
         "profile_settings.html",
-        notification_prefs=notification_prefs,
-        timezones=common_timezones
+        notification_prefs=notification_prefs
     )
 
 
