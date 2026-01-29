@@ -342,9 +342,18 @@
 }
 .info-card-calendar .panel-header,
 .info-card-upcoming .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
     border-bottom: 2px solid var(--color-accent);
+    padding-top: 0;
     padding-bottom: 12px;
     margin-bottom: 20px;
+    height: 78px;
+    box-sizing: border-box;
+    /* Round the top corners of these primary gameday cards */
+    border-radius: 18px 18px 0 0;
 }
 .info-card-calendar .panel-header h2,
 .info-card-upcoming .panel-header h2 {
@@ -726,9 +735,11 @@
     border-bottom: 2px solid var(--color-accent);
     padding-top: 0;
     padding-bottom: 12px;
-    margin-bottom: 0;
-    height: 48px;
+    margin-bottom: 20px;
+    height: 78px;
     box-sizing: border-box;
+    /* Match the schedule cards and round top corners */
+    border-radius: 18px 18px 0 0;
 }
 .content-panel .panel-header h2 {
     margin: 0;
