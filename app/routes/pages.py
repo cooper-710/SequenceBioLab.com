@@ -2,7 +2,7 @@
 Page routes
 """
 from flask import Blueprint, render_template, request, session, g, redirect, url_for, send_file, make_response, jsonify
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote_plus, quote
 from typing import Optional, List, Dict, Any
 from pathlib import Path
@@ -41,6 +41,8 @@ from werkzeug.utils import secure_filename
 import json
 import uuid
 from app.utils.validators import detect_image_type, convert_heic_to_jpeg
+from app.services.persistent_cache import get_json as persistent_cache_get_json, get_or_set_json as persistent_get_or_set_json
+import hashlib
 
 bp = Blueprint('pages', __name__)
 
@@ -631,6 +633,21 @@ def gameday():
     # Load lightweight gameday context data (next_series, calendar, deliverables)
     gameday_ctx = build_gameday_context(target_user) if target_user else {}
 
+    # If we've already built the Series card HTML recently, inline it so the page
+    # renders immediately without waiting for the async schedule fetch.
+    schedule_html_cached = None
+    if target_user and target_user.get("id"):
+        try:
+            schedule_html_cached = persistent_cache_get_json(
+                "gameday_schedule_html",
+                {
+                    "user_id": int(target_user.get("id")),
+                    "date": datetime.now().date().isoformat(),
+                },
+            )
+        except Exception:
+            schedule_html_cached = None
+
     return render_template(
         'gameday.html',
         team_abbr=team_abbr,
@@ -654,6 +671,7 @@ def gameday():
         next_series=gameday_ctx.get("next_series"),
         schedule_calendar=gameday_ctx.get("schedule_calendar", []),
         deliverables=gameday_ctx.get("deliverables", []),
+        gameday_schedule_html=(schedule_html_cached if isinstance(schedule_html_cached, str) else None),
     )
 
 
@@ -681,77 +699,120 @@ def gameday_schedule():
             except Exception:
                 pass
 
-    purge_concluded_series_documents()
+    # This endpoint is on the critical path for "Series" rendering.
+    # Avoid expensive cleanup work here; keep it fast and cache the rendered HTML.
 
-    upcoming_games: List[Dict[str, Any]] = []
-    # Use cached series list for gameday (built from full-season schedule).
-    upcoming_games = collect_series_for_gameday(target_user) or []
+    # Cache key is per-user and per-day (series categorization uses "today").
+    cache_key = None
+    if target_user and target_user.get("id"):
+        cache_key = {
+            "user_id": int(target_user.get("id")),
+            "date": datetime.now().date().isoformat(),
+        }
 
-    # Attach admin-uploaded series reports (stored as player documents) to the series cards.
-    report_docs: List[Dict[str, Any]] = []
-    if PlayerDB and target_user and target_user.get("id"):
-        db = None
-        try:
-            db = PlayerDB()
-            report_docs = db.list_player_documents(int(target_user.get("id")), category=Config.REPORT_DOC_CATEGORY) or []
-        except Exception:
-            report_docs = []
-        finally:
+    def _build_schedule_html() -> str:
+        upcoming_games: List[Dict[str, Any]] = collect_series_for_gameday(target_user) or []
+
+        # Attach admin-uploaded series reports (stored as player documents) to the series cards.
+        report_docs: List[Dict[str, Any]] = []
+        if PlayerDB and target_user and target_user.get("id"):
+            db = None
             try:
-                if db:
-                    db.close()
+                db = PlayerDB()
+                report_docs = db.list_player_documents(
+                    int(target_user.get("id")),
+                    category=Config.REPORT_DOC_CATEGORY
+                ) or []
             except Exception:
-                pass
+                report_docs = []
+            finally:
+                try:
+                    if db:
+                        db.close()
+                except Exception:
+                    pass
 
-    if report_docs and upcoming_games:
-        # Build per-opponent lists and match by series window overlap.
-        by_opp: Dict[str, List[Dict[str, Any]]] = {}
-        for doc in report_docs:
-            opp = (doc.get("series_opponent") or "").strip().upper()
-            if not opp:
-                continue
-            start_ts = doc.get("series_start")
-            end_ts = doc.get("series_end")
-            if not start_ts or not end_ts:
-                continue
-            by_opp.setdefault(opp, []).append(doc)
+        if report_docs and upcoming_games:
+            # Build per-opponent lists and match by series window overlap.
+            by_opp: Dict[str, List[Dict[str, Any]]] = {}
+            for doc in report_docs:
+                opp = (doc.get("series_opponent") or "").strip().upper()
+                if not opp:
+                    continue
+                start_ts = doc.get("series_start")
+                end_ts = doc.get("series_end")
+                if not start_ts or not end_ts:
+                    continue
+                by_opp.setdefault(opp, []).append(doc)
 
-        for game in upcoming_games:
-            opp = (game.get("opponent_abbr") or "").strip().upper()
-            if not opp:
-                continue
-            # Recover the series window from display_date is hard; use category grouping window if present.
-            # We stored start/end dates during formatting as datetime.date.
-            series_start = game.get("_series_start_date")
-            series_end = game.get("_series_end_date")
-            matched: List[Dict[str, Any]] = []
-            if series_start and series_end:
-                for doc in by_opp.get(opp, []):
-                    doc_start = datetime.fromtimestamp(doc["series_start"]).date()
-                    doc_end = datetime.fromtimestamp(doc["series_end"]).date()
-                    if doc_start <= series_end and doc_end >= series_start:
+            for game in upcoming_games:
+                opp = (game.get("opponent_abbr") or "").strip().upper()
+                if not opp:
+                    continue
+                # Recover the series window from display_date is hard; use category grouping window if present.
+                # We stored start/end dates during formatting as datetime.date.
+                series_start = game.get("_series_start_date")
+                series_end = game.get("_series_end_date")
+                matched: List[Dict[str, Any]] = []
+                if series_start and series_end:
+                    for doc in by_opp.get(opp, []):
+                        doc_start = datetime.fromtimestamp(doc["series_start"]).date()
+                        doc_end = datetime.fromtimestamp(doc["series_end"]).date()
+                        if doc_start <= series_end and doc_end >= series_start:
+                            matched.append({
+                                "title": doc.get("filename") or "Report",
+                                "url": url_for("admin.download_player_document", doc_id=doc.get("id")),
+                                "generated_at": None,
+                            })
+                else:
+                    # Fallback: match by opponent only.
+                    for doc in by_opp.get(opp, []):
                         matched.append({
                             "title": doc.get("filename") or "Report",
                             "url": url_for("admin.download_player_document", doc_id=doc.get("id")),
                             "generated_at": None,
                         })
-            else:
-                # Fallback: match by opponent only.
-                for doc in by_opp.get(opp, []):
-                    matched.append({
-                        "title": doc.get("filename") or "Report",
-                        "url": url_for("admin.download_player_document", doc_id=doc.get("id")),
-                        "generated_at": None,
-                    })
-            game["reports"] = matched
+                game["reports"] = matched
 
-    html = render_template(
-        "partials/gameday_schedule_content.html",
-        upcoming_games=upcoming_games,
-        show_date_redirect_note=False,
-        default_schedule_tab="current",
-    )
-    return jsonify({"schedule_html": html})
+        return render_template(
+            "partials/gameday_schedule_content.html",
+            upcoming_games=upcoming_games,
+            show_date_redirect_note=False,
+            default_schedule_tab="current",
+        )
+
+    html = None
+    if cache_key:
+        try:
+            cached_or_built = persistent_get_or_set_json(
+                "gameday_schedule_html",
+                cache_key,
+                ttl_seconds=60,
+                builder=_build_schedule_html,
+            )
+            if isinstance(cached_or_built, str):
+                html = cached_or_built
+        except Exception:
+            html = None
+
+    if html is None:
+        html = _build_schedule_html()
+
+    # Browser-level caching + conditional requests.
+    etag = 'W/"gameday-schedule-{}"'.format(hashlib.md5(html.encode("utf-8")).hexdigest())
+    inm = request.headers.get("If-None-Match")
+    if inm and inm.strip() == etag:
+        resp = make_response("", 304)
+        resp.headers["ETag"] = etag
+        resp.headers["Cache-Control"] = "private, max-age=60"
+        resp.headers["Vary"] = "Cookie"
+        return resp
+
+    resp = jsonify({"schedule_html": html})
+    resp.headers["ETag"] = etag
+    resp.headers["Cache-Control"] = "private, max-age=60"
+    resp.headers["Vary"] = "Cookie"
+    return resp
 
 
 @bp.route('/api/gameday/widgets')
@@ -817,6 +878,14 @@ def gameday_widgets():
         "leaders_html": leaders_html,
         "standings_html": standings_html,
     })
+
+
+@bp.route("/api/time")
+@login_required
+def api_time():
+    """Return server UTC time for client clock skew correction."""
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    return jsonify({"server_unix_ms": now_ms})
 
 
 # Simple template-only routes that don't need helper functions

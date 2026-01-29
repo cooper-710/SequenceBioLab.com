@@ -34,13 +34,17 @@
             <!-- Series Section - Full Width Top Row -->
             <div class="gameday-series-section">
                 <div id="gameday-schedule-content"
-                     data-schedule-endpoint="{{ url_for('pages.gameday_schedule') }}">
-                    <section class="gameday-card">
-                        <div class="card-header">
-                            <h2><i class="fas fa-baseball"></i> Series</h2>
-                        </div>
-                        <p class="empty-state">Loading schedule…</p>
-                    </section>
+                     data-schedule-endpoint="{{ url_for('pages.gameday_schedule') }}"{% if gameday_schedule_html %} data-schedule-loaded="1"{% endif %}>
+                    {% if gameday_schedule_html %}
+                        {{ gameday_schedule_html|safe }}
+                    {% else %}
+                        <section class="gameday-card">
+                            <div class="card-header">
+                                <h2><i class="fas fa-baseball"></i> Series</h2>
+                            </div>
+                            <p class="empty-state">Loading schedule…</p>
+                        </section>
+                    {% endif %}
                 </div>
             </div>
 
@@ -2277,6 +2281,12 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!scheduleContainer) {
             return;
         }
+        // If server already inlined the Series card, just initialize behavior.
+        if (scheduleContainer.dataset && scheduleContainer.dataset.scheduleLoaded === "1") {
+            autoHideRedirectNote();
+            initSchedule();
+            return;
+        }
         var endpoint = scheduleContainer.dataset.scheduleEndpoint;
         if (!endpoint) {
             return;
@@ -2322,10 +2332,41 @@ document.addEventListener('DOMContentLoaded', function () {
     
     if (!countdownDays || !countdownHours || !countdownMinutes) return;
 
+    // Optional clock skew correction using server time.
+    // Falls back to device clock if the endpoint is unreachable.
+    let clockOffsetMs = 0;
+    let hasSyncedClock = false;
+
+    async function syncClockOffset() {
+        const t0 = Date.now();
+        try {
+            const resp = await fetch('/api/time', {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                credentials: 'same-origin'
+            });
+            if (!resp.ok) throw new Error('Time endpoint failed');
+            const payload = await resp.json();
+            const t1 = Date.now();
+            const serverMs = Number(payload && payload.server_unix_ms);
+            if (!Number.isFinite(serverMs)) throw new Error('Invalid server time');
+            // NTP-style offset: server_time - midpoint(client_send, client_receive)
+            clockOffsetMs = serverMs - ((t0 + t1) / 2);
+            hasSyncedClock = true;
+        } catch (e) {
+            if (!hasSyncedClock) {
+                clockOffsetMs = 0;
+            }
+        }
+    }
+
+    function nowMs() {
+        return Date.now() + clockOffsetMs;
+    }
+
     function updateCountdown() {
         try {
             const gameDate = new Date(gameDateTimeIso);
-            const now = new Date();
             
             // Check if date is valid
             if (isNaN(gameDate.getTime())) {
@@ -2333,7 +2374,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
             
-            const diff = gameDate - now;
+            const diff = gameDate.getTime() - nowMs();
 
             if (diff <= 0) {
                 // Game has started or passed
@@ -2355,11 +2396,17 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    // Update immediately
-    updateCountdown();
-    
-    // Update every minute (60000ms) for smooth countdown
-    setInterval(updateCountdown, 60000);
+    (async function initCountdown() {
+        // Sync once on load; don't block countdown if it fails.
+        await syncClockOffset();
+        updateCountdown();
+
+        // Update every minute (60000ms) for smooth countdown
+        setInterval(updateCountdown, 60000);
+
+        // Re-sync periodically to handle drift (e.g., laptop sleep/wake).
+        setInterval(syncClockOffset, 5 * 60 * 1000);
+    })();
 })();
 
 // Calendar widget initialization (deferred for performance)
