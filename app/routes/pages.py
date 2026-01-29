@@ -684,80 +684,27 @@ def gameday_schedule():
 
     # This endpoint is on the critical path for "Series" rendering.
     # Removed purge_concluded_series_documents() - it was blocking and should run in background.
-    # Check ETag FIRST before doing any work, so 304 responses are instant.
+    # Keep this endpoint fast: just build and return the schedule HTML with HTTP caching.
 
-    # Fast ETag check using cached series data (without building HTML or querying DB).
-    # Use a simple cache key based on user + date to generate ETag without DB work.
-    cache_key_for_etag = None
-    if target_user and target_user.get("id"):
-        cache_key_for_etag = f"gameday-schedule-etag-{target_user.get('id')}-{datetime.now().date().isoformat()}"
-    
-    # Try to get cached ETag first (fast lookup)
-    cached_etag = None
-    if cache_key_for_etag:
-        try:
-            from app.services.persistent_cache import get_json as persistent_cache_get_json
-            cached_etag_data = persistent_cache_get_json("gameday_schedule_etag", {"key": cache_key_for_etag})
-            if isinstance(cached_etag_data, str):
-                cached_etag = cached_etag_data
-        except Exception:
-            pass
-    
-    # Check If-None-Match BEFORE doing any expensive work
-    inm = request.headers.get("If-None-Match")
-    if inm and cached_etag and inm.strip() == cached_etag:
-        resp = make_response("", 304)
-        resp.headers["ETag"] = cached_etag
-        resp.headers["Cache-Control"] = "private, max-age=60"
-        resp.headers["Vary"] = "Cookie"
-        return resp
-
-    # Only now do the actual work if we need to build the response
     upcoming_games: List[Dict[str, Any]] = []
     # Use cached series list for gameday (built from full-season schedule).
     upcoming_games = collect_series_for_gameday(target_user) or []
 
-    # Cache report_docs lookup to avoid DB query on every request
+    # Attach admin-uploaded series reports (stored as player documents) to the series cards.
     report_docs: List[Dict[str, Any]] = []
     if PlayerDB and target_user and target_user.get("id"):
-        report_cache_key = f"gameday-report-docs-{target_user.get('id')}"
+        db = None
         try:
-            from app.services.persistent_cache import get_json as persistent_cache_get_json, get_or_set_json as persistent_get_or_set_json
-            
-            def _load_report_docs():
-                db = None
-                try:
-                    db = PlayerDB()
-                    return db.list_player_documents(int(target_user.get("id")), category=Config.REPORT_DOC_CATEGORY) or []
-                except Exception:
-                    return []
-                finally:
-                    try:
-                        if db:
-                            db.close()
-                    except Exception:
-                        pass
-            
-            report_docs = persistent_get_or_set_json(
-                "gameday_report_docs",
-                {"user_id": int(target_user.get("id"))},
-                ttl_seconds=300,  # 5 min cache
-                builder=_load_report_docs,
-            ) or []
+            db = PlayerDB()
+            report_docs = db.list_player_documents(int(target_user.get("id")), category=Config.REPORT_DOC_CATEGORY) or []
         except Exception:
-            # Fallback to direct query if cache fails
-            db = None
+            report_docs = []
+        finally:
             try:
-                db = PlayerDB()
-                report_docs = db.list_player_documents(int(target_user.get("id")), category=Config.REPORT_DOC_CATEGORY) or []
+                if db:
+                    db.close()
             except Exception:
-                report_docs = []
-            finally:
-                try:
-                    if db:
-                        db.close()
-                except Exception:
-                    pass
+                pass
 
     if report_docs and upcoming_games:
         # Build per-opponent lists and match by series window overlap.
@@ -808,16 +755,15 @@ def gameday_schedule():
         default_schedule_tab="current",
     )
     
-    # Generate ETag from HTML and cache it for fast 304 checks next time
+    # Browser-level caching + conditional requests for faster repeat loads.
     etag = 'W/"gameday-schedule-{}"'.format(hashlib.md5(html.encode("utf-8")).hexdigest())
-    
-    # Cache the ETag for fast lookup next time
-    if cache_key_for_etag:
-        try:
-            from app.services.persistent_cache import set_json as persistent_cache_set_json
-            persistent_cache_set_json("gameday_schedule_etag", {"key": cache_key_for_etag}, etag, ttl_seconds=300)
-        except Exception:
-            pass
+    inm = request.headers.get("If-None-Match")
+    if inm and inm.strip() == etag:
+        resp = make_response("", 304)
+        resp.headers["ETag"] = etag
+        resp.headers["Cache-Control"] = "private, max-age=60"
+        resp.headers["Vary"] = "Cookie"
+        return resp
 
     resp = jsonify({"schedule_html": html})
     resp.headers["ETag"] = etag
