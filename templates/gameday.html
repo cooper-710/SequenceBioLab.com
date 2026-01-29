@@ -128,7 +128,7 @@
                 </section>
 
                 <!-- Game Prep Tools -->
-                <section class="gameday-card content-panel">
+                <section class="gameday-card content-panel quick-actions-card">
                     <header class="panel-header">
                         <h2>Tools</h2>
                     </header>
@@ -139,7 +139,6 @@
                             </div>
                             <div class="quick-action-content">
                                 <h3>Live Scores</h3>
-                                <p>Real-time game updates</p>
                             </div>
                         </a>
                         <a href="{{ url_for('pages.matchups') }}" class="quick-action-item">
@@ -148,7 +147,6 @@
                             </div>
                             <div class="quick-action-content">
                                 <h3>Matchups</h3>
-                                <p>Analyze head-to-head</p>
                             </div>
                         </a>
                         <a href="{{ url_for('pitchviz') }}" class="quick-action-item">
@@ -157,7 +155,6 @@
                             </div>
                             <div class="quick-action-content">
                                 <h3>PitchViz</h3>
-                                <p>Pitch visualization</p>
                             </div>
                         </a>
                         <a href="{{ url_for('mocap') }}" class="quick-action-item">
@@ -166,7 +163,6 @@
                             </div>
                             <div class="quick-action-content">
                                 <h3>Mocap</h3>
-                                <p>Motion capture analysis</p>
                             </div>
                         </a>
                         <a href="{{ url_for('player_database') }}" class="quick-action-item">
@@ -175,7 +171,6 @@
                             </div>
                             <div class="quick-action-content">
                                 <h3>Stats</h3>
-                                <p>Player database</p>
                             </div>
                         </a>
                         <a href="{{ url_for('workouts') }}" class="quick-action-item">
@@ -184,7 +179,6 @@
                             </div>
                             <div class="quick-action-content">
                                 <h3>Workouts</h3>
-                                <p>Training & exercises</p>
                             </div>
                         </a>
                     </div>
@@ -719,6 +713,10 @@
     padding: 32px;
     display: grid;
     gap: 24px;
+}
+.quick-actions-card {
+    /* Tighten spacing between header and top row of tiles */
+    gap: 16px;
 }
 .content-panel .panel-header {
     display: flex;
@@ -1350,14 +1348,19 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
+    /* Ensure all tiles are identical height (across rows, too) */
+    grid-auto-rows: 156px;
+    align-items: stretch;
 }
 .quick-actions-grid > * {
     min-width: 0;
 }
 .quick-action-item {
     display: flex;
-    align-items: center;
-    gap: 14px;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 12px;
     padding: 16px;
     border: 1px solid var(--color-layer-border);
     border-radius: 12px;
@@ -1368,6 +1371,7 @@
     min-width: 0;
     max-width: 100%;
     box-sizing: border-box;
+    height: 100%;
 }
 .quick-action-item:hover {
     background: color-mix(in srgb, var(--color-accent) 8%, var(--color-layer-soft));
@@ -1379,34 +1383,47 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 44px;
-    height: 44px;
-    border-radius: 10px;
+    width: 56px;
+    height: 56px;
+    border-radius: 12px;
     background: color-mix(in srgb, var(--color-accent) 18%, transparent);
     color: var(--color-accent);
     font-size: 1.2rem;
     flex-shrink: 0;
+    /* Visually center the icon within the tile */
+    align-self: center;
+    margin-top: auto;
+    margin-bottom: auto;
 }
 .quick-action-content {
-    flex: 1;
+    flex: 0 0 auto;
     min-width: 0;
+    text-align: center;
 }
 .quick-action-content h3 {
-    margin: 0 0 4px 0;
-    font-size: 1rem;
+    margin: 0;
+    font-size: 1.05rem;
     font-weight: 600;
     color: var(--color-text-primary);
+    line-height: 1.2;
+    /* Keep tool labels on a single line at the top of the tile */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
 }
 .quick-action-content p {
     margin: 0;
     font-size: 0.85rem;
     color: var(--color-text-subtle);
+    display: none;
 }
 
 /* Full screen mode (sidebar collapsed) - make quick actions bigger, but not cramped */
 .main-content.sidebar-collapsed .quick-actions-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 20px;
+    gap: 16px;
+    /* Keep every tile the same height in fullscreen */
+    grid-auto-rows: 180px;
 }
 
 .main-content.sidebar-collapsed .quick-action-item {
