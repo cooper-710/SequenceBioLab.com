@@ -499,6 +499,7 @@ def build_series_from_games(raw_games: List[Dict[str, Any]], today: date) -> Lis
             {
                 "date": display_date,
                 "time": display_time,
+                "game_datetime_iso": game_time,
                 "opponent": series["opponent_name"],
                 "opponent_abbr": team_abbr_from_id(series["opponent_id"]),
                 "opponent_id": series["opponent_id"],

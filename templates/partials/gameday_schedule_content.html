@@ -63,7 +63,10 @@
           <div class="matchup-detail-icon"><i class="fas fa-clock"></i></div>
           <div class="matchup-detail-content">
             <div class="matchup-detail-label">Game Time</div>
-            <div class="matchup-detail-value">{{ game.time }}</div>
+            <div
+              class="matchup-detail-value matchup-game-time"
+              data-game-datetime="{{ game.game_datetime_iso or '' }}"
+            >{{ game.time }}</div>
           </div>
         </div>
         {% if game.venue %}

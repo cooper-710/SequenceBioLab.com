@@ -2189,6 +2189,28 @@ document.addEventListener('DOMContentLoaded', function () {
                 item.dataset.bucket = categorize(item);
             });
 
+            // Format all visible game times in the user's device/browser timezone.
+            // The backend provides UTC ISO in data-game-datetime; we render in local time here.
+            var formatScheduleTimes = function () {
+                try {
+                    var timeEls = scheduleCard.querySelectorAll('.matchup-game-time[data-game-datetime]');
+                    timeEls.forEach(function (el) {
+                        var iso = (el.dataset.gameDatetime || '').trim();
+                        if (!iso) return;
+                        var d = new Date(iso);
+                        if (isNaN(d.getTime())) return;
+                        // Example: "3:10 PM EDT"
+                        el.textContent = d.toLocaleTimeString(undefined, {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            timeZoneName: 'short'
+                        });
+                    });
+                } catch (e) {
+                    // Non-fatal: keep server-rendered fallback text
+                }
+            };
+
             var applyScheduleFilter = function (bucket) {
                 var visibleCount = 0;
                 scheduleCard.dataset.scheduleState = bucket;
@@ -2233,6 +2255,9 @@ document.addEventListener('DOMContentLoaded', function () {
                         scheduleEmpty.textContent = 'No ' + (scheduleBucketLabels[bucket] || 'series') + ' in this view yet.';
                     }
                 }
+
+                // Re-run local-time formatting after DOM visibility changes.
+                formatScheduleTimes();
             };
 
             scheduleTabs.forEach(function (tab) {

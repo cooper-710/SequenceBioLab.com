@@ -199,16 +199,14 @@ def get_venue_timezone(venue: Optional[str]) -> Optional[str]:
 def format_game_time_venue(
     game_datetime_utc: Optional[str],
     venue: Optional[str],
-    fallback_timezone: Optional[str] = None,
 ) -> str:
     """
-    Format UTC game datetime in the venue's local time.
-    E.g. "2026-02-21T18:10:00Z" + "Clover Park" -> "1:10 PM EST".
+    Format a game datetime in the viewer/device local time.
+    E.g. "2026-02-21T18:10:00Z" + "Clover Park" -> "1:10 PM EST" (if viewer is ET).
 
-    Priority:
-      1. Venue timezone (if known)
-      2. fallback_timezone (e.g. user's profile timezone)
-      3. Device/server local timezone
+    Display priority:
+      1. Device/server local timezone (what the browser/device is in for local dev)
+      2. Venue timezone (last-resort hint if local conversion fails)
 
     Returns "TBD" if datetime is missing or unparseable.
     """
@@ -223,7 +221,16 @@ def format_game_time_venue(
     except Exception:
         return "TBD"
 
-    # 1. Try venue timezone
+    # 1. Device/server local timezone (approximates viewer device in local/dev setups)
+    try:
+        local = dt.astimezone()  # Uses system local timezone
+        hour = int(local.strftime("%I"))
+        rest = local.strftime("%M %p %Z")
+        return f"{hour}:{rest}"
+    except Exception:
+        pass
+
+    # 2. Last resort: try venue timezone if we have a mapping
     tz_name = get_venue_timezone(venue)
     if tz_name:
         try:
@@ -235,22 +242,4 @@ def format_game_time_venue(
         except Exception:
             pass
 
-    # 2. Try user's fallback timezone (from profile settings)
-    if fallback_timezone:
-        try:
-            from zoneinfo import ZoneInfo
-            local = dt.astimezone(ZoneInfo(fallback_timezone))
-            hour = int(local.strftime("%I"))
-            rest = local.strftime("%M %p %Z")
-            return f"{hour}:{rest}"
-        except Exception:
-            pass
-
-    # 3. Fallback: device/server local timezone
-    try:
-        local = dt.astimezone()  # Uses system local timezone
-        hour = int(local.strftime("%I"))
-        rest = local.strftime("%M %p %Z")
-        return f"{hour}:{rest}"
-    except Exception:
-        return "TBD"
+    return "TBD"
