@@ -16,6 +16,7 @@ import statsapi
 
 from app.config import Config
 from app.utils.formatters import coerce_utc_datetime
+from app.utils.venue_timezones import format_game_time_venue
 from app.services.player_service import determine_user_team
 from app.services.schedule_service import collect_series_for_team, team_abbr_from_id
 from app.services.cache_service import cache_service, CACHE_UPCOMING_GAMES, CACHE_PLAYER_NEWS
@@ -474,14 +475,8 @@ def build_series_from_games(raw_games: List[Dict[str, Any]], today: date) -> Lis
             display_date = f"{series_start.strftime('%a, %b %d')} - {series_end.strftime('%b %d')}"
 
         game_time = first_game.get("game_datetime")
-        display_time = "TBD"
-        if game_time:
-            try:
-                display_time = datetime.fromisoformat(
-                    game_time.replace("Z", "+00:00")
-                ).astimezone().strftime("%I:%M %p %Z")
-            except Exception:
-                display_time = "TBD"
+        venue = first_game.get("venue")
+        display_time = format_game_time_venue(game_time, venue)
 
         series_label = (
             f"{len(series['games'])}-game series"
@@ -1948,86 +1943,6 @@ def load_player_news(user: Dict[str, Any]) -> List[Dict[str, Any]]:
     return result
 
 
-def build_gameday_schedule_html(user: Dict[str, Any]) -> str:
-    """Build the schedule HTML for gameday Series card.
-    
-    This is called from build_gameday_context() to pre-render the HTML
-    so it can be inlined in the initial page load for instant display.
-    """
-    try:
-        from flask import render_template
-        
-        upcoming_games: List[Dict[str, Any]] = collect_series_for_gameday(user) or []
-
-        # Attach admin-uploaded series reports (stored as player documents) to the series cards.
-        report_docs: List[Dict[str, Any]] = []
-        if PlayerDB and user and user.get("id"):
-            db = None
-            try:
-                db = PlayerDB()
-                report_docs = db.list_player_documents(int(user.get("id")), category=Config.REPORT_DOC_CATEGORY) or []
-            except Exception:
-                report_docs = []
-            finally:
-                try:
-                    if db:
-                        db.close()
-                except Exception:
-                    pass
-
-        if report_docs and upcoming_games:
-            # Build per-opponent lists and match by series window overlap.
-            by_opp: Dict[str, List[Dict[str, Any]]] = {}
-            for doc in report_docs:
-                opp = (doc.get("series_opponent") or "").strip().upper()
-                if not opp:
-                    continue
-                start_ts = doc.get("series_start")
-                end_ts = doc.get("series_end")
-                if not start_ts or not end_ts:
-                    continue
-                by_opp.setdefault(opp, []).append(doc)
-
-            for game in upcoming_games:
-                opp = (game.get("opponent_abbr") or "").strip().upper()
-                if not opp:
-                    continue
-                # Recover the series window from display_date is hard; use category grouping window if present.
-                # We stored start/end dates during formatting as datetime.date.
-                series_start = game.get("_series_start_date")
-                series_end = game.get("_series_end_date")
-                matched: List[Dict[str, Any]] = []
-                if series_start and series_end:
-                    for doc in by_opp.get(opp, []):
-                        doc_start = datetime.fromtimestamp(doc["series_start"]).date()
-                        doc_end = datetime.fromtimestamp(doc["series_end"]).date()
-                        if doc_start <= series_end and doc_end >= series_start:
-                            matched.append({
-                                "title": doc.get("filename") or "Report",
-                                "url": url_for("admin.download_player_document", doc_id=doc.get("id")),
-                                "generated_at": None,
-                            })
-                else:
-                    # Fallback: match by opponent only.
-                    for doc in by_opp.get(opp, []):
-                        matched.append({
-                            "title": doc.get("filename") or "Report",
-                            "url": url_for("admin.download_player_document", doc_id=doc.get("id")),
-                            "generated_at": None,
-                        })
-                game["reports"] = matched
-
-        return render_template(
-            "partials/gameday_schedule_content.html",
-            upcoming_games=upcoming_games,
-            show_date_redirect_note=False,
-            default_schedule_tab="current",
-        )
-    except Exception as exc:
-        logger.warning(f"Warning building gameday schedule HTML: {exc}")
-        return ""
-
-
 def build_gameday_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Build a lightweight context for the Gameday page only.
 
@@ -2037,14 +1952,12 @@ def build_gameday_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
       - next_series: for the countdown clock (first game of current/next series)
       - schedule_calendar: full-season schedule for the calendar + upcoming games
       - deliverables: latest reports/documents list
-      - schedule_html: pre-rendered Series card HTML for instant display
     """
     if not user:
         return {
             "next_series": {},
             "schedule_calendar": [],
             "deliverables": [],
-            "schedule_html": None,
         }
 
     user_id = user.get("id")
@@ -2061,16 +1974,11 @@ def build_gameday_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     schedule_calendar = load_schedule_calendar(user)
     if not isinstance(schedule_calendar, list):
         schedule_calendar = []
-    
-    # Pre-render the schedule HTML so it can be inlined for instant display.
-    # This uses the same cached data (collect_series_for_gameday) so it's fast.
-    schedule_html = build_gameday_schedule_html(user) if user else None
 
     ctx = {
         "next_series": next_series or {},
         "schedule_calendar": schedule_calendar,
         "deliverables": deliverables,
-        "schedule_html": schedule_html,
     }
 
     if cache_payload:
