@@ -2232,10 +2232,41 @@ document.addEventListener('click', async (event) => {
     
     if (!countdownDays || !countdownHours || !countdownMinutes) return;
 
+    // Optional clock skew correction using server time.
+    // Falls back to device clock if the endpoint is unreachable.
+    let clockOffsetMs = 0;
+    let hasSyncedClock = false;
+
+    async function syncClockOffset() {
+        const t0 = Date.now();
+        try {
+            const resp = await fetch('/api/time', {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                credentials: 'same-origin'
+            });
+            if (!resp.ok) throw new Error('Time endpoint failed');
+            const payload = await resp.json();
+            const t1 = Date.now();
+            const serverMs = Number(payload && payload.server_unix_ms);
+            if (!Number.isFinite(serverMs)) throw new Error('Invalid server time');
+            // NTP-style offset: server_time - midpoint(client_send, client_receive)
+            clockOffsetMs = serverMs - ((t0 + t1) / 2);
+            hasSyncedClock = true;
+        } catch (e) {
+            if (!hasSyncedClock) {
+                clockOffsetMs = 0;
+            }
+        }
+    }
+
+    function nowMs() {
+        return Date.now() + clockOffsetMs;
+    }
+
     function updateCountdown() {
         try {
             const gameDate = new Date(gameDateTimeIso);
-            const now = new Date();
             
             // Check if date is valid
             if (isNaN(gameDate.getTime())) {
@@ -2243,7 +2274,7 @@ document.addEventListener('click', async (event) => {
                 return;
             }
             
-            const diff = gameDate - now;
+            const diff = gameDate.getTime() - nowMs();
 
             if (diff <= 0) {
                 // Game has started or passed
@@ -2265,11 +2296,17 @@ document.addEventListener('click', async (event) => {
         }
     }
 
-    // Update immediately
-    updateCountdown();
-    
-    // Update every minute (60000ms) for smooth countdown
-    setInterval(updateCountdown, 60000);
+    (async function initCountdown() {
+        // Sync once on load; don't block countdown if it fails.
+        await syncClockOffset();
+        updateCountdown();
+
+        // Update every minute (60000ms) for smooth countdown
+        setInterval(updateCountdown, 60000);
+
+        // Re-sync periodically to handle drift (e.g., laptop sleep/wake).
+        setInterval(syncClockOffset, 5 * 60 * 1000);
+    })();
 })();
 </script>
 {% endblock %}

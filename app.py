@@ -63,6 +63,7 @@ from app.utils.formatters import (
     normalize_journal_visibility, prepare_journal_timeline, augment_journal_entry,
     format_journal_date, coerce_utc_datetime, extract_game_datetime
 )
+from app.utils.venue_timezones import format_game_time_venue
 from app.middleware.csrf import generate_csrf_token, validate_csrf
 from app.middleware.auth import login_required, admin_required
 from app.services.cache_service import cache_service, CACHE_UPCOMING_GAMES
@@ -7720,12 +7721,8 @@ def gameday():
                 display_date = f"{series_start.strftime('%a, %b %d')} - {series_end.strftime('%b %d')}"
             
             game_time = first_game.get("game_datetime")
-            display_time = "TBD"
-            if game_time:
-                try:
-                    display_time = datetime.fromisoformat(game_time.replace("Z", "+00:00")).astimezone().strftime("%I:%M %p %Z")
-                except Exception:
-                    display_time = "TBD"
+            venue = first_game.get("venue")
+            display_time = format_game_time_venue(game_time, venue)
             
             team_abbr_code = _team_abbr_from_id(series["opponent_id"])
             series_label = f"{len(series['games'])}-game series" if len(series["games"]) > 1 else "Single game"
@@ -7751,7 +7748,7 @@ def gameday():
                 "opponent_abbr": team_abbr_code,
                 "opponent_id": series["opponent_id"],
                 "home": first_game.get("is_home"),
-                "venue": first_game.get("venue"),
+                "venue": venue,
                 "series": series_label,
                 "status": status,
                 "game_pk": first_game.get("game_pk"),
@@ -7879,12 +7876,8 @@ def gameday():
                 display_date = f"{series_start.strftime('%a, %b %d')} - {series_end.strftime('%b %d')}"
             
             game_time = first_game.get("game_datetime")
-            display_time = "TBD"
-            if game_time:
-                try:
-                    display_time = datetime.fromisoformat(game_time.replace("Z", "+00:00")).astimezone().strftime("%I:%M %p %Z")
-                except Exception:
-                    display_time = "TBD"
+            venue = first_game.get("venue")
+            display_time = format_game_time_venue(game_time, venue)
             
             team_abbr_code = _team_abbr_from_id(series["opponent_id"])
             series_label = f"{len(series['games'])}-game series" if len(series["games"]) > 1 else "Single game"
@@ -7910,7 +7903,7 @@ def gameday():
                 "opponent_abbr": team_abbr_code,
                 "opponent_id": series["opponent_id"],
                 "home": first_game.get("is_home"),
-                "venue": first_game.get("venue"),
+                "venue": venue,
                 "series": series_label,
                 "status": status,
                 "game_pk": first_game.get("game_pk"),

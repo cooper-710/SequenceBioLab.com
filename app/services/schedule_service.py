@@ -10,6 +10,7 @@ from pathlib import Path
 from app.config import Config
 from app.services.cache_service import cache_service, CACHE_UPCOMING_GAMES
 from app.utils.formatters import coerce_utc_datetime, extract_game_datetime
+from app.utils.venue_timezones import format_game_time_venue
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 try:
@@ -176,11 +177,8 @@ def collect_upcoming_games(team_abbr: Optional[str], limit: int = 5) -> List[Dic
                 pass
 
         game_time = game.get("game_datetime")
-        if game_time:
-            try:
-                display_time = datetime.fromisoformat(game_time.replace("Z", "+00:00")).astimezone().strftime("%I:%M %p %Z")
-            except Exception:
-                display_time = "TBD"
+        venue = game.get("venue")
+        display_time = format_game_time_venue(game_time, venue)
 
         team_abbr_code = team_abbr_from_id(game.get("opponent_id"))
         probables = [
@@ -195,7 +193,7 @@ def collect_upcoming_games(team_abbr: Optional[str], limit: int = 5) -> List[Dic
             "opponent_abbr": team_abbr_code,
             "opponent_id": game.get("opponent_id"),
             "home": game.get("is_home"),
-            "venue": game.get("venue"),
+            "venue": venue,
             "series": game.get("series_description"),
             "status": game.get("status"),
             "game_pk": game.get("game_pk"),
