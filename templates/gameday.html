@@ -309,6 +309,10 @@
     gap: 28px;
     align-items: stretch;
 }
+.gameday-reports-tools-grid > * {
+    /* Allow cards to shrink (prevents right-edge clipping on narrow screens) */
+    min-width: 0;
+}
 .gameday-dashboard-section {
     margin-bottom: 28px;
 }
@@ -325,6 +329,10 @@
     gap: 24px;
     align-items: stretch;
 }
+.calendar-with-sidebar > * {
+    /* Allow cards to shrink (prevents right-edge clipping on narrow screens) */
+    min-width: 0;
+}
 .info-card-calendar,
 .info-card-upcoming {
     background: var(--color-layer-card);
@@ -335,6 +343,8 @@
     display: flex;
     flex-direction: column;
     height: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 .info-card-calendar .panel-header,
 .info-card-upcoming .panel-header {
@@ -396,7 +406,8 @@
 }
 .calendar-weekdays {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    /* Use minmax(0, 1fr) so content can't force overflow */
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 4px;
     margin-bottom: 8px;
 }
@@ -408,11 +419,14 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
     padding: 8px 4px;
+    min-width: 0;
 }
 .calendar-days-grid {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    /* Use minmax(0, 1fr) so content can't force overflow */
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 4px;
+    min-width: 0;
 }
 .calendar-day {
     aspect-ratio: 1;
@@ -429,6 +443,19 @@
     min-height: 48px;
     overflow: visible;
     box-sizing: border-box;
+    /* Critical for grids: allow item to shrink below min-content */
+    min-width: 0;
+}
+
+/* Calendar badge rendered via JS (has inline min-width) */
+.calendar-team-badge {
+    min-width: 0 !important;
+    max-width: 100%;
+    width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .calendar-day.other-month {
     opacity: 0.3;
@@ -1324,6 +1351,9 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
 }
+.quick-actions-grid > * {
+    min-width: 0;
+}
 .quick-action-item {
     display: flex;
     align-items: center;
@@ -1335,6 +1365,9 @@
     text-decoration: none;
     color: inherit;
     transition: all 0.2s ease;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 .quick-action-item:hover {
     background: color-mix(in srgb, var(--color-accent) 8%, var(--color-layer-soft));
@@ -1619,9 +1652,18 @@
     }
     
     .gameday-page .calendar-with-sidebar {
-        grid-template-columns: 1fr !important;
+        grid-template-columns: minmax(0, 1fr) !important;
         gap: 20px !important;
         width: 100% !important;
+        box-sizing: border-box !important;
+    }
+
+    /* Ensure all grid children can shrink (prevents right-edge clipping) */
+    .gameday-page .calendar-with-sidebar > *,
+    .gameday-page .gameday-reports-tools-grid > *,
+    .gameday-page .quick-actions-grid > * {
+        min-width: 0 !important;
+        max-width: 100% !important;
         box-sizing: border-box !important;
     }
     
@@ -1643,6 +1685,8 @@
     .gameday-page .calendar-day {
         min-height: 52px !important;
         padding: 5px !important;
+        min-width: 0 !important;
+        overflow: hidden !important;
     }
     
     .gameday-page .gameday-top-grid {
@@ -1664,6 +1708,9 @@
 
     .gameday-page .quick-action-item {
         padding: 14px !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
     }
 
     .gameday-page .quick-action-icon {
@@ -1693,6 +1740,13 @@
         margin-left: 0 !important;
         margin-right: 0 !important;
         overflow-x: hidden !important;
+    }
+
+    /* Avoid clipping headers when they wrap on narrow screens */
+    .gameday-page .content-panel .panel-header {
+        height: auto !important;
+        align-items: flex-start !important;
+        flex-wrap: wrap !important;
     }
 
     .gameday-page .card-header h2 {
@@ -1964,6 +2018,20 @@
     }
 }
 
+/* Extra-small screens: avoid any grid/aspect-ratio overlap quirks */
+@media (max-width: 480px) {
+    .gameday-page .calendar-days-grid {
+        /* Force predictable row sizing so cells never overlap */
+        grid-auto-rows: clamp(44px, 11.5vw, 62px) !important;
+    }
+
+    .gameday-page .calendar-day {
+        /* Replace aspect-ratio with explicit height for stability */
+        aspect-ratio: auto !important;
+        height: clamp(44px, 11.5vw, 62px) !important;
+        min-height: 0 !important;
+    }
+}
 @media (max-width: 480px) {
     /* Match home page padding exactly for smaller screens */
     .gameday-page.page-container,
