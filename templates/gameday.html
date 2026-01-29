@@ -774,6 +774,8 @@
     background: linear-gradient(135deg, color-mix(in srgb, var(--color-accent) 15%, transparent) 0%, color-mix(in srgb, var(--color-accent) 8%, transparent) 100%);
     border-bottom: 1px solid var(--color-layer-border);
     padding: 16px 20px;
+    /* Round the top of each matchup card */
+    border-radius: 18px 18px 0 0;
 }
 .matchup-header-content {
     display: flex;
@@ -954,6 +956,8 @@
 .matchup-reports-block {
     padding: 18px 20px;
     background: var(--color-layer-card);
+    /* Round the bottom of each matchup card */
+    border-radius: 0 0 18px 18px;
 }
 .matchup-reports-header {
     display: flex;
