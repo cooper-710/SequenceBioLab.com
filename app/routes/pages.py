@@ -655,6 +655,7 @@ def gameday():
         next_series=gameday_ctx.get("next_series"),
         schedule_calendar=gameday_ctx.get("schedule_calendar", []),
         deliverables=gameday_ctx.get("deliverables", []),
+        gameday_schedule_html=gameday_ctx.get("schedule_html"),
     )
 
 

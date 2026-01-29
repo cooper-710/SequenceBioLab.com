@@ -34,13 +34,17 @@
             <!-- Series Section - Full Width Top Row -->
             <div class="gameday-series-section">
                 <div id="gameday-schedule-content"
-                     data-schedule-endpoint="{{ url_for('pages.gameday_schedule') }}">
-                    <section class="gameday-card">
-                        <div class="card-header">
-                            <h2><i class="fas fa-baseball"></i> Series</h2>
-                        </div>
-                        <p class="empty-state">Loading schedule…</p>
-                    </section>
+                     data-schedule-endpoint="{{ url_for('pages.gameday_schedule') }}"{% if gameday_schedule_html %} data-schedule-loaded="1"{% endif %}>
+                    {% if gameday_schedule_html %}
+                        {{ gameday_schedule_html|safe }}
+                    {% else %}
+                        <section class="gameday-card">
+                            <div class="card-header">
+                                <h2><i class="fas fa-baseball"></i> Series</h2>
+                            </div>
+                            <p class="empty-state">Loading schedule…</p>
+                        </section>
+                    {% endif %}
                 </div>
             </div>
 
@@ -2275,6 +2279,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
     function loadGamedaySchedule() {
         if (!scheduleContainer) {
+            return;
+        }
+        // If server already inlined the Series card, just initialize behavior.
+        if (scheduleContainer.dataset && scheduleContainer.dataset.scheduleLoaded === "1") {
+            autoHideRedirectNote();
+            initSchedule();
             return;
         }
         var endpoint = scheduleContainer.dataset.scheduleEndpoint;
