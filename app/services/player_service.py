@@ -1,5 +1,13 @@
 """
-Player service for player-related operations
+Player service for player-related operations.
+
+User team resolution (determine_user_team):
+  - If the user has an explicit team_abbr set (and it is not "AUTO"), that is used.
+  - Otherwise the team is looked up by the user's first/last name via lookup_team_for_name(),
+    which queries the `players` table (build/database/players.db). The team there should
+    come from the most recent year in data/Positions.csv. Run scripts/update_player_teams.py
+    (or update_player_teams.py) to refresh player teams from that CSV; by default it
+    uses only the single most recent year present in the file.
 """
 from typing import Optional, Dict, Any
 from flask import g

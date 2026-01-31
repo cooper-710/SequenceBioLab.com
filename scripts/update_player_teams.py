@@ -11,25 +11,53 @@ from pathlib import Path
 from collections import defaultdict
 from datetime import datetime
 
-# Get repo root directory
+# Repo root is parent of scripts/
 ROOT_DIR = Path(__file__).parent.resolve()
-sys.path.insert(0, str(ROOT_DIR / 'src'))
+REPO_ROOT = ROOT_DIR.parent
+sys.path.insert(0, str(REPO_ROOT / 'src'))
 from database import PlayerDB
 
-def load_latest_teams_from_csv(csv_path: str) -> dict:
+def load_latest_teams_from_csv(csv_path: str, only_most_recent_year: bool = True) -> dict:
     """
     Load the most recent team for each player from Positions.csv.
-    
+
+    By default uses only the single most recent year present in the CSV (e.g. 2026).
+    This avoids mixing seasons and ensures "user team" is from one consistent year.
+    If a player appears multiple times in that year (e.g. mid-season trade), the last
+    row is kept so the most recent team wins.
+
+    Args:
+        csv_path: Path to Positions.csv.
+        only_most_recent_year: If True (default), use only rows from the max season
+            in the file. If False, use each player's max season (legacy behavior).
+
     Returns:
         dict: {player_id: {'team_abbr': 'XXX', 'team_name': '...', 'season': YYYY, 'player_name': '...'}}
     """
     latest_teams = {}
-    
+
     csv_file = Path(csv_path)
     if not csv_file.exists():
         print(f"Error: {csv_path} not found")
         return latest_teams
-    
+
+    # First pass: find max season in file (the "most recent year")
+    max_season = None
+    with open(csv_file, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            try:
+                s = int(row.get('season', 0))
+                if max_season is None or s > max_season:
+                    max_season = s
+            except (ValueError, KeyError):
+                continue
+
+    if max_season is None:
+        print("Error: No valid season column in CSV")
+        return latest_teams
+    print(f"Using most recent year in CSV: {max_season}")
+
     print(f"Reading {csv_path}...")
     with open(csv_file, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
@@ -41,12 +69,15 @@ def load_latest_teams_from_csv(csv_path: str) -> dict:
                 team_name = row.get('team_name', '').strip()
                 player_name = row.get('player_name', '').strip()
                 team_id = row.get('team_id', '').strip()
-                
+
                 if not player_id or not team_abbr or not player_name:
                     continue
-                
-                # Keep the most recent season for each player
-                if player_id not in latest_teams:
+
+                if only_most_recent_year:
+                    # Use only the single most recent year
+                    if season != max_season:
+                        continue
+                    # Same player can appear twice in one year (traded); last row wins
                     latest_teams[player_id] = {
                         'team_abbr': team_abbr,
                         'team_name': team_name,
@@ -55,8 +86,8 @@ def load_latest_teams_from_csv(csv_path: str) -> dict:
                         'player_name': player_name
                     }
                 else:
-                    # Update if this season is more recent
-                    if season > latest_teams[player_id]['season']:
+                    # Legacy: keep the most recent season for each player
+                    if player_id not in latest_teams:
                         latest_teams[player_id] = {
                             'team_abbr': team_abbr,
                             'team_name': team_name,
@@ -64,10 +95,19 @@ def load_latest_teams_from_csv(csv_path: str) -> dict:
                             'season': season,
                             'player_name': player_name
                         }
-            except (ValueError, KeyError) as e:
+                    else:
+                        if season > latest_teams[player_id]['season']:
+                            latest_teams[player_id] = {
+                                'team_abbr': team_abbr,
+                                'team_name': team_name,
+                                'team_id': team_id,
+                                'season': season,
+                                'player_name': player_name
+                            }
+            except (ValueError, KeyError):
                 continue
-    
-    print(f"Found {len(latest_teams)} players with team data")
+
+    print(f"Found {len(latest_teams)} players with team data (year {max_season})")
     return latest_teams
 
 def populate_players_from_csv(db: PlayerDB, latest_teams: dict, dry_run: bool = False):
@@ -216,15 +256,16 @@ def main():
     parser.add_argument('--csv', default=None, help='Path to Positions.csv file (default: data/Positions.csv)')
     parser.add_argument('--dry-run', action='store_true', help='Show what would be updated without making changes')
     parser.add_argument('--skip-populate', action='store_true', help='Skip populating players table if empty')
+    parser.add_argument('--all-seasons', action='store_true',
+                        help='Use each player\'s most recent season (legacy). Default is to use only the single most recent year in the CSV.')
     args = parser.parse_args()
-    
-    # Default to data/Positions.csv if not specified
+
+    # Default to data/Positions.csv at repo root
     if args.csv is None:
-        csv_path = Path(__file__).parent / "data" / "Positions.csv"
-        args.csv = str(csv_path)
-    
-    # Load latest teams from CSV
-    latest_teams = load_latest_teams_from_csv(args.csv)
+        args.csv = str(REPO_ROOT / "data" / "Positions.csv")
+
+    # Load latest teams from CSV (default: only the most recent year in the file)
+    latest_teams = load_latest_teams_from_csv(args.csv, only_most_recent_year=not args.all_seasons)
     
     if not latest_teams:
         print("No team data found. Exiting.")
