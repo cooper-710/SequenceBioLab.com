@@ -93,15 +93,16 @@ def _lookup_team_from_positions_csv(first_name: Optional[str], last_name: Option
 
 def lookup_team_for_name(first_name: Optional[str], last_name: Optional[str]) -> Optional[str]:
     """Attempt to determine a team abbreviation for the given player name.
-    Tries the players table first; if no match (e.g. empty in production), uses
-    data/Positions.csv for the most recent year.
+    Uses data/Positions.csv (most recent year) first so the current team is correct
+    (e.g. Pete Alonso -> BAL in 2026). Falls back to the players table if not in CSV.
     """
     first = (first_name or "").strip()
     last = (last_name or "").strip()
     if not last:
         return None
-    team_abbr = None
-    if PlayerDB:
+    # Prefer CSV (most recent year) so we get current team; DB can be stale (e.g. Alonso NYM -> BAL)
+    team_abbr = _lookup_team_from_positions_csv(first_name, last_name)
+    if not team_abbr and PlayerDB:
         try:
             db = PlayerDB()
             candidates = db.search_players(search=last, limit=50)
@@ -123,8 +124,6 @@ def lookup_team_for_name(first_name: Optional[str], last_name: Optional[str]) ->
             logging.getLogger(__name__).warning(
                 "Warning resolving team for %s %s: %s", first_name, last_name, exc
             )
-    if not team_abbr:
-        team_abbr = _lookup_team_from_positions_csv(first_name, last_name)
     return team_abbr or None
 
 
