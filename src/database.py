@@ -37,7 +37,7 @@ _schema_lock = threading.Lock()
 # Set to 2 to stay well within Supabase Session pooler limits (typically 3-4)
 _connection_semaphore = None
 _semaphore_lock = threading.Lock()
-_MAX_TOTAL_CONNECTIONS = 2  # Maximum 2 connections total across all workers
+_MAX_TOTAL_CONNECTIONS = 10  # Transaction pooler supports more connections
 
 def _get_connection_semaphore():
     """Get or create global connection semaphore for Supabase Session mode"""
@@ -123,14 +123,13 @@ def _get_postgres_pool(database_url: str):
         else:
             logger.info(f"Using hostname for Supabase connection (SSL verification enabled)")
         
-        # Create connection pool with conservative settings per worker
-        # CRITICAL FIX: Supabase Session mode has strict connection limits
+        # Create connection pool with settings for Supabase Transaction pooler
+        # Transaction pooler (port 6543) supports more concurrent connections
         # - minconn=0: Don't create connections at pool creation (lazy initialization)
-        # - maxconn=1: Each worker can only use 1 connection maximum
-        # With 4 workers, this gives us maximum 4 total connections (well within limits)
+        # - maxconn=3: Each worker can use up to 3 connections
         pool = psycopg2.pool.ThreadedConnectionPool(
-            minconn=0,  # CRITICAL: Don't create connections at startup (lazy init)
-            maxconn=1,  # CRITICAL: Only 1 connection per worker to stay within Supabase limits
+            minconn=0,  # Don't create connections at startup (lazy init)
+            maxconn=3,  # Transaction pooler can handle more connections per worker
             **conn_params
         )
         _postgres_pools[worker_pid] = pool
