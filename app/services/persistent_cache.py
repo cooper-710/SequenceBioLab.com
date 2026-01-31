@@ -84,7 +84,7 @@ def get_or_set_json(
     ttl_seconds: int,
     builder,
     *,
-    lock_wait_seconds: float = 15.0,
+    lock_wait_seconds: float = 3.0,
 ):
     """
     Get cached JSON, or build it once and store it.

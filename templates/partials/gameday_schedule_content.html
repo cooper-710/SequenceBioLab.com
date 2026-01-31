@@ -90,7 +90,7 @@
           {% if game.probable_pitchers and game.probable_pitchers|length > 0 %}
             {% for pitcher in game.probable_pitchers %}
               {% if loop.index > 1 %}, {% endif %}
-              <a href="{{ url_for('player_database') }}?player={{ pitcher|urlencode }}" class="pitcher-link">{{ pitcher }}</a>
+              <a href="{{ url_for('pages.player_database') }}?player={{ pitcher|urlencode }}" class="pitcher-link">{{ pitcher }}</a>
             {% endfor %}
           {% else %}
             <span class="pitcher-unknown">Unknown</span>

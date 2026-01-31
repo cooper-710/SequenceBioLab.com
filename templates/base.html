@@ -58,35 +58,35 @@
                         <span class="nav-icon"><i class="fas fa-baseball-ball"></i></span>
                         <span class="nav-text">Live Scores</span>
                     </a>
-                    <a href="{{ url_for('scouting_report') }}" class="nav-item {% if request.endpoint == 'scouting_report' or request.endpoint == 'pages.scouting_report' %}active{% endif %}">
+                    <a href="{{ url_for('pages.scouting_report') }}" class="nav-item {% if request.endpoint == 'pages.scouting_report' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-clipboard-user"></i></span>
                         <span class="nav-text">Scouting Reports</span>
                     </a>
-                    <a href="{{ url_for('pitchers_report') }}" class="nav-item {% if request.endpoint == 'pitchers_report' or request.endpoint == 'pages.pitchers_report' %}active{% endif %}">
+                    <a href="{{ url_for('pages.pitchers_report') }}" class="nav-item {% if request.endpoint == 'pages.pitchers_report' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-baseball"></i></span>
                         <span class="nav-text">Pitcher's Reports</span>
                     </a>
-                    <a href="{{ url_for('player_database') }}" class="nav-item {% if request.endpoint == 'player_database' or request.endpoint == 'pages.player_database' %}active{% endif %}">
+                    <a href="{{ url_for('pages.player_database') }}" class="nav-item {% if request.endpoint == 'pages.player_database' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-magnifying-glass"></i></span>
                         <span class="nav-text">Stats</span>
                     </a>
-                    <a href="{{ url_for('visuals') }}" class="nav-item {% if request.endpoint == 'visuals' or request.endpoint == 'pages.visuals' %}active{% endif %}">
+                    <a href="{{ url_for('pages.visuals') }}" class="nav-item {% if request.endpoint == 'pages.visuals' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-chart-line"></i></span>
                         <span class="nav-text">Visuals</span>
                     </a>
-                    <a href="{{ url_for('pitchviz') }}" class="nav-item {% if request.endpoint == 'pitchviz' or request.endpoint == 'pages.pitchviz' %}active{% endif %}">
+                    <a href="{{ url_for('pages.pitchviz') }}" class="nav-item {% if request.endpoint == 'pages.pitchviz' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-wave-square"></i></span>
                         <span class="nav-text">PitchViz</span>
                     </a>
-                    <a href="{{ url_for('mocap') }}" class="nav-item {% if request.endpoint == 'mocap' or request.endpoint == 'pages.mocap' %}active{% endif %}">
+                    <a href="{{ url_for('pages.mocap') }}" class="nav-item {% if request.endpoint == 'pages.mocap' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-person-running"></i></span>
                         <span class="nav-text">Mocap</span>
                     </a>
-                    <a href="{{ url_for('workouts') }}" class="nav-item {% if request.endpoint == 'workouts' or request.endpoint == 'pages.workouts' %}active{% endif %}">
+                    <a href="{{ url_for('pages.workouts') }}" class="nav-item {% if request.endpoint == 'pages.workouts' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-dumbbell"></i></span>
                         <span class="nav-text">Workouts</span>
                     </a>
-                    <a href="{{ url_for('journaling') }}" class="nav-item {% if request.endpoint == 'journaling' or request.endpoint == 'pages.journaling' %}active{% endif %}">
+                    <a href="{{ url_for('pages.journaling') }}" class="nav-item {% if request.endpoint == 'pages.journaling' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-pen-to-square"></i></span>
                         <span class="nav-text">Journaling</span>
                     </a>
@@ -94,7 +94,7 @@
                         <span class="nav-icon"><i class="fas fa-crosshairs"></i></span>
                         <span class="nav-text">Matchups</span>
                     </a>
-                    <a href="{{ url_for('contractviz') }}" class="nav-item {% if request.endpoint == 'contractviz' or request.endpoint == 'pages.contractviz' %}active{% endif %}">
+                    <a href="{{ url_for('pages.contractviz') }}" class="nav-item {% if request.endpoint == 'pages.contractviz' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-file-contract"></i></span>
                         <span class="nav-text">ContractViz</span>
                     </a>
@@ -122,15 +122,15 @@
                         <span class="nav-icon"><i class="fas fa-trophy"></i></span>
                         <span class="nav-text">Gameday</span>
                     </a>
-                    <a href="{{ url_for('workouts') }}" class="nav-item {% if request.endpoint == 'workouts' or request.endpoint == 'pages.workouts' %}active{% endif %}">
+                    <a href="{{ url_for('pages.workouts') }}" class="nav-item {% if request.endpoint == 'pages.workouts' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-dumbbell"></i></span>
                         <span class="nav-text">Workouts</span>
                     </a>
-                    <a href="{{ url_for('mocap') }}" class="nav-item {% if request.endpoint == 'mocap' or request.endpoint == 'pages.mocap' %}active{% endif %}">
+                    <a href="{{ url_for('pages.mocap') }}" class="nav-item {% if request.endpoint == 'pages.mocap' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-person-running"></i></span>
                         <span class="nav-text">Mocap</span>
                     </a>
-                    <a href="{{ url_for('pitchviz') }}" class="nav-item {% if request.endpoint == 'pitchviz' or request.endpoint == 'pages.pitchviz' %}active{% endif %}">
+                    <a href="{{ url_for('pages.pitchviz') }}" class="nav-item {% if request.endpoint == 'pages.pitchviz' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-wave-square"></i></span>
                         <span class="nav-text">PitchViz</span>
                     </a>
@@ -138,7 +138,7 @@
                         <span class="nav-icon"><i class="fas fa-crosshairs"></i></span>
                         <span class="nav-text">Matchups</span>
                     </a>
-                    <a href="{{ url_for('player_database') }}" class="nav-item {% if request.endpoint == 'player_database' or request.endpoint == 'pages.player_database' %}active{% endif %}">
+                    <a href="{{ url_for('pages.player_database') }}" class="nav-item {% if request.endpoint == 'pages.player_database' %}active{% endif %}">
                         <span class="nav-icon"><i class="fas fa-magnifying-glass"></i></span>
                         <span class="nav-text">Stats</span>
                     </a>

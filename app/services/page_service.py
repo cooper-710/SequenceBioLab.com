@@ -642,7 +642,7 @@ def format_player_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     viewer_url = None
     if category == Config.WORKOUT_CATEGORY:
         try:
-            viewer_url = url_for("view_workout_document", doc_id=doc.get("id"))
+            viewer_url = url_for("pages.view_workout_document", doc_id=doc.get("id"))
         except Exception:
             pass
 
@@ -740,7 +740,7 @@ def map_document_to_deliverable(
 
     title = friendly_title(formatted.get("filename") or raw_doc.get("filename"))
     try:
-        link = formatted.get("viewer_url") or formatted.get("download_url") or url_for("reports_library")
+        link = formatted.get("viewer_url") or formatted.get("download_url") or url_for("pages.reports_library")
     except Exception:
         link = "#"
     requires_ack = bool(
@@ -843,7 +843,7 @@ def sample_deliverables() -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]
                 "summary": "Matchup tendencies & red zone plan.",
                 "owner": "Pro Scouting",
                 "time_ago": "2 hr ago",
-                "link": url_for("reports_library"),
+                "link": url_for("pages.reports_library"),
                 "requires_ack": True,
                 "uploaded_ts": now_local.timestamp() - 2 * 3600,
             },
@@ -854,7 +854,7 @@ def sample_deliverables() -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]
                 "summary": "Mobility + lower half sequencing.",
                 "owner": "Performance Team",
                 "time_ago": "Yesterday",
-                "link": url_for("workouts"),
+                "link": url_for("pages.workouts"),
                 "requires_ack": False,
                 "uploaded_ts": now_local.timestamp() - 27 * 3600,
             },
@@ -865,7 +865,7 @@ def sample_deliverables() -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]
                 "summary": "High-leverage pitch shapes & cues.",
                 "owner": "Video Coord.",
                 "time_ago": "3 days ago",
-                "link": url_for("visuals"),
+                "link": url_for("pages.visuals"),
                 "requires_ack": True,
                 "uploaded_ts": now_local.timestamp() - 3 * 86400,
             },
@@ -929,7 +929,7 @@ def build_focus_highlights(
                     "detail": " • ".join(detail_parts) if detail_parts else None,
                     "cta": {
                         "label": "Matchup Capsule",
-                        "href": url_for("gameday"),
+                        "href": url_for("pages.gameday"),
                     },
                 }
             )
@@ -957,7 +957,7 @@ def build_focus_highlights(
                     "detail": f"{latest_document.get('owner', 'Staff')} • {latest_document.get('time_ago', 'just now')}",
                     "cta": {
                         "label": "Open File",
-                        "href": latest_document.get("link") or url_for("reports_library"),
+                        "href": latest_document.get("link") or url_for("pages.reports_library"),
                     },
                 }
             )
@@ -985,7 +985,7 @@ def build_focus_highlights(
                     "detail": None,
                     "cta": {
                         "label": "Review",
-                        "href": url_for("reports_library"),
+                        "href": url_for("pages.reports_library"),
                     },
                 }
             )
@@ -1311,7 +1311,7 @@ def load_resource_links(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                 resources.append({
                     "title": note.get("title") or "Staff update",
                     "category": category,
-                    "link": url_for("gameday") + f"#staff-note-{note.get('id')}",
+                    "link": url_for("pages.gameday") + f"#staff-note-{note.get('id')}",
                 })
             except Exception:
                 resources.append({
@@ -1331,17 +1331,17 @@ def sample_resources() -> List[Dict[str, Any]]:
             {
                 "title": "Recovery: 24-hour travel reset",
                 "category": "Recovery",
-                "link": url_for("nutrition"),
+                "link": url_for("pages.nutrition"),
             },
             {
                 "title": "Mobility primer — lower half",
                 "category": "Movement",
-                "link": url_for("workouts"),
+                "link": url_for("pages.workouts"),
             },
             {
                 "title": "Approach dashboard — LHP game plan",
                 "category": "Video",
-                "link": url_for("visuals"),
+                "link": url_for("pages.visuals"),
             },
         ]
     except Exception:
@@ -1391,7 +1391,7 @@ def sample_support_contacts() -> List[Dict[str, Any]]:
                 "name": "Avery Chen",
                 "role": "Nutrition",
                 "contact_label": "Check-in",
-                "contact_link": url_for("nutrition"),
+                "contact_link": url_for("pages.nutrition"),
                 "photo": None,
             },
         ]
