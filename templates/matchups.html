@@ -2148,6 +2148,9 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
 
             // Track completed count for progress updates
             let completedCount = 0;
+            let firstResultShown = false;
+
+            // Helper to update progress bar
             const updateProgress = () => {
                 completedCount++;
                 const pct = Math.round((completedCount / total) * 100);
@@ -2156,7 +2159,54 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
                 if (seasonBadge) { seasonBadge.textContent = completedCount === total ? 'Complete' : `${completedCount}/${total}`; }
             };
 
-            // Fetch all seasons in PARALLEL for faster loading
+            // Helper to update summary stats display
+            const updateSummaryDisplay = () => {
+                const summary = computeSummary(combined) || {};
+                const summaryStats = document.getElementById('summaryStats');
+                if (summary.total_at_bats > 0) {
+                    summaryStats.innerHTML = `
+                        <div class="stat-card">
+                            <div class="stat-value">${summary.total_at_bats}</div>
+                            <div class="stat-label">At-Bats</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${summary.hits}</div>
+                            <div class="stat-label">Hits</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${summary.average.toFixed(3)}</div>
+                            <div class="stat-label">Average</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${summary.on_base_percentage.toFixed(3)}</div>
+                            <div class="stat-label">OBP</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${summary.slugging_percentage.toFixed(3)}</div>
+                            <div class="stat-label">SLG</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${summary.ops.toFixed(3)}</div>
+                            <div class="stat-label">OPS</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${summary.home_runs}</div>
+                            <div class="stat-label">Home Runs</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${summary.strikeouts}</div>
+                            <div class="stat-label">Strikeouts</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${summary.walks}</div>
+                            <div class="stat-label">Walks</div>
+                        </div>
+                    `;
+                    summarySection.style.display = 'block';
+                }
+            };
+
+            // Fetch all seasons in PARALLEL with PROGRESSIVE rendering
             const fetchPromises = seasons.map(async (year) => {
                 const params = new URLSearchParams();
                 params.append('player', player1Name);
@@ -2168,7 +2218,28 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
                     const resp = await fetch(`/api/matchups?${params}`);
                     const seasonData = await resp.json();
                     updateProgress();
+
                     if (resp.ok && seasonData.matchups && seasonData.matchups.length > 0) {
+                        // Add to combined immediately
+                        combined.push(...seasonData.matchups);
+
+                        // Show results section on first successful result
+                        if (!firstResultShown) {
+                            firstResultShown = true;
+                            loadingDiv.style.display = 'none';
+                            summarySection.style.display = 'block';
+                            atBatsSection.style.display = 'block';
+                            seasonFilterSection.style.display = 'block';
+                        }
+
+                        // Update summary stats live
+                        updateSummaryDisplay();
+
+                        // Update season filter
+                        allMatchups = combined;
+                        availableSeasonYears = Array.from(new Set(combined.map(ab => parseInt(String(ab.game_date || '').slice(0, 4), 10)).filter(Boolean)));
+                        buildSeasonFilterUI(availableSeasonYears);
+
                         return { success: true, matchups: seasonData.matchups, year };
                     } else if (seasonData && (seasonData.error || seasonData.message)) {
                         return { success: false, error: `${year}: ${seasonData.error || seasonData.message}`, year };
@@ -2183,11 +2254,9 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
             // Wait for all fetches to complete
             const results = await Promise.all(fetchPromises);
 
-            // Collect results
+            // Collect any errors
             for (const result of results) {
-                if (result.success && result.matchups) {
-                    combined.push(...result.matchups);
-                } else if (!result.success && result.error) {
+                if (!result.success && result.error) {
                     errors.push(result.error);
                 }
             }
@@ -2200,15 +2269,15 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
                 return;
             }
 
-            // Sort newest first
+            // Final sort (data may have arrived out of order)
             combined.sort((a, b) => String(b.game_date || '').localeCompare(String(a.game_date || '')));
 
-            // Expose globals for filtering
+            // Final update of globals
             allMatchups = combined;
             availableSeasonYears = Array.from(new Set(combined.map(ab => parseInt(String(ab.game_date || '').slice(0, 4), 10)).filter(Boolean)));
             buildSeasonFilterUI(availableSeasonYears);
 
-            // Build a data object compatible with existing rendering code below
+            // Build final data object
             data = {
                 matchups: combined,
                 summary: computeSummary(combined) || {},
