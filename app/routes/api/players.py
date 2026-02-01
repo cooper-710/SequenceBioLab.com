@@ -420,7 +420,8 @@ def api_matchups_seasons():
 
         # OPTIMIZATION: Check Positions.csv first to find overlapping seasons
         # This narrows the Statcast query to only years both players were active
-        start_year = 2017  # Positions.csv goes back to 2017
+        # Default to full range (2015) - only optimize if BOTH players found in CSV
+        start_year = 2015
         player_seasons = set()
         opponent_seasons = set()
 
@@ -443,7 +444,7 @@ def api_matchups_seasons():
                     print(f"DEBUG: {player_name} seasons from Positions.csv: {sorted(player_seasons)}")
                     print(f"DEBUG: {opponent_name} seasons from Positions.csv: {sorted(opponent_seasons)}")
 
-                    # Find overlapping seasons
+                    # Find overlapping seasons - only if BOTH players found
                     if player_seasons and opponent_seasons:
                         overlapping = player_seasons & opponent_seasons
                         if overlapping:
@@ -451,12 +452,15 @@ def api_matchups_seasons():
                             end_year = max(overlapping)
                             print(f"DEBUG: Overlapping seasons: {sorted(overlapping)} -> fetching {start_year}-{end_year}")
                         else:
-                            # No overlap - return empty early
+                            # Both found but no overlap - return empty early
                             print(f"DEBUG: No overlapping seasons found")
                             return jsonify({"seasons": []})
+                    else:
+                        # One or both players not in CSV - use full range
+                        print(f"DEBUG: Player(s) not in Positions.csv, using full range 2015-{end_year}")
         except Exception as pos_err:
             print(f"DEBUG: Error checking Positions.csv: {pos_err}, falling back to full range")
-            start_year = 2017
+            start_year = 2015
 
         all_start = f"{start_year}-03-01"
         all_end = f"{end_year}-11-30"
