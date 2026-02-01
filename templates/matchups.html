@@ -1163,44 +1163,39 @@
     <div class="search-section">
         <form id="matchupForm">
             <div class="form-group">
-                <label for="playerName">Player 1</label>
+                <label for="pitcherName">Pitcher</label>
                 <div class="search-input-wrapper" style="position: relative;">
-                    <input 
-                        type="text" 
-                        id="playerName" 
-                        name="player" 
-                        class="search-input" 
-                        placeholder="Enter player name (e.g., Pete Alonso)" 
+                    <input
+                        type="text"
+                        id="pitcherName"
+                        name="pitcher"
+                        class="search-input"
+                        placeholder="Enter pitcher name (e.g., Chase Dollander)"
                         autocomplete="off"
                         required
                     >
-                    <div id="player1Suggestions" class="search-suggestions" style="display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 100;"></div>
+                    <div id="pitcherSuggestions" class="search-suggestions" style="display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 100;"></div>
                 </div>
             </div>
-            
+
             <div class="form-group">
-                <label for="opponentName">Player 2</label>
+                <label for="hitterName">Hitter</label>
                 <div class="search-input-wrapper" style="position: relative;">
-                    <input 
-                        type="text" 
-                        id="opponentName" 
-                        name="opponent" 
-                        class="search-input" 
-                        placeholder="Enter player name (e.g., Paul Skenes)" 
+                    <input
+                        type="text"
+                        id="hitterName"
+                        name="hitter"
+                        class="search-input"
+                        placeholder="Enter hitter name (e.g., Pete Alonso)"
                         autocomplete="off"
                         required
                     >
-                    <div id="player2Suggestions" class="search-suggestions" style="display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 100;"></div>
+                    <div id="hitterSuggestions" class="search-suggestions" style="display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 100;"></div>
                 </div>
             </div>
-            
-            <div id="roleError" class="error" style="display: none; margin-bottom: 1rem;"></div>
-            <div id="roleInfo" style="display: none; margin-bottom: 1rem; padding: 0.75rem; background: var(--color-layer-soft); border-radius: 8px; border: 1px solid var(--color-layer-border); color: var(--color-text-primary);">
-                <strong>Detected Roles:</strong> <span id="roleInfoText"></span>
-            </div>
-            
+
             <button type="submit" class="search-btn">
-                Load Matchups
+                Load Matchup
             </button>
         </form>
     </div>
@@ -1595,57 +1590,53 @@ function formatDate(dateStr) {
     }
 }
 
-let player1Type = null;
-let player2Type = null;
-let player1SearchTimeout = null;
-let player2SearchTimeout = null;
+let pitcherSearchTimeout = null;
+let hitterSearchTimeout = null;
 
 function normalizePlayerName(name) {
     if (!name) return '';
     return name.normalize("NFD").replace(/\p{Diacritic}/gu, '');
 }
 
-// Search for players (Player 1)
-async function searchPlayers1() {
-    const searchInput = document.getElementById('playerName');
+// Search for pitchers
+async function searchPitchers() {
+    const searchInput = document.getElementById('pitcherName');
     if (!searchInput) return;
-    
+
     const searchTerm = searchInput.value.trim();
     const normalizedTerm = normalizePlayerName(searchTerm);
-    const suggestionsDiv = document.getElementById('player1Suggestions');
-    
+    const suggestionsDiv = document.getElementById('pitcherSuggestions');
+
     if (!normalizedTerm || normalizedTerm.length < 2) {
         if (suggestionsDiv) suggestionsDiv.style.display = 'none';
         return;
     }
-    
+
     try {
         const response = await fetch(`/api/csv/search?q=${encodeURIComponent(normalizedTerm)}`);
         const data = await response.json();
-        
+
         if (data.error || !data.players || data.players.length === 0) {
             if (suggestionsDiv) suggestionsDiv.style.display = 'none';
             return;
         }
-        
+
         const players = data.players || [];
-        
+
         // Show suggestions
-        suggestionsDiv.innerHTML = players.slice(0, 10).map((player, idx) => 
+        suggestionsDiv.innerHTML = players.slice(0, 10).map((player, idx) =>
             `<div class="suggestion-item" data-player-name="${player.name.replace(/"/g, '&quot;')}" data-index="${idx}">${player.name}</div>`
         ).join('');
         suggestionsDiv.style.display = 'block';
-        
+
         // Add click handlers to suggestions
         suggestionsDiv.querySelectorAll('.suggestion-item').forEach(item => {
             item.addEventListener('click', function() {
                 const playerName = this.getAttribute('data-player-name');
                 searchInput.value = playerName;
                 suggestionsDiv.style.display = 'none';
-                // Clear any pending detection timeout
-                if (detectTimeout1) clearTimeout(detectTimeout1);
-                // Trigger player type detection immediately
-                detectPlayerType(playerName.trim(), 1);
+                // Trigger prefetch when pitcher is selected
+                prefetchSeasons();
             });
         });
     } catch (error) {
@@ -1654,89 +1645,98 @@ async function searchPlayers1() {
     }
 }
 
-// Search for players (Player 2)
-async function searchPlayers2() {
-    const searchInput = document.getElementById('opponentName');
+// Search for hitters
+async function searchHitters() {
+    const searchInput = document.getElementById('hitterName');
     if (!searchInput) return;
-    
+
     const searchTerm = searchInput.value.trim();
     const normalizedTerm = normalizePlayerName(searchTerm);
-    const suggestionsDiv = document.getElementById('player2Suggestions');
-    
+    const suggestionsDiv = document.getElementById('hitterSuggestions');
+
     if (!normalizedTerm || normalizedTerm.length < 2) {
         if (suggestionsDiv) suggestionsDiv.style.display = 'none';
         return;
     }
-    
+
     try {
         const response = await fetch(`/api/csv/search?q=${encodeURIComponent(normalizedTerm)}`);
         const data = await response.json();
-        
+
         if (data.error || !data.players || data.players.length === 0) {
             if (suggestionsDiv) suggestionsDiv.style.display = 'none';
             return;
         }
-        
+
         const players = data.players || [];
-        
+
         // Show suggestions
-        suggestionsDiv.innerHTML = players.slice(0, 10).map((player, idx) => 
+        suggestionsDiv.innerHTML = players.slice(0, 10).map((player, idx) =>
             `<div class="suggestion-item" data-player-name="${player.name.replace(/"/g, '&quot;')}" data-index="${idx}">${player.name}</div>`
         ).join('');
         suggestionsDiv.style.display = 'block';
-        
+
         // Add click handlers to suggestions
         suggestionsDiv.querySelectorAll('.suggestion-item').forEach(item => {
             item.addEventListener('click', function() {
                 const playerName = this.getAttribute('data-player-name');
                 searchInput.value = playerName;
                 suggestionsDiv.style.display = 'none';
-                // Clear any pending detection timeout
-                if (detectTimeout2) clearTimeout(detectTimeout2);
-                // Trigger player type detection immediately
-                detectPlayerType(playerName.trim(), 2);
+                // Trigger prefetch when hitter is selected
+                prefetchSeasons();
             });
         });
     } catch (error) {
         console.error('Search error:', error);
         if (suggestionsDiv) suggestionsDiv.style.display = 'none';
     }
-}
-
-async function detectPlayerType(playerName, playerNumber) {
-    if (!playerName || playerName.trim().length < 3) {
-        if (playerNumber === 1) player1Type = null;
-        if (playerNumber === 2) player2Type = null;
-        updateRoleInfo();
-        return null;
-    }
-    
-    try {
-        const response = await fetch(`/api/player-type?player=${encodeURIComponent(playerName)}`);
-        if (response.ok) {
-            const data = await response.json();
-            const isPitcher = data.is_pitcher === true;
-            
-            if (playerNumber === 1) {
-                player1Type = isPitcher ? 'pitcher' : 'batter';
-            } else {
-                player2Type = isPitcher ? 'pitcher' : 'batter';
-            }
-            
-            updateRoleInfo();
-            return isPitcher ? 'pitcher' : 'batter';
-        }
-    } catch (error) {
-        console.warn('Error detecting player type:', error);
-    }
-    
-    return null;
 }
 
 // Global results state (all seasons)
 let allMatchups = [];
 let availableSeasonYears = [];
 let selectedSeasonFilter = 'all';
+
+// Prefetch state - start loading seasons while user types hitter name
+let prefetchedSeasons = null;
+let prefetchKey = null; // "pitcher|hitter" to validate cache
+let prefetchInProgress = false;
+
+async function prefetchSeasons() {
+    const pitcherName = document.getElementById('pitcherName')?.value.trim();
+    const hitterName = document.getElementById('hitterName')?.value.trim();
+
+    if (!pitcherName || pitcherName.length < 3 || !hitterName || hitterName.length < 3) {
+        return;
+    }
+
+    const key = `${pitcherName.toLowerCase()}|${hitterName.toLowerCase()}`;
+    if (prefetchKey === key) {
+        // Already prefetched or prefetching this combo
+        return;
+    }
+
+    prefetchKey = key;
+    prefetchInProgress = true;
+    prefetchedSeasons = null;
+
+    try {
+        console.log('[Prefetch] Starting seasons prefetch for', pitcherName, 'vs', hitterName);
+        const seasons = await fetchAvailableSeasons(pitcherName, hitterName, 'pitcher');
+        // Verify the key still matches (user might have changed input)
+        if (prefetchKey === key) {
+            prefetchedSeasons = seasons;
+            console.log('[Prefetch] Got seasons:', seasons);
+        }
+    } catch (err) {
+        console.warn('[Prefetch] Failed:', err);
+        if (prefetchKey === key) {
+            prefetchedSeasons = null;
+        }
+    } finally {
+        prefetchInProgress = false;
+    }
+}
 
 async function fetchAvailableSeasons(player1Name, player2Name, role) {
     const params = new URLSearchParams();
@@ -1920,102 +1920,66 @@ function renderFromFilter() {
     }
 }
 
-function updateRoleInfo() {
-    const roleInfoDiv = document.getElementById('roleInfo');
-    const roleInfoText = document.getElementById('roleInfoText');
-    const roleErrorDiv = document.getElementById('roleError');
-    
-    // Hide both initially
-    roleInfoDiv.style.display = 'none';
-    roleErrorDiv.style.display = 'none';
-    
-    if (player1Type && player2Type) {
-        const player1Name = document.getElementById('playerName').value || 'Player 1';
-        const player2Name = document.getElementById('opponentName').value || 'Player 2';
-        
-        // Check for error: same types
-        if (player1Type === player2Type) {
-            roleErrorDiv.textContent = `Error: Both players are ${player1Type === 'pitcher' ? 'pitchers' : 'batters'}. Please select one batter and one pitcher.`;
-            roleErrorDiv.style.display = 'block';
-        }
-        // Don't show roleInfo - it's not needed for user to see
-    }
-    // Don't show roleInfo for partial detection either - it's not needed
-}
-
-// Detect player types on input (with debounce)
-let detectTimeout1 = null;
-let detectTimeout2 = null;
-
-// Setup Player 1 search
-document.getElementById('playerName').addEventListener('input', (e) => {
+// Setup Pitcher search
+let prefetchTimeout = null;
+document.getElementById('pitcherName').addEventListener('input', (e) => {
     const searchTerm = e.target.value.trim();
-    
-    // Clear previous timeouts
-    clearTimeout(player1SearchTimeout);
-    clearTimeout(detectTimeout1);
-    
-    // Hide suggestions if input is empty
-    const suggestionsDiv = document.getElementById('player1Suggestions');
+
+    clearTimeout(pitcherSearchTimeout);
+    clearTimeout(prefetchTimeout);
+
+    const suggestionsDiv = document.getElementById('pitcherSuggestions');
     if (!searchTerm || searchTerm.length < 2) {
         if (suggestionsDiv) suggestionsDiv.style.display = 'none';
-        player1Type = null;
-        updateRoleInfo();
         return;
     }
-    
-    // Search for suggestions
-    player1SearchTimeout = setTimeout(() => {
-        searchPlayers1();
+
+    pitcherSearchTimeout = setTimeout(() => {
+        searchPitchers();
     }, 300);
-    
-    // Detect player type after a delay
-    detectTimeout1 = setTimeout(() => {
-        detectPlayerType(searchTerm, 1);
+
+    // Prefetch seasons after user stops typing (500ms debounce)
+    prefetchTimeout = setTimeout(() => {
+        prefetchSeasons();
     }, 500);
 });
 
-// Setup Player 2 search
-document.getElementById('opponentName').addEventListener('input', (e) => {
+// Setup Hitter search
+document.getElementById('hitterName').addEventListener('input', (e) => {
     const searchTerm = e.target.value.trim();
-    
-    // Clear previous timeouts
-    clearTimeout(player2SearchTimeout);
-    clearTimeout(detectTimeout2);
-    
-    // Hide suggestions if input is empty
-    const suggestionsDiv = document.getElementById('player2Suggestions');
+
+    clearTimeout(hitterSearchTimeout);
+    clearTimeout(prefetchTimeout);
+
+    const suggestionsDiv = document.getElementById('hitterSuggestions');
     if (!searchTerm || searchTerm.length < 2) {
         if (suggestionsDiv) suggestionsDiv.style.display = 'none';
-        player2Type = null;
-        updateRoleInfo();
         return;
     }
-    
-    // Search for suggestions
-    player2SearchTimeout = setTimeout(() => {
-        searchPlayers2();
+
+    hitterSearchTimeout = setTimeout(() => {
+        searchHitters();
     }, 300);
-    
-    // Detect player type after a delay
-    detectTimeout2 = setTimeout(() => {
-        detectPlayerType(searchTerm, 2);
+
+    // Prefetch seasons after user stops typing (500ms debounce)
+    prefetchTimeout = setTimeout(() => {
+        prefetchSeasons();
     }, 500);
 });
 
 // Hide suggestions when clicking outside
 document.addEventListener('click', (e) => {
-    const player1Input = document.getElementById('playerName');
-    const player1Suggestions = document.getElementById('player1Suggestions');
-    const player2Input = document.getElementById('opponentName');
-    const player2Suggestions = document.getElementById('player2Suggestions');
-    
-    if (player1Input && player1Suggestions && !player1Input.contains(e.target) && !player1Suggestions.contains(e.target)) {
-        player1Suggestions.style.display = 'none';
+    const pitcherInput = document.getElementById('pitcherName');
+    const pitcherSuggestions = document.getElementById('pitcherSuggestions');
+    const hitterInput = document.getElementById('hitterName');
+    const hitterSuggestions = document.getElementById('hitterSuggestions');
+
+    if (pitcherInput && pitcherSuggestions && !pitcherInput.contains(e.target) && !pitcherSuggestions.contains(e.target)) {
+        pitcherSuggestions.style.display = 'none';
     }
-    
-    if (player2Input && player2Suggestions && !player2Input.contains(e.target) && !player2Suggestions.contains(e.target)) {
-        player2Suggestions.style.display = 'none';
+
+    if (hitterInput && hitterSuggestions && !hitterInput.contains(e.target) && !hitterSuggestions.contains(e.target)) {
+        hitterSuggestions.style.display = 'none';
     }
 });
 
@@ -2036,43 +2000,22 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
     }
     isMatchupLoading = true;
 
+    // Hide any open suggestion dropdowns
+    const pitcherSuggestions = document.getElementById('pitcherSuggestions');
+    const hitterSuggestions = document.getElementById('hitterSuggestions');
+    if (pitcherSuggestions) pitcherSuggestions.style.display = 'none';
+    if (hitterSuggestions) hitterSuggestions.style.display = 'none';
+
     // Hide the preview once the user actually runs a matchup
     const mockEl = document.getElementById('matchupMockScreen');
     if (mockEl) mockEl.style.display = 'none';
 
-    const player1Name = document.getElementById('playerName').value.trim();
-    const player2Name = document.getElementById('opponentName').value.trim();
-    
-    // Check if we need to detect types first
-    if (!player1Type || !player2Type) {
-        const errorDiv = document.getElementById('errorMessage');
-        errorDiv.textContent = 'Please wait while we detect player types...';
-        errorDiv.style.display = 'block';
-        
-        // Detect both types
-        await Promise.all([
-            detectPlayerType(player1Name, 1),
-            detectPlayerType(player2Name, 2)
-        ]);
-    }
-    
-    // Check for same type error
-    if (player1Type === player2Type) {
-        const errorDiv = document.getElementById('errorMessage');
-        errorDiv.textContent = `Error: Both players are ${player1Type === 'pitcher' ? 'pitchers' : 'batters'}. Please select one batter and one pitcher.`;
-        errorDiv.style.display = 'block';
-        return;
-    }
-    
-    if (!player1Type || !player2Type) {
-        const errorDiv = document.getElementById('errorMessage');
-        errorDiv.textContent = 'Could not determine player types. Please check player names and try again.';
-        errorDiv.style.display = 'block';
-        return;
-    }
-    
-    // Determine role based on player 1's type
-    const role = player1Type; // 'pitcher' or 'batter'
+    // Get pitcher and hitter names from the explicit fields
+    const pitcherName = document.getElementById('pitcherName').value.trim();
+    const hitterName = document.getElementById('hitterName').value.trim();
+
+    // Role is always 'pitcher' since top field is pitcher (player param = pitcher)
+    const role = 'pitcher';
 
     const resultsDiv = document.getElementById('results');
     const loadingDiv = document.getElementById('loading');
@@ -2083,7 +2026,7 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
     const seasonFilterSection = document.getElementById('seasonFilterSection');
 
     // Check client-side cache first (sessionStorage)
-    const cachedData = getCachedMatchup(player1Name, player2Name, role);
+    const cachedData = getCachedMatchup(pitcherName, hitterName, role);
 
     // Variables for combined data
     let combined = [];
@@ -2145,8 +2088,18 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
 
         try {
             // 1) Fetch seasons with matchup data between these two players
-            updateLoadingStatus('Finding available seasons...');
-            const seasons = await fetchAvailableSeasons(player1Name, player2Name, role);
+            // Check if we already prefetched this data
+            const currentKey = `${pitcherName.toLowerCase()}|${hitterName.toLowerCase()}`;
+            let seasons;
+
+            if (prefetchKey === currentKey && prefetchedSeasons && prefetchedSeasons.length > 0) {
+                console.log('[Prefetch] Using prefetched seasons data');
+                seasons = prefetchedSeasons;
+            } else {
+                updateLoadingStatus('Finding available seasons...');
+                seasons = await fetchAvailableSeasons(pitcherName, hitterName, role);
+            }
+
             if (!seasons || seasons.length === 0) {
                 loadingDiv.style.display = 'none';
                 errorDiv.textContent = 'No matchup data found between these players.';
@@ -2170,8 +2123,8 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
             // Fetch all seasons in PARALLEL
             const fetchPromises = seasons.map(async (year) => {
                 const params = new URLSearchParams();
-                params.append('player', player1Name);
-                params.append('opponent', player2Name);
+                params.append('player', pitcherName);
+                params.append('opponent', hitterName);
                 params.append('role', role);
                 params.append('season', String(year));
 
@@ -2234,7 +2187,7 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
             };
 
             // Cache the successful result to sessionStorage for faster repeat searches
-            setCachedMatchup(player1Name, player2Name, role, data);
+            setCachedMatchup(pitcherName, hitterName, role, data);
         } catch (error) {
             loadingDiv.style.display = 'none';
             errorDiv.textContent = 'Error: ' + error.message;
