@@ -1490,6 +1490,57 @@
 </div>
 
 <script>
+// ============================================
+// Client-side caching with sessionStorage (30 min TTL)
+// ============================================
+const MATCHUP_CACHE_PREFIX = 'matchup_cache_';
+const MATCHUP_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+function getMatchupCacheKey(player1, player2, role) {
+    // Normalize names for consistent caching
+    return MATCHUP_CACHE_PREFIX + [player1, player2, role].map(s => s.toLowerCase().trim()).join('|');
+}
+
+function getCachedMatchup(player1, player2, role) {
+    try {
+        const key = getMatchupCacheKey(player1, player2, role);
+        const cached = sessionStorage.getItem(key);
+        if (!cached) return null;
+
+        const parsed = JSON.parse(cached);
+        const now = Date.now();
+
+        // Check TTL
+        if (parsed.timestamp && (now - parsed.timestamp) < MATCHUP_CACHE_TTL_MS) {
+            console.log('[Cache] HIT for', player1, 'vs', player2);
+            return parsed.data;
+        } else {
+            // Expired, remove it
+            sessionStorage.removeItem(key);
+            console.log('[Cache] EXPIRED for', player1, 'vs', player2);
+            return null;
+        }
+    } catch (e) {
+        console.warn('[Cache] Error reading cache:', e);
+        return null;
+    }
+}
+
+function setCachedMatchup(player1, player2, role, data) {
+    try {
+        const key = getMatchupCacheKey(player1, player2, role);
+        const cacheEntry = {
+            timestamp: Date.now(),
+            data: data
+        };
+        sessionStorage.setItem(key, JSON.stringify(cacheEntry));
+        console.log('[Cache] SET for', player1, 'vs', player2);
+    } catch (e) {
+        // Storage might be full or unavailable - fail gracefully
+        console.warn('[Cache] Error setting cache:', e);
+    }
+}
+
 function getOutcomeClass(outcome) {
     if (!outcome) return '';
     const outcomeLower = outcome.toLowerCase();
@@ -2012,7 +2063,7 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
     
     // Determine role based on player 1's type
     const role = player1Type; // 'pitcher' or 'batter'
-    
+
     const resultsDiv = document.getElementById('results');
     const loadingDiv = document.getElementById('loading');
     const errorDiv = document.getElementById('errorMessage');
@@ -2020,103 +2071,162 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
     const atBatsSection = document.getElementById('atBatsSection');
     const debugSection = document.getElementById('debugSection');
     const seasonFilterSection = document.getElementById('seasonFilterSection');
-    
-    resultsDiv.style.display = 'block';
-    loadingDiv.style.display = 'block';
-    errorDiv.style.display = 'none';
-    summarySection.style.display = 'none';
-    atBatsSection.style.display = 'none';
-    debugSection.style.display = 'none';
-    seasonFilterSection.style.display = 'none';
-    selectedSeasonFilter = 'all';
-    allMatchups = [];
 
-    const seasonRowEl = document.getElementById('loadingSeasonRow');
-    const progressWrapEl = document.getElementById('loadingProgressWrap');
-    const progressBarEl = document.getElementById('loadingProgressBar');
-    const progressTextEl = document.getElementById('loadingProgressText');
-    if (seasonRowEl) seasonRowEl.style.display = 'none';
-    if (progressWrapEl) progressWrapEl.style.display = 'none';
-    if (progressBarEl) progressBarEl.style.width = '0%';
-    if (progressTextEl) progressTextEl.style.display = 'none';
-    
-    try {
-        // 1) Fetch seasons with matchup data between these two players
-        const seasons = await fetchAvailableSeasons(player1Name, player2Name, role);
-        if (!seasons || seasons.length === 0) {
-            loadingDiv.style.display = 'none';
-            errorDiv.textContent = 'No matchup data found between these players.';
-            errorDiv.style.display = 'block';
-            return;
-        }
+    // Check client-side cache first (sessionStorage)
+    const cachedData = getCachedMatchup(player1Name, player2Name, role);
 
-        // 2) Load each season (backend is optimized for 1 season per request)
-        const combined = [];
-        const errors = [];
-        seasons.sort((a, b) => b - a);
+    // Variables for combined data
+    let combined = [];
+    let errors = [];
+    let data = null;
 
-        const seasonRow = document.getElementById('loadingSeasonRow');
-        const seasonBadge = document.getElementById('loadingSeasonBadge');
-        const progressWrap = document.getElementById('loadingProgressWrap');
-        const progressBar = document.getElementById('loadingProgressBar');
-        const progressText = document.getElementById('loadingProgressText');
-        const total = seasons.length;
+    if (cachedData && cachedData.matchups && cachedData.matchups.length > 0) {
+        // CACHE HIT - Skip network requests entirely
+        console.log('[Cache] Using cached matchup data - skipping network requests');
 
-        for (let i = 0; i < seasons.length; i++) {
-            const year = seasons[i];
-            const current = i + 1;
-            const pct = Math.round((current / total) * 100);
+        resultsDiv.style.display = 'block';
+        loadingDiv.style.display = 'none';  // No loading spinner for cache hits
+        errorDiv.style.display = 'none';
 
-            if (seasonRow) { seasonRow.style.display = 'flex'; }
-            if (seasonBadge) { seasonBadge.textContent = year; }
-            if (progressWrap) { progressWrap.style.display = 'block'; }
-            if (progressBar) { progressBar.style.width = pct + '%'; }
-            if (progressText) {
-                progressText.style.display = 'block';
-                progressText.textContent = current + ' of ' + total + ' seasons';
-            }
-
-            const params = new URLSearchParams();
-            params.append('player', player1Name);
-            params.append('opponent', player2Name);
-            params.append('role', role);
-            params.append('season', String(year));
-
-            try {
-                const resp = await fetch(`/api/matchups?${params}`);
-                const seasonData = await resp.json();
-                if (resp.ok && seasonData.matchups && seasonData.matchups.length > 0) {
-                    combined.push(...seasonData.matchups);
-                } else if (seasonData && (seasonData.error || seasonData.message)) {
-                    errors.push(`${year}: ${seasonData.error || seasonData.message}`);
-                }
-            } catch (err) {
-                errors.push(`${year}: ${err.message || err}`);
-            }
-        }
-
-        loadingDiv.style.display = 'none';
-
-        if (combined.length === 0) {
-            errorDiv.textContent = errors.length ? `No matchup data found. (${errors.join(' | ')})` : 'No matchup data found.';
-            errorDiv.style.display = 'block';
-            return;
-        }
-
-        // Sort newest first
-        combined.sort((a, b) => String(b.game_date || '').localeCompare(String(a.game_date || '')));
+        // Use cached data directly
+        combined = cachedData.matchups;
+        data = cachedData;
 
         // Expose globals for filtering
         allMatchups = combined;
         availableSeasonYears = Array.from(new Set(combined.map(ab => parseInt(String(ab.game_date || '').slice(0, 4), 10)).filter(Boolean)));
         buildSeasonFilterUI(availableSeasonYears);
 
-        // Build a data object compatible with existing rendering code below
-        const data = {
-            matchups: combined,
-            summary: computeSummary(combined) || {},
-        };
-        
+    } else {
+        // CACHE MISS - Fetch from network
+        resultsDiv.style.display = 'block';
+        loadingDiv.style.display = 'block';
+        errorDiv.style.display = 'none';
+        summarySection.style.display = 'none';
+        atBatsSection.style.display = 'none';
+        debugSection.style.display = 'none';
+        seasonFilterSection.style.display = 'none';
+        selectedSeasonFilter = 'all';
+        allMatchups = [];
+
+        const seasonRowEl = document.getElementById('loadingSeasonRow');
+        const progressWrapEl = document.getElementById('loadingProgressWrap');
+        const progressBarEl = document.getElementById('loadingProgressBar');
+        const progressTextEl = document.getElementById('loadingProgressText');
+        if (seasonRowEl) seasonRowEl.style.display = 'none';
+        if (progressWrapEl) progressWrapEl.style.display = 'none';
+        if (progressBarEl) progressBarEl.style.width = '0%';
+        if (progressTextEl) progressTextEl.style.display = 'none';
+
+        try {
+            // 1) Fetch seasons with matchup data between these two players
+            const seasons = await fetchAvailableSeasons(player1Name, player2Name, role);
+            if (!seasons || seasons.length === 0) {
+                loadingDiv.style.display = 'none';
+                errorDiv.textContent = 'No matchup data found between these players.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            // 2) Load each season (backend is optimized for 1 season per request)
+            seasons.sort((a, b) => b - a);
+
+            const seasonRow = document.getElementById('loadingSeasonRow');
+            const seasonBadge = document.getElementById('loadingSeasonBadge');
+            const progressWrap = document.getElementById('loadingProgressWrap');
+            const progressBar = document.getElementById('loadingProgressBar');
+            const progressText = document.getElementById('loadingProgressText');
+            const total = seasons.length;
+
+            // Show progress UI
+            if (seasonRow) { seasonRow.style.display = 'flex'; }
+            if (progressWrap) { progressWrap.style.display = 'block'; }
+            if (progressText) { progressText.style.display = 'block'; }
+            if (progressBar) { progressBar.style.width = '0%'; }
+            if (progressText) { progressText.textContent = `0 of ${total} seasons`; }
+            if (seasonBadge) { seasonBadge.textContent = 'Loading...'; }
+
+            // Track completed count for progress updates
+            let completedCount = 0;
+            const updateProgress = () => {
+                completedCount++;
+                const pct = Math.round((completedCount / total) * 100);
+                if (progressBar) { progressBar.style.width = pct + '%'; }
+                if (progressText) { progressText.textContent = `${completedCount} of ${total} seasons`; }
+                if (seasonBadge) { seasonBadge.textContent = completedCount === total ? 'Complete' : `${completedCount}/${total}`; }
+            };
+
+            // Fetch all seasons in PARALLEL for faster loading
+            const fetchPromises = seasons.map(async (year) => {
+                const params = new URLSearchParams();
+                params.append('player', player1Name);
+                params.append('opponent', player2Name);
+                params.append('role', role);
+                params.append('season', String(year));
+
+                try {
+                    const resp = await fetch(`/api/matchups?${params}`);
+                    const seasonData = await resp.json();
+                    updateProgress();
+                    if (resp.ok && seasonData.matchups && seasonData.matchups.length > 0) {
+                        return { success: true, matchups: seasonData.matchups, year };
+                    } else if (seasonData && (seasonData.error || seasonData.message)) {
+                        return { success: false, error: `${year}: ${seasonData.error || seasonData.message}`, year };
+                    }
+                    return { success: true, matchups: [], year };
+                } catch (err) {
+                    updateProgress();
+                    return { success: false, error: `${year}: ${err.message || err}`, year };
+                }
+            });
+
+            // Wait for all fetches to complete
+            const results = await Promise.all(fetchPromises);
+
+            // Collect results
+            for (const result of results) {
+                if (result.success && result.matchups) {
+                    combined.push(...result.matchups);
+                } else if (!result.success && result.error) {
+                    errors.push(result.error);
+                }
+            }
+
+            loadingDiv.style.display = 'none';
+
+            if (combined.length === 0) {
+                errorDiv.textContent = errors.length ? `No matchup data found. (${errors.join(' | ')})` : 'No matchup data found.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            // Sort newest first
+            combined.sort((a, b) => String(b.game_date || '').localeCompare(String(a.game_date || '')));
+
+            // Expose globals for filtering
+            allMatchups = combined;
+            availableSeasonYears = Array.from(new Set(combined.map(ab => parseInt(String(ab.game_date || '').slice(0, 4), 10)).filter(Boolean)));
+            buildSeasonFilterUI(availableSeasonYears);
+
+            // Build a data object compatible with existing rendering code below
+            data = {
+                matchups: combined,
+                summary: computeSummary(combined) || {},
+            };
+
+            // Cache the successful result to sessionStorage for faster repeat searches
+            setCachedMatchup(player1Name, player2Name, role, data);
+        } catch (error) {
+            loadingDiv.style.display = 'none';
+            errorDiv.textContent = 'Error: ' + error.message;
+            errorDiv.style.display = 'block';
+            return;
+        }
+    }
+
+    // ===== RENDERING CODE (shared by both cache hit and network fetch) =====
+    try {
+
         // Display summary
         if (data.summary && data.summary.total_at_bats > 0) {
             const summaryStats = document.getElementById('summaryStats');

@@ -596,33 +596,56 @@ def get_all_play_ids_from_game(game_pk):
 @bp.route('/matchups', methods=['GET'])
 def api_matchups():
     """Get historical matchup data between a player and opponent using Statcast ONLY with proper filtering"""
-    
+
     try:
         sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
         from scrape_savant import lookup_batter_id, fetch_batter_statcast, fetch_pitcher_statcast
     except ImportError:
         return jsonify({"error": "Statcast module not available"}), 500
-    
+
+    # Import persistent cache for server-side caching
+    try:
+        from app.services import persistent_cache
+    except ImportError:
+        persistent_cache = None
+
     # Get parameters
     player_name = request.args.get('player', '').strip()
     opponent_name = request.args.get('opponent', '').strip()
     player_role = request.args.get('role', 'batter').lower()
     season = request.args.get('season', type=int)
     seasons = request.args.getlist('seasons')
-    
+
     if not player_name or not opponent_name:
         return jsonify({"error": "Both player and opponent names are required"}), 400
-    
+
     try:
         # Look up IDs for both players
         player_id = lookup_batter_id(player_name)
         opponent_id = lookup_batter_id(opponent_name)
-        
+
         print(f"DEBUG: Player: {player_name} -> ID: {player_id}")
         print(f"DEBUG: Opponent: {opponent_name} -> ID: {opponent_id}")
         print(f"DEBUG: Role: {player_role}")
     except Exception as e:
         return jsonify({"error": f"Could not find player IDs: {str(e)}"}), 404
+
+    # Build cache key from normalized parameters
+    cache_key = {
+        "player_id": player_id,
+        "opponent_id": opponent_id,
+        "role": player_role,
+        "season": season,
+        "seasons": sorted(seasons) if seasons else None
+    }
+
+    # Check persistent cache first (1 hour TTL)
+    MATCHUP_CACHE_TTL = 3600  # 1 hour
+    if persistent_cache:
+        cached_result = persistent_cache.get_json("matchups", cache_key)
+        if cached_result:
+            print(f"DEBUG: Cache HIT for {player_name} vs {opponent_name} ({player_role})")
+            return jsonify(cached_result)
     
     # Initialize variables for cleanup
     df_raw = None
@@ -1207,14 +1230,25 @@ def api_matchups():
         if df is not None:
             del df
         gc.collect()
-        
-        return jsonify({
+
+        # Build the result object
+        result = {
             "player": player_name,
             "opponent": opponent_name,
             "player_role": player_role,
             "matchups": at_bats,
             "summary": summary
-        })
+        }
+
+        # Cache the successful result (1 hour TTL) - best effort, don't block on failure
+        if persistent_cache and at_bats:  # Only cache if we have matchup data
+            try:
+                persistent_cache.set_json("matchups", cache_key, result, MATCHUP_CACHE_TTL)
+                print(f"DEBUG: Cache SET for {player_name} vs {opponent_name} ({player_role})")
+            except Exception as cache_err:
+                print(f"DEBUG: Cache SET failed: {cache_err}")
+
+        return jsonify(result)
         
     except MemoryError as e:
         # Explicit memory error handling - ensure JSON is always returned
