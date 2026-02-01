@@ -43,6 +43,12 @@ import uuid
 from app.utils.validators import detect_image_type, convert_heic_to_jpeg
 import hashlib
 
+# Import persistent cache for server-side caching
+try:
+    from app.services import persistent_cache
+except ImportError:
+    persistent_cache = None
+
 bp = Blueprint('pages', __name__)
 
 # Import PlayerDB if available
@@ -682,6 +688,35 @@ def gameday_schedule():
             except Exception:
                 pass
 
+    # Check for force refresh (hard reset bypasses cache)
+    force_refresh = request.args.get("refresh", "").lower() in ("1", "true", "yes")
+
+    # Server-side cache key: user_id + today's date
+    user_id = target_user.get("id") if target_user else None
+    today_str = datetime.now().date().isoformat()
+    cache_key = {"type": "gameday_schedule", "user_id": user_id, "date": today_str}
+    SCHEDULE_CACHE_TTL = 300  # 5 minutes
+
+    # Check persistent cache first (unless force refresh)
+    if persistent_cache and not force_refresh:
+        cached_html = persistent_cache.get_json("gameday_schedule_html", cache_key)
+        if cached_html:
+            # Return cached HTML with browser caching headers
+            etag = 'W/"gameday-schedule-{}"'.format(hashlib.md5(cached_html.encode("utf-8")).hexdigest())
+            inm = request.headers.get("If-None-Match")
+            if inm and inm.strip() == etag:
+                resp = make_response("", 304)
+                resp.headers["ETag"] = etag
+                resp.headers["Cache-Control"] = "private, max-age=60"
+                resp.headers["Vary"] = "Cookie"
+                return resp
+
+            resp = jsonify({"schedule_html": cached_html})
+            resp.headers["ETag"] = etag
+            resp.headers["Cache-Control"] = "private, max-age=60"
+            resp.headers["Vary"] = "Cookie"
+            return resp
+
     # This endpoint is on the critical path for "Series" rendering.
     # Removed purge_concluded_series_documents() - it was blocking and should run in background.
     # Keep this endpoint fast: just build and return the schedule HTML with HTTP caching.
@@ -759,7 +794,14 @@ def gameday_schedule():
         show_date_redirect_note=False,
         default_schedule_tab="current",
     )
-    
+
+    # Cache the rendered HTML for 5 minutes
+    if persistent_cache:
+        try:
+            persistent_cache.set_json("gameday_schedule_html", cache_key, html, SCHEDULE_CACHE_TTL)
+        except Exception:
+            pass  # Best effort caching
+
     # Browser-level caching + conditional requests for faster repeat loads.
     etag = 'W/"gameday-schedule-{}"'.format(hashlib.md5(html.encode("utf-8")).hexdigest())
     inm = request.headers.get("If-None-Match")
