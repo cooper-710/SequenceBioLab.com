@@ -729,6 +729,11 @@ def gameday_schedule():
             series_end = game.get("_series_end_date")
             matched: List[Dict[str, Any]] = []
             if series_start and series_end:
+                # Ensure series dates are datetime.date objects for comparison
+                if isinstance(series_start, str):
+                    series_start = datetime.strptime(series_start, "%Y-%m-%d").date()
+                if isinstance(series_end, str):
+                    series_end = datetime.strptime(series_end, "%Y-%m-%d").date()
                 for doc in by_opp.get(opp, []):
                     doc_start = datetime.fromtimestamp(doc["series_start"]).date()
                     doc_end = datetime.fromtimestamp(doc["series_end"]).date()
