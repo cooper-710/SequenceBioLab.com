@@ -248,12 +248,12 @@ def load_gameday_schedule_window(user: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     This uses a shorter window than the full-season loader so that
     first-time loads are faster while still providing enough future games
-    for the calendar and upcoming-games sidebar. Increased to 180 days to
-    ensure we capture the next game even if it's further out.
+    for the calendar and upcoming-games sidebar. Set to 270 days to
+    cover the full MLB season through October.
     """
     try:
         today = datetime.now().date()
-        end_date = today + timedelta(days=180)
+        end_date = today + timedelta(days=270)
         return load_full_season_schedule(
             user,
             start_date=today.isoformat(),
