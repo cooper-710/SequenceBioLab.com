@@ -2023,13 +2023,23 @@ document.addEventListener('DOMContentLoaded', () => {
     // Season selector removed; filter is shown after data loads
 });
 
+// Track if a matchup search is in progress (prevent duplicate submissions)
+let isMatchupLoading = false;
+
 document.getElementById('matchupForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+
+    // Prevent multiple submissions
+    if (isMatchupLoading) {
+        console.log('[Matchup] Search already in progress, ignoring click');
+        return;
+    }
+    isMatchupLoading = true;
 
     // Hide the preview once the user actually runs a matchup
     const mockEl = document.getElementById('matchupMockScreen');
     if (mockEl) mockEl.style.display = 'none';
-    
+
     const player1Name = document.getElementById('playerName').value.trim();
     const player2Name = document.getElementById('opponentName').value.trim();
     
@@ -2118,95 +2128,46 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
         if (progressBarEl) progressBarEl.style.width = '0%';
         if (progressTextEl) progressTextEl.style.display = 'none';
 
+        // Get loading UI elements
+        const loadingHeadline = loadingDiv.querySelector('.loading-headline');
+        const progressWrap = document.getElementById('loadingProgressWrap');
+        const progressBar = document.getElementById('loadingProgressBar');
+        const progressText = document.getElementById('loadingProgressText');
+
+        // Helper to update loading status
+        const updateLoadingStatus = (text, progress = null) => {
+            if (loadingHeadline) loadingHeadline.textContent = text;
+            if (progress !== null && progressBar) {
+                progressWrap.style.display = 'block';
+                progressBar.style.width = progress + '%';
+            }
+        };
+
         try {
             // 1) Fetch seasons with matchup data between these two players
+            updateLoadingStatus('Finding available seasons...');
             const seasons = await fetchAvailableSeasons(player1Name, player2Name, role);
             if (!seasons || seasons.length === 0) {
                 loadingDiv.style.display = 'none';
                 errorDiv.textContent = 'No matchup data found between these players.';
                 errorDiv.style.display = 'block';
+                isMatchupLoading = false;
                 return;
             }
 
-            // 2) Load each season (backend is optimized for 1 season per request)
+            // 2) Load each season in parallel
             seasons.sort((a, b) => b - a);
-
-            const seasonRow = document.getElementById('loadingSeasonRow');
-            const seasonBadge = document.getElementById('loadingSeasonBadge');
-            const progressWrap = document.getElementById('loadingProgressWrap');
-            const progressBar = document.getElementById('loadingProgressBar');
-            const progressText = document.getElementById('loadingProgressText');
             const total = seasons.length;
-
-            // Show progress UI
-            if (seasonRow) { seasonRow.style.display = 'flex'; }
-            if (progressWrap) { progressWrap.style.display = 'block'; }
-            if (progressText) { progressText.style.display = 'block'; }
-            if (progressBar) { progressBar.style.width = '0%'; }
-            if (progressText) { progressText.textContent = `0 of ${total} seasons`; }
-            if (seasonBadge) { seasonBadge.textContent = 'Loading...'; }
-
-            // Track completed count for progress updates
             let completedCount = 0;
-            let firstResultShown = false;
 
-            // Helper to update progress bar
-            const updateProgress = () => {
-                completedCount++;
-                const pct = Math.round((completedCount / total) * 100);
-                if (progressBar) { progressBar.style.width = pct + '%'; }
-                if (progressText) { progressText.textContent = `${completedCount} of ${total} seasons`; }
-                if (seasonBadge) { seasonBadge.textContent = completedCount === total ? 'Complete' : `${completedCount}/${total}`; }
-            };
+            // Show progress bar
+            updateLoadingStatus(`Loading matchup data (0 of ${total} seasons)...`, 0);
+            if (progressText) {
+                progressText.style.display = 'block';
+                progressText.textContent = seasons.join(', ');
+            }
 
-            // Helper to update summary stats display
-            const updateSummaryDisplay = () => {
-                const summary = computeSummary(combined) || {};
-                const summaryStats = document.getElementById('summaryStats');
-                if (summary.total_at_bats > 0) {
-                    summaryStats.innerHTML = `
-                        <div class="stat-card">
-                            <div class="stat-value">${summary.total_at_bats}</div>
-                            <div class="stat-label">At-Bats</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">${summary.hits}</div>
-                            <div class="stat-label">Hits</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">${summary.average.toFixed(3)}</div>
-                            <div class="stat-label">Average</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">${summary.on_base_percentage.toFixed(3)}</div>
-                            <div class="stat-label">OBP</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">${summary.slugging_percentage.toFixed(3)}</div>
-                            <div class="stat-label">SLG</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">${summary.ops.toFixed(3)}</div>
-                            <div class="stat-label">OPS</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">${summary.home_runs}</div>
-                            <div class="stat-label">Home Runs</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">${summary.strikeouts}</div>
-                            <div class="stat-label">Strikeouts</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">${summary.walks}</div>
-                            <div class="stat-label">Walks</div>
-                        </div>
-                    `;
-                    summarySection.style.display = 'block';
-                }
-            };
-
-            // Fetch all seasons in PARALLEL with PROGRESSIVE rendering
+            // Fetch all seasons in PARALLEL
             const fetchPromises = seasons.map(async (year) => {
                 const params = new URLSearchParams();
                 params.append('player', player1Name);
@@ -2217,36 +2178,22 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
                 try {
                     const resp = await fetch(`/api/matchups?${params}`);
                     const seasonData = await resp.json();
-                    updateProgress();
+
+                    // Update progress
+                    completedCount++;
+                    const pct = Math.round((completedCount / total) * 100);
+                    updateLoadingStatus(`Loading matchup data (${completedCount} of ${total} seasons)...`, pct);
 
                     if (resp.ok && seasonData.matchups && seasonData.matchups.length > 0) {
-                        // Add to combined immediately
-                        combined.push(...seasonData.matchups);
-
-                        // Show results section on first successful result
-                        if (!firstResultShown) {
-                            firstResultShown = true;
-                            loadingDiv.style.display = 'none';
-                            summarySection.style.display = 'block';
-                            atBatsSection.style.display = 'block';
-                            seasonFilterSection.style.display = 'block';
-                        }
-
-                        // Update summary stats live
-                        updateSummaryDisplay();
-
-                        // Update season filter
-                        allMatchups = combined;
-                        availableSeasonYears = Array.from(new Set(combined.map(ab => parseInt(String(ab.game_date || '').slice(0, 4), 10)).filter(Boolean)));
-                        buildSeasonFilterUI(availableSeasonYears);
-
                         return { success: true, matchups: seasonData.matchups, year };
                     } else if (seasonData && (seasonData.error || seasonData.message)) {
                         return { success: false, error: `${year}: ${seasonData.error || seasonData.message}`, year };
                     }
                     return { success: true, matchups: [], year };
                 } catch (err) {
-                    updateProgress();
+                    completedCount++;
+                    const pct = Math.round((completedCount / total) * 100);
+                    updateLoadingStatus(`Loading matchup data (${completedCount} of ${total} seasons)...`, pct);
                     return { success: false, error: `${year}: ${err.message || err}`, year };
                 }
             });
@@ -2254,9 +2201,11 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
             // Wait for all fetches to complete
             const results = await Promise.all(fetchPromises);
 
-            // Collect any errors
+            // Collect results
             for (const result of results) {
-                if (!result.success && result.error) {
+                if (result.success && result.matchups) {
+                    combined.push(...result.matchups);
+                } else if (!result.success && result.error) {
                     errors.push(result.error);
                 }
             }
@@ -2266,6 +2215,7 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
             if (combined.length === 0) {
                 errorDiv.textContent = errors.length ? `No matchup data found. (${errors.join(' | ')})` : 'No matchup data found.';
                 errorDiv.style.display = 'block';
+                isMatchupLoading = false;
                 return;
             }
 
