@@ -2923,6 +2923,9 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
         loadingDiv.style.display = 'none';
         errorDiv.textContent = 'Error: ' + error.message;
         errorDiv.style.display = 'block';
+    } finally {
+        // Always reset the loading flag so user can search again
+        isMatchupLoading = false;
     }
 });
 </script>
