@@ -414,18 +414,54 @@ def api_matchups_seasons():
         import gc
 
         today = date.today()
-        start_year = 2015
         end_year = today.year
-
         opponent_id_int = int(opponent_id)
         all_seasons = set()
 
-        # OPTIMIZATION: Fetch ALL years in ONE call instead of 11 separate calls
-        # This is much faster because pybaseball/statcast caches by date range
+        # OPTIMIZATION: Check Positions.csv first to find overlapping seasons
+        # This narrows the Statcast query to only years both players were active
+        start_year = 2017  # Positions.csv goes back to 2017
+        player_seasons = set()
+        opponent_seasons = set()
+
+        try:
+            if csv_loader:
+                pos_df = csv_loader._load_positions()
+                if pos_df is not None and not pos_df.empty:
+                    # Get player's seasons (case-insensitive match)
+                    player_mask = pos_df['player_name'].str.lower() == player_name.lower()
+                    player_rows = pos_df[player_mask]
+                    if not player_rows.empty:
+                        player_seasons = set(player_rows['season'].dropna().astype(int).unique())
+
+                    # Get opponent's seasons
+                    opponent_mask = pos_df['player_name'].str.lower() == opponent_name.lower()
+                    opponent_rows = pos_df[opponent_mask]
+                    if not opponent_rows.empty:
+                        opponent_seasons = set(opponent_rows['season'].dropna().astype(int).unique())
+
+                    print(f"DEBUG: {player_name} seasons from Positions.csv: {sorted(player_seasons)}")
+                    print(f"DEBUG: {opponent_name} seasons from Positions.csv: {sorted(opponent_seasons)}")
+
+                    # Find overlapping seasons
+                    if player_seasons and opponent_seasons:
+                        overlapping = player_seasons & opponent_seasons
+                        if overlapping:
+                            start_year = min(overlapping)
+                            end_year = max(overlapping)
+                            print(f"DEBUG: Overlapping seasons: {sorted(overlapping)} -> fetching {start_year}-{end_year}")
+                        else:
+                            # No overlap - return empty early
+                            print(f"DEBUG: No overlapping seasons found")
+                            return jsonify({"seasons": []})
+        except Exception as pos_err:
+            print(f"DEBUG: Error checking Positions.csv: {pos_err}, falling back to full range")
+            start_year = 2017
+
         all_start = f"{start_year}-03-01"
         all_end = f"{end_year}-11-30"
 
-        print(f"DEBUG: Fetching all seasons {start_year}-{end_year} in one call...")
+        print(f"DEBUG: Fetching seasons {start_year}-{end_year} in one call...")
 
         df_all = pd.DataFrame()
         try:
