@@ -12,8 +12,12 @@ from typing import Optional, Dict, Any
 import csv
 import sys
 import unicodedata
+import logging
 from pathlib import Path
+from datetime import datetime, timezone
+from functools import lru_cache
 
+import requests
 from flask import g
 from app.config import Config
 from app.utils.helpers import clean_str
@@ -153,6 +157,177 @@ def determine_user_team(user: Optional[Dict[str, Any]]) -> str:
     return team_abbr
 
 
+def lookup_player_mlbam_id(first_name: Optional[str], last_name: Optional[str]) -> Optional[int]:
+    """Look up player's MLBAM ID from data/Positions.csv by name match."""
+    first = (first_name or "").strip()
+    last = (last_name or "").strip()
+    if not last:
+        return None
+    csv_path = Config.ROOT_DIR / "data" / "Positions.csv"
+    if not csv_path.exists():
+        return None
+    try:
+        with open(csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+        if not rows:
+            return None
+        max_season = max((int(r.get("season", 0)) for r in rows if r.get("season")), default=0)
+        if max_season <= 0:
+            return None
+        first_n = _normalize_name(first)
+        last_n = _normalize_name(last)
+        for r in rows:
+            try:
+                if int(r.get("season", 0)) != max_season:
+                    continue
+                name = (r.get("player_name") or "").strip()
+                csv_norm = _normalize_name(name)
+                words = csv_norm.split()
+                if not words:
+                    continue
+                if first_n and words[0] != first_n:
+                    continue
+                if last_n and last_n not in words:
+                    continue
+                player_id = r.get("player_id")
+                if player_id:
+                    return int(player_id)
+            except (ValueError, TypeError):
+                continue
+        return None
+    except Exception:
+        return None
 
 
+def is_allstar_week() -> bool:
+    """Returns True during All-Star break (July 14-18)."""
+    now = datetime.now(timezone.utc)
+    return now.month == 7 and 14 <= now.day <= 18
+
+
+def is_allstar_season() -> bool:
+    """Returns True during the window when All-Star rosters may be announced (late June through mid-July)."""
+    now = datetime.now(timezone.utc)
+    # Rosters announced ~2-3 weeks before the game (usually July 15)
+    # So check from June 20 through July 18
+    if now.month == 6 and now.day >= 20:
+        return True
+    if now.month == 7 and now.day <= 18:
+        return True
+    return False
+
+
+# Cache All-Star game info for 24 hours
+_allstar_game_cache: Dict[int, tuple] = {}  # year -> (game_info_dict, timestamp)
+_ALLSTAR_CACHE_TTL = 24 * 60 * 60  # 24 hours in seconds
+
+
+def get_allstar_game_info(year: Optional[int] = None) -> Optional[Dict[str, Any]]:
+    """Fetch All-Star Game details (date, venue, time) from MLB API.
+
+    Returns game info dict with keys: game_pk, game_date, game_datetime, venue, status
+    """
+    if year is None:
+        year = datetime.now(timezone.utc).year
+
+    logger = logging.getLogger(__name__)
+
+    # Check cache
+    if year in _allstar_game_cache:
+        game_info, timestamp = _allstar_game_cache[year]
+        if (datetime.now(timezone.utc).timestamp() - timestamp) < _ALLSTAR_CACHE_TTL:
+            return game_info
+
+    try:
+        url = f"https://statsapi.mlb.com/api/v1/schedule?sportId=1&gameType=A&season={year}&hydrate=venue"
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+
+        for date_entry in data.get("dates", []):
+            for game in date_entry.get("games", []):
+                if game.get("gameType") == "A":
+                    venue_data = game.get("venue", {})
+                    game_info = {
+                        "game_pk": game.get("gamePk"),
+                        "game_date": date_entry.get("date"),
+                        "game_datetime": game.get("gameDate"),
+                        "venue": venue_data.get("name", ""),
+                        "status": game.get("status", {}).get("detailedState", "Scheduled"),
+                        "game_type": "A",
+                    }
+                    _allstar_game_cache[year] = (game_info, datetime.now(timezone.utc).timestamp())
+                    logger.debug(f"Found All-Star game for {year}: {game_info['game_date']} at {game_info['venue']}")
+                    return game_info
+
+        logger.debug(f"No All-Star game found for {year}")
+        _allstar_game_cache[year] = (None, datetime.now(timezone.utc).timestamp())
+        return None
+
+    except Exception as exc:
+        logger.warning(f"Failed to fetch All-Star game info for {year}: {exc}")
+        return None
+
+
+def is_user_allstar(user: Optional[Dict[str, Any]], year: Optional[int] = None) -> bool:
+    """Check if the user is marked as an All-Star in their profile.
+
+    Checks the user's `is_allstar` or `allstar_year` field.
+    """
+    if not user:
+        return False
+
+    if year is None:
+        year = datetime.now(timezone.utc).year
+
+    # Check if user has is_allstar flag set
+    if user.get("is_allstar"):
+        # If allstar_year is set, check it matches current year
+        allstar_year = user.get("allstar_year")
+        if allstar_year:
+            return int(allstar_year) == year
+        return True
+
+    return False
+
+
+def get_user_allstar_game(user: Optional[Dict[str, Any]], year: Optional[int] = None, confirmed_only: bool = False) -> Optional[Dict[str, Any]]:
+    """Get the All-Star Game entry for a user's calendar.
+
+    Args:
+        user: User dict (checks is_allstar field for confirmed status)
+        year: Season year (defaults to current year)
+        confirmed_only: If True, only returns game if user is a confirmed All-Star
+
+    Returns a game dict compatible with the schedule calendar format, or None.
+    """
+    if year is None:
+        year = datetime.now(timezone.utc).year
+
+    game_info = get_allstar_game_info(year)
+    if not game_info:
+        return None
+
+    # Check if user is confirmed All-Star (from their profile)
+    user_confirmed = is_user_allstar(user, year)
+
+    # If only returning for confirmed All-Stars and user isn't confirmed, return None
+    if confirmed_only and not user_confirmed:
+        return None
+
+    # Format for calendar compatibility
+    return {
+        "game_date": game_info.get("game_date"),
+        "game_datetime": game_info.get("game_datetime"),
+        "game_pk": game_info.get("game_pk"),
+        "opponent_name": "All-Star Game",
+        "opponent_abbr": "ASG",
+        "opponent_id": None,
+        "is_home": True,  # Treat as "home" for styling (special event)
+        "venue": game_info.get("venue", ""),
+        "status": game_info.get("status", "Scheduled"),
+        "game_type": "A",
+        "confirmed_allstar": user_confirmed,  # Flag for styling
+    }
 

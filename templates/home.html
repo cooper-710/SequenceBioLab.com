@@ -85,6 +85,18 @@
                             <div class="calendar-legend-color calendar-legend-away"></div>
                             <span>Away</span>
                         </div>
+                        <div class="calendar-legend-item">
+                            <div class="calendar-legend-color calendar-legend-spring"></div>
+                            <span>Spring</span>
+                        </div>
+                        <div class="calendar-legend-item">
+                            <div class="calendar-legend-color calendar-legend-allstar"></div>
+                            <span>All-Star</span>
+                        </div>
+                        <div class="calendar-legend-item">
+                            <div class="calendar-legend-color calendar-legend-playoff"></div>
+                            <span>Playoffs</span>
+                        </div>
                     </div>
                 </div>
             </article>
@@ -1236,6 +1248,69 @@
     border-color: rgba(100, 150, 255, 0.4);
 }
 
+/* Spring Training - subtle muted style with dashed border */
+.calendar-day.has-game.game-type-spring {
+    opacity: 0.7;
+    border-style: dashed;
+}
+.calendar-day.has-game.game-type-spring.game-home {
+    background: rgba(255, 127, 0, 0.08);
+    border-color: rgba(255, 127, 0, 0.25);
+}
+.calendar-day.has-game.game-type-spring.game-away {
+    background: rgba(100, 150, 255, 0.08);
+    border-color: rgba(100, 150, 255, 0.25);
+}
+
+/* All-Star Game - confirmed (star themed with gradient) */
+.calendar-day.has-game.game-type-allstar {
+    background: linear-gradient(135deg, rgba(0, 45, 114, 0.3) 0%, rgba(191, 13, 62, 0.3) 100%) !important;
+    border: 2px solid;
+    border-image: linear-gradient(135deg, #002d72, #bf0d3e) 1;
+    box-shadow: 0 0 8px rgba(255, 215, 0, 0.4);
+    position: relative;
+}
+.calendar-day.has-game.game-type-allstar::before {
+    content: '★';
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    font-size: 10px;
+    color: #ffd700;
+    text-shadow: 0 0 4px rgba(255, 215, 0, 0.8);
+}
+
+/* All-Star Game - unconfirmed (dimmed, shows for all players during All-Star season) */
+.calendar-day.has-game.game-type-allstar-pending {
+    background: linear-gradient(135deg, rgba(0, 45, 114, 0.1) 0%, rgba(191, 13, 62, 0.1) 100%) !important;
+    border: 1px dashed rgba(100, 100, 100, 0.4);
+    opacity: 0.5;
+    position: relative;
+}
+.calendar-day.has-game.game-type-allstar-pending::before {
+    content: '☆';
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    font-size: 10px;
+    color: rgba(150, 150, 150, 0.6);
+}
+
+/* Playoffs - gold championship style */
+.calendar-day.has-game.game-type-playoff {
+    background: linear-gradient(135deg, rgba(255, 215, 0, 0.15) 0%, rgba(218, 165, 32, 0.2) 100%) !important;
+    border: 2px solid #daa520;
+    box-shadow: 0 0 6px rgba(255, 215, 0, 0.3), inset 0 0 8px rgba(255, 215, 0, 0.1);
+    position: relative;
+}
+.calendar-day.has-game.game-type-playoff::before {
+    content: '🏆';
+    position: absolute;
+    top: 1px;
+    right: 2px;
+    font-size: 9px;
+}
+
 .calendar-day.has-game.today.game-home {
     background: rgba(255, 127, 0, 0.3);
     border: 2px solid var(--color-accent);
@@ -1288,7 +1363,8 @@
 
 .calendar-legend {
     display: flex;
-    gap: 20px;
+    flex-wrap: wrap;
+    gap: 12px 20px;
     margin-top: 16px;
     padding-top: 16px;
     border-top: 1px solid var(--color-layer-border);
@@ -1298,9 +1374,10 @@
 .calendar-legend-item {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 0.85rem;
+    gap: 6px;
+    font-size: 0.8rem;
     color: var(--color-text-subtle);
+    white-space: nowrap;
 }
 
 .calendar-legend-color {
@@ -1308,6 +1385,21 @@
     height: 16px;
     border-radius: 4px;
     border: 1px solid;
+}
+
+@media (max-width: 480px) {
+    .calendar-legend {
+        gap: 8px 12px;
+        padding: 12px 8px 0;
+    }
+    .calendar-legend-item {
+        font-size: 0.7rem;
+        gap: 4px;
+    }
+    .calendar-legend-color {
+        width: 12px;
+        height: 12px;
+    }
 }
 
 .calendar-legend-home {
@@ -1318,6 +1410,23 @@
 .calendar-legend-away {
     background: rgba(100, 150, 255, 0.15);
     border-color: rgba(100, 150, 255, 0.4);
+}
+
+.calendar-legend-spring {
+    background: rgba(150, 150, 150, 0.1);
+    border: 1px dashed rgba(150, 150, 150, 0.5);
+    opacity: 0.7;
+}
+
+.calendar-legend-allstar {
+    background: linear-gradient(135deg, rgba(0, 45, 114, 0.3) 0%, rgba(191, 13, 62, 0.3) 100%);
+    border: 1px solid #bf0d3e;
+    box-shadow: 0 0 4px rgba(255, 215, 0, 0.4);
+}
+
+.calendar-legend-playoff {
+    background: linear-gradient(135deg, rgba(255, 215, 0, 0.15) 0%, rgba(218, 165, 32, 0.2) 100%);
+    border: 2px solid #daa520;
 }
 
 /* Empty State */
@@ -1890,10 +1999,24 @@
                 } else {
                     classes += ' game-away';
                 }
+                // Add game type class
+                const gameType = game.game_type || 'R';
+                if (gameType === 'S') {
+                    classes += ' game-type-spring';
+                } else if (gameType === 'A') {
+                    // All-Star: confirmed = full styling, unconfirmed = dimmed
+                    if (game.confirmed_allstar) {
+                        classes += ' game-type-allstar';
+                    } else {
+                        classes += ' game-type-allstar-pending';
+                    }
+                } else if (['F', 'D', 'L', 'W'].includes(gameType)) {
+                    classes += ' game-type-playoff';
+                }
             }
-            
+
             dayDiv.className = classes;
-            
+
             // Make clickable if there's a game
             if (game) {
                 dayDiv.style.cursor = 'pointer';

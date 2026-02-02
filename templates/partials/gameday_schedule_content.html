@@ -20,7 +20,7 @@
   {% if upcoming_games %}
   <ul class="matchups-list">
     {% for game in upcoming_games %}
-    <li data-status="{{ game.status or '' }}" data-opponent="{{ (game.opponent_abbr or game.opponent)|lower }}" data-category="{{ game.category or 'future' }}" class="matchup-card">
+    <li data-status="{{ game.status or '' }}" data-opponent="{{ (game.opponent_abbr or game.opponent)|lower }}" data-category="{{ game.category or 'future' }}" class="matchup-card{% if game.is_allstar_game %} matchup-card-allstar{% endif %}">
       <!-- Header Block: Date & Series -->
       <div class="matchup-header-block">
         <div class="matchup-header-content">
@@ -40,7 +40,11 @@
       <div class="matchup-opponent-block">
         <div class="matchup-opponent-main">
           <div class="matchup-badge-large">
-            {% if game.opponent_id %}
+            {% if game.is_allstar_game %}
+            <span class="team-abbr-badge-large allstar-badge" style="background: linear-gradient(135deg, #002d72 0%, #bf0d3e 100%); color: white;">
+              ★ ASG
+            </span>
+            {% elif game.opponent_id %}
             <span class="team-abbr-badge-large" style="background-color: {{ get_team_color_global(team_id=game.opponent_id) }}; color: white;">
               {{ game.opponent_abbr or (game.opponent_id|team_abbr_from_id) or game.opponent }}
             </span>

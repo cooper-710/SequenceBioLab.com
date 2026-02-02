@@ -17,7 +17,7 @@ import statsapi
 from app.config import Config
 from app.utils.formatters import coerce_utc_datetime
 from app.utils.venue_timezones import format_game_time_venue
-from app.services.player_service import determine_user_team
+from app.services.player_service import determine_user_team, is_allstar_week, is_allstar_season, is_user_allstar, get_user_allstar_game
 from app.services.schedule_service import collect_series_for_team, team_abbr_from_id
 from app.services.cache_service import cache_service, CACHE_UPCOMING_GAMES, CACHE_PLAYER_NEWS
 from app.services.persistent_cache import get_or_set_json as persistent_get_or_set_json, get_json as persistent_cache_get_json
@@ -104,7 +104,11 @@ def _format_staff_note(note: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def load_next_series_snapshot(user: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Load the next active series snapshot for the user."""
+    """Load the next active series snapshot for the user.
+
+    For confirmed All-Stars during All-Star season, may return the All-Star Game
+    as their next "series" if it's coming up before their next team series.
+    """
     try:
         team_abbr = determine_user_team(user)
         series_list = collect_series_for_team(team_abbr, days_ahead=365)
@@ -117,6 +121,44 @@ def load_next_series_snapshot(user: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if series.get("status") != "expired":
             next_active = series
             break
+
+    # Check if user is a confirmed All-Star and if All-Star Game should be shown
+    allstar_game = get_user_allstar_game(user, confirmed_only=True)  # Only confirmed
+    if allstar_game and allstar_game.get("game_date"):
+        allstar_date_str = allstar_game.get("game_date")
+        try:
+            allstar_date = datetime.fromisoformat(allstar_date_str).date()
+            now = datetime.now(timezone.utc).date()
+
+            # If All-Star Game is upcoming and before (or instead of) next team series
+            if allstar_date >= now:
+                next_series_start = None
+                if next_active and next_active.get("start"):
+                    next_series_dt = coerce_utc_datetime(next_active.get("start"))
+                    if next_series_dt:
+                        next_series_start = next_series_dt.date()
+
+                # Show All-Star if it's before next series or there's no next series
+                if not next_series_start or allstar_date <= next_series_start:
+                    # Return All-Star Game as the "next series"
+                    allstar_datetime = allstar_game.get("game_datetime")
+                    allstar_dt = coerce_utc_datetime(allstar_datetime) if allstar_datetime else None
+                    days_until = (allstar_date - now).days
+
+                    return {
+                        "opponent_name": "All-Star Game",
+                        "opponent_id": None,
+                        "opponent_abbr": "ASG",
+                        "start_date": allstar_date.strftime("%b %d"),
+                        "end_date": allstar_date.strftime("%b %d"),
+                        "status": "upcoming",
+                        "days_until": days_until,
+                        "first_game_datetime_iso": (allstar_dt.isoformat().replace("+00:00", "Z") if allstar_dt else None),
+                        "is_allstar_game": True,
+                        "venue": allstar_game.get("venue", ""),
+                    }
+        except Exception as exc:
+            logger.warning(f"Error checking All-Star game for next series: {exc}")
 
     if not next_active:
         return None
@@ -154,6 +196,7 @@ def load_next_series_snapshot(user: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "days_until": days_until,
         # Use Z suffix for UTC for easier client parsing/debugging.
         "first_game_datetime_iso": (first_game_dt.isoformat().replace("+00:00", "Z") if first_game_dt else None),  # For countdown clock
+        "is_allstar_game": False,
     }
 
 
@@ -232,11 +275,43 @@ def load_schedule_calendar(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                         "is_home": game.get("is_home", False),
                         "venue": game.get("venue", ""),
                         "status": game.get("status", "Scheduled"),
+                        "game_type": game.get("game_type", "R"),
                     })
                 except Exception as e:
                     logger.warning(f"Warning formatting game date {game_date}: {e}")
                     continue
-        
+
+        # Inject All-Star Game (for all users, dimmed by default, highlighted if confirmed)
+        allstar_game = get_user_allstar_game(user, confirmed_only=False)
+        if allstar_game:
+            allstar_date = allstar_game.get("game_date")
+            if allstar_date:
+                # Check if we already have a game on this date (shouldn't during All-Star break)
+                existing_dates = {g["date"] for g in calendar_data}
+                if allstar_date not in existing_dates:
+                    try:
+                        dt = datetime.fromisoformat(allstar_date)
+                        confirmed = allstar_game.get("confirmed_allstar", False)
+                        calendar_data.append({
+                            "date": dt.strftime("%Y-%m-%d"),
+                            "day": dt.strftime("%d"),
+                            "day_name": dt.strftime("%a"),
+                            "opponent": allstar_game.get("opponent_name", "All-Star Game"),
+                            "opponent_abbr": allstar_game.get("opponent_abbr", "ASG"),
+                            "opponent_id": None,
+                            "is_home": True,
+                            "venue": allstar_game.get("venue", ""),
+                            "status": allstar_game.get("status", "Scheduled"),
+                            "game_type": "A",
+                            "confirmed_allstar": confirmed,  # For styling: True = highlight, False = dimmed
+                        })
+                        # Sort by date after adding
+                        calendar_data.sort(key=lambda g: g["date"])
+                        status = "confirmed" if confirmed else "potential"
+                        logger.info(f"Added All-Star Game ({status}) to calendar for {allstar_date}")
+                    except Exception as e:
+                        logger.warning(f"Failed to add All-Star game to calendar: {e}")
+
         return calendar_data
     except Exception as e:
         logger.warning(f"Warning loading schedule calendar: {e}")
@@ -521,9 +596,11 @@ def build_series_from_games(raw_games: List[Dict[str, Any]], today: date) -> Lis
 
 def collect_series_for_gameday(user: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Return a cached list of series for the Gameday schedule card.
-    
+
     Uses the same schedule window as the calendar to ensure consistency.
     Falls back to building from the calendar's data source if cache is empty.
+
+    For confirmed All-Stars, injects the All-Star Game as a special series entry.
     """
     try:
         team_abbr = determine_user_team(user)
@@ -559,7 +636,7 @@ def collect_series_for_gameday(user: Dict[str, Any]) -> List[Dict[str, Any]]:
         ttl_seconds=6 * 60 * 60,
         builder=_builder,
     )
-    
+
     # If cached result is empty, try building fresh as fallback
     if not series or not isinstance(series, list) or len(series) == 0:
         logger.warning(f"Gameday series cache returned empty, rebuilding fresh for {team_abbr}")
@@ -579,8 +656,66 @@ def collect_series_for_gameday(user: Dict[str, Any]) -> List[Dict[str, Any]]:
         except Exception as exc:
             logger.warning(f"Warning rebuilding gameday series fallback: {exc}")
             series = []
-    
-    return series if isinstance(series, list) else []
+
+    series = series if isinstance(series, list) else []
+
+    # Inject All-Star Game for confirmed All-Stars only
+    allstar_game = get_user_allstar_game(user, confirmed_only=True)
+    if allstar_game and allstar_game.get("game_date"):
+        try:
+            allstar_date_str = allstar_game.get("game_date")
+            allstar_date = datetime.fromisoformat(allstar_date_str).date()
+
+            # Only add if the game is upcoming
+            if allstar_date >= today:
+                allstar_datetime = allstar_game.get("game_datetime")
+
+                # Format time
+                game_time = "TBD"
+                game_datetime_iso = None
+                if allstar_datetime:
+                    try:
+                        dt = datetime.fromisoformat(allstar_datetime.replace("Z", "+00:00"))
+                        game_time = dt.strftime("%I:%M %p").lstrip("0")
+                        game_datetime_iso = dt.isoformat()
+                    except Exception:
+                        pass
+
+                # Create All-Star Game card entry
+                allstar_entry = {
+                    "date": allstar_date.strftime("%b %d"),
+                    "opponent": "All-Star Game",
+                    "opponent_abbr": "ASG",
+                    "opponent_id": None,
+                    "home": True,
+                    "venue": allstar_game.get("venue", ""),
+                    "time": game_time,
+                    "game_datetime_iso": game_datetime_iso,
+                    "status": allstar_game.get("status", "Scheduled"),
+                    "series": "MLB All-Star Game",
+                    "category": "current" if allstar_date <= today + timedelta(days=7) else "future",
+                    "probable_pitchers": [],
+                    "is_allstar_game": True,
+                    "_series_start_date": allstar_date,
+                    "_series_end_date": allstar_date,
+                }
+
+                # Insert in correct position (sorted by date)
+                inserted = False
+                for i, s in enumerate(series):
+                    series_date = s.get("_series_start_date")
+                    if series_date and series_date > allstar_date:
+                        series.insert(i, allstar_entry)
+                        inserted = True
+                        break
+                if not inserted:
+                    series.append(allstar_entry)
+
+                logger.info(f"Added All-Star Game to gameday series for confirmed All-Star")
+        except Exception as exc:
+            logger.warning(f"Error injecting All-Star Game into gameday series: {exc}")
+
+    return series
 
 
 def format_player_document(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -1962,7 +2097,9 @@ def build_gameday_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         }
 
     user_id = user.get("id")
-    cache_payload: Optional[Dict[str, Any]] = {"user_id": int(user_id)} if user_id else None
+    # Cache version - increment to invalidate old cached data after code changes
+    GAMEDAY_CACHE_VERSION = 2
+    cache_payload: Optional[Dict[str, Any]] = {"user_id": int(user_id), "v": GAMEDAY_CACHE_VERSION} if user_id else None
 
     # Short‑TTL persistent cache to avoid repeated DB / API work for this page.
     if cache_payload:
@@ -1976,10 +2113,20 @@ def build_gameday_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     if not isinstance(schedule_calendar, list):
         schedule_calendar = []
 
+    # All-Star detection
+    # is_allstar_week: True during actual All-Star break (July 14-18) for special UI
+    # is_allstar_season: True from late June when rosters are announced
+    allstar_week = is_allstar_week()
+    allstar_season = is_allstar_season()
+    user_is_allstar = is_user_allstar(user)  # Check year-round based on profile
+
     ctx = {
         "next_series": next_series or {},
         "schedule_calendar": schedule_calendar,
         "deliverables": deliverables,
+        "is_allstar_week": allstar_week,
+        "is_allstar_season": allstar_season,
+        "user_is_allstar": user_is_allstar,
     }
 
     if cache_payload:
@@ -2000,9 +2147,11 @@ def build_player_home_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
     # Short TTL dashboard cache to reduce repeated DB work per navigation.
     # This is safe because the dashboard is a read-heavy page and small staleness is acceptable.
+    # Cache version - increment to invalidate old cached data after code changes
+    DASHBOARD_CACHE_VERSION = 2
     user_id = user.get("id")
     if user_id:
-        cached_ctx = persistent_cache_get_json("dashboard_context", {"user_id": int(user_id)})
+        cached_ctx = persistent_cache_get_json("dashboard_context", {"user_id": int(user_id), "v": DASHBOARD_CACHE_VERSION})
         if isinstance(cached_ctx, dict) and cached_ctx:
             return cached_ctx
 
@@ -2042,7 +2191,7 @@ def build_player_home_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         try:
             # 1h cache keeps dashboard consistently snappy.
             from app.services.persistent_cache import set_json as persistent_cache_set_json
-            persistent_cache_set_json("dashboard_context", {"user_id": int(user_id)}, ctx, ttl_seconds=60 * 60)
+            persistent_cache_set_json("dashboard_context", {"user_id": int(user_id), "v": DASHBOARD_CACHE_VERSION}, ctx, ttl_seconds=60 * 60)
         except Exception:
             pass
 

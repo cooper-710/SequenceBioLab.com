@@ -244,11 +244,42 @@ def schedule():
     
     # Load games for this month using target_user (selected user for admin)
     games = load_full_season_schedule(
-        target_user, 
+        target_user,
         start_date=start_date.isoformat(),
         end_date=end_date.isoformat()
     )
-    
+
+    # Inject All-Star Game if it falls within this month
+    from app.services.player_service import get_user_allstar_game
+    import logging
+    logger = logging.getLogger(__name__)
+    allstar_game = get_user_allstar_game(target_user, year=year, confirmed_only=False)
+    logger.info(f"Schedule page: All-Star game for {year}: {allstar_game}")
+    if allstar_game and allstar_game.get("game_date"):
+        try:
+            allstar_date = datetime.fromisoformat(allstar_game["game_date"]).date()
+            logger.info(f"Schedule page: All-Star date {allstar_date}, range {start_date} to {end_date}")
+            if start_date <= allstar_date <= end_date:
+                # Check if we already have a game on this date
+                existing_dates = {g.get("game_date", "")[:10] for g in games}
+                logger.info(f"Schedule page: existing dates = {existing_dates}, allstar_date = {allstar_game['game_date']}")
+                if allstar_game["game_date"] not in existing_dates:
+                    games.append({
+                        "game_date": allstar_game["game_date"],
+                        "game_datetime": allstar_game.get("game_datetime"),
+                        "opponent_name": "All-Star Game",
+                        "opponent_abbr": "ASG",
+                        "opponent_id": None,
+                        "is_home": True,
+                        "venue": allstar_game.get("venue", ""),
+                        "status": allstar_game.get("status", "Scheduled"),
+                        "game_type": "A",
+                        "confirmed_allstar": allstar_game.get("confirmed_allstar", False),
+                    })
+                    logger.info("Schedule page: Added All-Star Game to games list")
+        except Exception as e:
+            logger.warning(f"Schedule page: Error adding All-Star game: {e}")
+
     # Group games by date and format dates
     games_by_date = {}
     for game in games:
@@ -661,6 +692,10 @@ def gameday():
         next_series=gameday_ctx.get("next_series"),
         schedule_calendar=gameday_ctx.get("schedule_calendar", []),
         deliverables=gameday_ctx.get("deliverables", []),
+        # All-Star context
+        is_allstar_week=gameday_ctx.get("is_allstar_week", False),
+        is_allstar_season=gameday_ctx.get("is_allstar_season", False),
+        user_is_allstar=gameday_ctx.get("user_is_allstar", False),
     )
 
 

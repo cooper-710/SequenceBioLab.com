@@ -149,6 +149,7 @@ def next_games(team_key: str, days_ahead: int = 7, include_started: bool = False
             "series_description": g.get('series_description'),
             "status": status,
             "probable_pitchers": _probables_from_game(g, team_id),
+            "game_type": g.get('game_type', 'R'),
         })
 
     # Sort by datetime (or date as fallback), then by game number (if present)
