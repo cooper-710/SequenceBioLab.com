@@ -1705,6 +1705,26 @@ let prefetchedSeasons = null;
 let prefetchKey = null; // "pitcher|hitter" to validate cache
 let prefetchInProgress = false;
 
+// Abort controllers for canceling in-flight requests on navigation
+let matchupAbortController = null;
+let prefetchAbortController = null;
+let navigatingAway = false;
+
+function cleanupMatchupLoading() {
+    if (matchupAbortController) {
+        matchupAbortController.abort();
+        matchupAbortController = null;
+    }
+    if (prefetchAbortController) {
+        prefetchAbortController.abort();
+        prefetchAbortController = null;
+    }
+    isMatchupLoading = false;
+    prefetchInProgress = false;
+    const loadingDiv = document.getElementById('loading');
+    if (loadingDiv) loadingDiv.style.display = 'none';
+}
+
 async function prefetchSeasons() {
     const pitcherName = document.getElementById('pitcherName')?.value.trim();
     const hitterName = document.getElementById('hitterName')?.value.trim();
@@ -1719,35 +1739,50 @@ async function prefetchSeasons() {
         return;
     }
 
+    // Abort previous prefetch if still running
+    if (prefetchAbortController) {
+        prefetchAbortController.abort();
+    }
+    prefetchAbortController = new AbortController();
+    const signal = prefetchAbortController.signal;
+
     prefetchKey = key;
     prefetchInProgress = true;
     prefetchedSeasons = null;
 
     try {
         console.log('[Prefetch] Starting seasons prefetch for', pitcherName, 'vs', hitterName);
-        const seasons = await fetchAvailableSeasons(pitcherName, hitterName, 'pitcher');
+        const seasons = await fetchAvailableSeasons(pitcherName, hitterName, 'pitcher', signal);
         // Verify the key still matches (user might have changed input)
         if (prefetchKey === key) {
             prefetchedSeasons = seasons;
             console.log('[Prefetch] Got seasons:', seasons);
         }
     } catch (err) {
+        if (err.name === 'AbortError') {
+            console.log('[Prefetch] Aborted');
+            return;
+        }
         console.warn('[Prefetch] Failed:', err);
         if (prefetchKey === key) {
             prefetchedSeasons = null;
         }
     } finally {
         prefetchInProgress = false;
+        if (prefetchAbortController?.signal === signal) {
+            prefetchAbortController = null;
+        }
     }
 }
 
-async function fetchAvailableSeasons(player1Name, player2Name, role) {
+async function fetchAvailableSeasons(player1Name, player2Name, role, signal = null) {
     const params = new URLSearchParams();
     params.append('player', player1Name);
     params.append('opponent', player2Name);
     params.append('role', role);
 
-    const response = await fetch(`/api/matchups/seasons?${params}`);
+    const fetchOptions = signal ? { signal } : {};
+    const response = await fetch(`/api/matchups/seasons?${params}`, fetchOptions);
     const data = await response.json();
     if (!response.ok) {
         throw new Error(data.error || 'Error fetching available seasons');
@@ -2002,6 +2037,14 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
         return;
     }
     isMatchupLoading = true;
+    navigatingAway = false;  // Reset in case page was cached
+
+    // Create abort controller for this search
+    if (matchupAbortController) {
+        matchupAbortController.abort();
+    }
+    matchupAbortController = new AbortController();
+    const signal = matchupAbortController.signal;
 
     // Hide any open suggestion dropdowns
     const pitcherSuggestions = document.getElementById('pitcherSuggestions');
@@ -2100,8 +2143,11 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
                 seasons = prefetchedSeasons;
             } else {
                 updateLoadingStatus('Finding available seasons...');
-                seasons = await fetchAvailableSeasons(pitcherName, hitterName, role);
+                seasons = await fetchAvailableSeasons(pitcherName, hitterName, role, signal);
             }
+
+            // Check if aborted or navigating away after fetching seasons
+            if (signal.aborted || navigatingAway) return;
 
             if (!seasons || seasons.length === 0) {
                 loadingDiv.style.display = 'none';
@@ -2132,8 +2178,11 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
                 params.append('season', String(year));
 
                 try {
-                    const resp = await fetch(`/api/matchups?${params}`);
+                    const resp = await fetch(`/api/matchups?${params}`, { signal });
                     const seasonData = await resp.json();
+
+                    // Check if aborted
+                    if (signal.aborted) return { success: false, aborted: true, year };
 
                     // Update progress
                     completedCount++;
@@ -2147,6 +2196,9 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
                     }
                     return { success: true, matchups: [], year };
                 } catch (err) {
+                    if (err.name === 'AbortError') {
+                        return { success: false, aborted: true, year };
+                    }
                     completedCount++;
                     const pct = Math.round((completedCount / total) * 100);
                     updateLoadingStatus(`Loading matchup data (${completedCount} of ${total} seasons)...`, pct);
@@ -2157,8 +2209,12 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
             // Wait for all fetches to complete
             const results = await Promise.all(fetchPromises);
 
+            // Check if aborted or navigating away before processing results
+            if (signal.aborted || navigatingAway) return;
+
             // Collect results
             for (const result of results) {
+                if (result.aborted) continue;
                 if (result.success && result.matchups) {
                     combined.push(...result.matchups);
                 } else if (!result.success && result.error) {
@@ -2192,12 +2248,20 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
             // Cache the successful result to sessionStorage for faster repeat searches
             setCachedMatchup(pitcherName, hitterName, role, data);
         } catch (error) {
+            // Handle abort or navigation gracefully - just exit without showing error
+            if (error.name === 'AbortError' || signal.aborted || navigatingAway) {
+                console.log('[Matchup] Search aborted or navigating away');
+                return;
+            }
             loadingDiv.style.display = 'none';
             errorDiv.textContent = 'Error: ' + error.message;
             errorDiv.style.display = 'block';
             return;
         }
     }
+
+    // Bail out if navigating away
+    if (navigatingAway) return;
 
     // ===== RENDERING CODE (shared by both cache hit and network fetch) =====
     try {
@@ -2882,8 +2946,43 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
     } finally {
         // Always reset the loading flag so user can search again
         isMatchupLoading = false;
+        // Clean up abort controller
+        if (matchupAbortController?.signal === signal) {
+            matchupAbortController = null;
+        }
     }
 });
+
+// Navigation cleanup event listeners
+window.addEventListener('beforeunload', cleanupMatchupLoading);
+window.addEventListener('pagehide', cleanupMatchupLoading);
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden && isMatchupLoading) cleanupMatchupLoading();
+});
+
+// Capture phase on window to run BEFORE base.html's document handler
+// This ensures we can cancel loading and navigate immediately
+window.addEventListener('click', (e) => {
+    if (!isMatchupLoading) return;
+
+    const link = e.target.closest('a[href]');
+    if (!link) return;
+    const href = link.getAttribute('href');
+    if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:')) return;
+
+    // Skip external links
+    if (href.startsWith('http')) return;
+
+    // User is navigating away during loading - clean up and navigate immediately
+    navigatingAway = true;
+    cleanupMatchupLoading();
+
+    // Stop base.html from intercepting and adding delay
+    e.stopImmediatePropagation();
+
+    // Navigate immediately
+    window.location.href = link.href;
+}, true);
 </script>
 
 <script>
