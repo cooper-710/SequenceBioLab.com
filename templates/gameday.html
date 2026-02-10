@@ -28,6 +28,19 @@
             </div>
             {% endif %}
         </div>
+        {% if session.get('is_admin') and admin_user_options %}
+        <form class="gameday-user-picker" method="get" action="{{ url_for('pages.gameday') }}" id="gameday-user-form">
+            <label class="gameday-user-picker-label" for="gameday-user-select">Player View</label>
+            <select id="gameday-user-select" name="user_id" class="gameday-user-picker-select" aria-label="Select player to view gameday" onchange="this.form.submit()">
+                {% for option in admin_user_options %}
+                <option value="{{ option.id }}" {% if option.id == selected_user_id %}selected{% endif %}>{{ option.label }}</option>
+                {% endfor %}
+            </select>
+            <noscript>
+                <button type="submit">Apply</button>
+            </noscript>
+        </form>
+        {% endif %}
     </div>
     <div class="gameday-layout">
         <div class="gameday-main">
