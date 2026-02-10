@@ -2961,7 +2961,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // Capture phase on window to run BEFORE base.html's document handler
-// This ensures we can cancel loading and navigate immediately
+// Shows global loading screen directly and navigates - full control over the process
 window.addEventListener('click', (e) => {
     if (!isMatchupLoading) return;
 
@@ -2973,14 +2973,26 @@ window.addEventListener('click', (e) => {
     // Skip external links
     if (href.startsWith('http')) return;
 
-    // User is navigating away during loading - clean up and navigate immediately
+    // Skip modified clicks (new tab, etc.)
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (e.button && e.button !== 0) return;
+
+    // Take full control: prevent default, show loading, cleanup, navigate
+    e.preventDefault();
+    e.stopImmediatePropagation();
+
+    // Show global loading screen directly (same element base.html uses)
+    const globalLoader = document.getElementById('globalPageLoader');
+    if (globalLoader) {
+        globalLoader.classList.remove('hidden');
+        globalLoader.style.display = 'flex';
+    }
+
+    // Cleanup matchup loading state
     navigatingAway = true;
     cleanupMatchupLoading();
 
-    // Stop base.html from intercepting and adding delay
-    e.stopImmediatePropagation();
-
-    // Navigate immediately
+    // Navigate immediately - loading screen is already visible
     window.location.href = link.href;
 }, true);
 </script>
