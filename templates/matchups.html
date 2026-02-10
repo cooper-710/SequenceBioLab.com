@@ -1603,6 +1603,7 @@ function normalizePlayerName(name) {
 
 // Search for pitchers
 async function searchPitchers() {
+    if (navigatingAway) return;
     const searchInput = document.getElementById('pitcherName');
     if (!searchInput) return;
 
@@ -1650,6 +1651,7 @@ async function searchPitchers() {
 
 // Search for hitters
 async function searchHitters() {
+    if (navigatingAway) return;
     const searchInput = document.getElementById('hitterName');
     if (!searchInput) return;
 
@@ -1711,6 +1713,15 @@ let prefetchAbortController = null;
 let navigatingAway = false;
 
 function cleanupMatchupLoading() {
+    // Clear all pending timeouts FIRST to prevent them from firing after cleanup
+    clearTimeout(pitcherSearchTimeout);
+    clearTimeout(hitterSearchTimeout);
+    clearTimeout(prefetchTimeout);
+    pitcherSearchTimeout = null;
+    hitterSearchTimeout = null;
+    prefetchTimeout = null;
+
+    // Then abort fetch controllers
     if (matchupAbortController) {
         matchupAbortController.abort();
         matchupAbortController = null;
@@ -1726,6 +1737,7 @@ function cleanupMatchupLoading() {
 }
 
 async function prefetchSeasons() {
+    if (navigatingAway) return;
     const pitcherName = document.getElementById('pitcherName')?.value.trim();
     const hitterName = document.getElementById('hitterName')?.value.trim();
 
@@ -1753,13 +1765,17 @@ async function prefetchSeasons() {
     try {
         console.log('[Prefetch] Starting seasons prefetch for', pitcherName, 'vs', hitterName);
         const seasons = await fetchAvailableSeasons(pitcherName, hitterName, 'pitcher', signal);
+
+        // Bail out if navigating away
+        if (navigatingAway) return;
+
         // Verify the key still matches (user might have changed input)
         if (prefetchKey === key) {
             prefetchedSeasons = seasons;
             console.log('[Prefetch] Got seasons:', seasons);
         }
     } catch (err) {
-        if (err.name === 'AbortError') {
+        if (err.name === 'AbortError' || navigatingAway) {
             console.log('[Prefetch] Aborted');
             return;
         }
@@ -1776,6 +1792,9 @@ async function prefetchSeasons() {
 }
 
 async function fetchAvailableSeasons(player1Name, player2Name, role, signal = null) {
+    // Bail out early if navigating
+    if (navigatingAway) return [];
+
     const params = new URLSearchParams();
     params.append('player', player1Name);
     params.append('opponent', player2Name);
@@ -1783,7 +1802,15 @@ async function fetchAvailableSeasons(player1Name, player2Name, role, signal = nu
 
     const fetchOptions = signal ? { signal } : {};
     const response = await fetch(`/api/matchups/seasons?${params}`, fetchOptions);
+
+    // Check again after fetch
+    if (navigatingAway) return [];
+
     const data = await response.json();
+
+    // Check after parsing
+    if (navigatingAway) return [];
+
     if (!response.ok) {
         throw new Error(data.error || 'Error fetching available seasons');
     }
@@ -1973,11 +2000,13 @@ document.getElementById('pitcherName').addEventListener('input', (e) => {
     }
 
     pitcherSearchTimeout = setTimeout(() => {
+        if (navigatingAway) return;
         searchPitchers();
     }, 300);
 
     // Prefetch seasons after user stops typing (500ms debounce)
     prefetchTimeout = setTimeout(() => {
+        if (navigatingAway) return;
         prefetchSeasons();
     }, 500);
 });
@@ -1996,11 +2025,13 @@ document.getElementById('hitterName').addEventListener('input', (e) => {
     }
 
     hitterSearchTimeout = setTimeout(() => {
+        if (navigatingAway) return;
         searchHitters();
     }, 300);
 
     // Prefetch seasons after user stops typing (500ms debounce)
     prefetchTimeout = setTimeout(() => {
+        if (navigatingAway) return;
         prefetchSeasons();
     }, 500);
 });
@@ -2171,6 +2202,11 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
 
             // Fetch all seasons in PARALLEL
             const fetchPromises = seasons.map(async (year) => {
+                // Bail out immediately if navigating away
+                if (navigatingAway || signal.aborted) {
+                    return { success: false, aborted: true, year };
+                }
+
                 const params = new URLSearchParams();
                 params.append('player', pitcherName);
                 params.append('opponent', hitterName);
@@ -2178,11 +2214,18 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
                 params.append('season', String(year));
 
                 try {
+                    // Check again before fetch in case we started navigating
+                    if (navigatingAway) return { success: false, aborted: true, year };
+
                     const resp = await fetch(`/api/matchups?${params}`, { signal });
+
+                    // Check immediately after fetch returns
+                    if (navigatingAway || signal.aborted) return { success: false, aborted: true, year };
+
                     const seasonData = await resp.json();
 
-                    // Check if aborted
-                    if (signal.aborted) return { success: false, aborted: true, year };
+                    // Check if aborted or navigating
+                    if (signal.aborted || navigatingAway) return { success: false, aborted: true, year };
 
                     // Update progress
                     completedCount++;
@@ -2196,7 +2239,7 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
                     }
                     return { success: true, matchups: [], year };
                 } catch (err) {
-                    if (err.name === 'AbortError') {
+                    if (err.name === 'AbortError' || navigatingAway) {
                         return { success: false, aborted: true, year };
                     }
                     completedCount++;
@@ -2961,9 +3004,11 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // Capture phase on window to run BEFORE base.html's document handler
-// Shows global loading screen directly and navigates - full control over the process
+// Intercept clicks during matchup loading OR if we're already navigating away
 window.addEventListener('click', (e) => {
-    if (!isMatchupLoading) return;
+    // Only intercept if we're loading matchups OR already navigating
+    // This prevents interfering with normal navigation when not loading
+    if (!isMatchupLoading && !navigatingAway) return;
 
     const link = e.target.closest('a[href]');
     if (!link) return;
@@ -2977,9 +3022,22 @@ window.addEventListener('click', (e) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     if (e.button && e.button !== 0) return;
 
+    // If already navigating, just suppress the click entirely
+    if (navigatingAway) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        return;
+    }
+
     // Take full control: prevent default, show loading, cleanup, navigate
     e.preventDefault();
     e.stopImmediatePropagation();
+
+    // Mark navigating BEFORE anything else to prevent race conditions
+    navigatingAway = true;
+
+    // Store href before any async operations
+    const targetHref = link.href;
 
     // Show global loading screen directly (same element base.html uses)
     const globalLoader = document.getElementById('globalPageLoader');
@@ -2988,12 +3046,18 @@ window.addEventListener('click', (e) => {
         globalLoader.style.display = 'flex';
     }
 
-    // Cleanup matchup loading state
-    navigatingAway = true;
-    cleanupMatchupLoading();
+    // Cleanup matchup loading state - wrapped in try-catch to ensure navigation happens
+    try {
+        cleanupMatchupLoading();
+    } catch (err) {
+        console.error('[Matchup Nav] Cleanup error:', err);
+    }
 
-    // Navigate immediately - loading screen is already visible
-    window.location.href = link.href;
+    // Navigate immediately - use setTimeout(0) to ensure cleanup completes
+    // and browser has a chance to process abort signals
+    setTimeout(() => {
+        window.location.href = targetHref;
+    }, 0);
 }, true);
 </script>
 
