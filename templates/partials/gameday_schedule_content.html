@@ -26,7 +26,18 @@
         <div class="matchup-header-content">
           <div class="matchup-date-block">
             <i class="fas fa-calendar-days"></i>
-            <span class="matchup-date">{{ game.date }}</span>
+            {% if game.games_list and game.games_list|length > 0 %}
+              <div class="game-date-tabs" data-games='{{ game.games_list | tojson }}'>
+                {% for g in game.games_list %}
+                <button class="game-date-tab{% if loop.index0 == game.default_game_index %} is-active{% endif %}"
+                        type="button" data-game-index="{{ loop.index0 }}">
+                  {{ g.date_label }}
+                </button>
+                {% endfor %}
+              </div>
+            {% else %}
+              <span class="matchup-date">{{ game.date }}</span>
+            {% endif %}
           </div>
           {% if game.series %}
           <div class="matchup-series-block">

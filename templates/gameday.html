@@ -1052,6 +1052,31 @@
 .matchup-date {
     font-weight: 700;
 }
+.game-date-tabs {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.game-date-tab {
+    border: none;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-weight: 600;
+    font-size: 0.8rem;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.game-date-tab:hover {
+    background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+    color: var(--color-accent);
+}
+.game-date-tab.is-active {
+    background: color-mix(in srgb, var(--color-accent) 25%, transparent);
+    color: var(--color-accent);
+    font-weight: 700;
+}
 .matchup-series-block {
     display: flex;
     align-items: center;
@@ -1186,19 +1211,45 @@
     font-size: 0.85rem;
 }
 .matchup-pitcher-name {
-    font-size: 1.05rem;
-    font-weight: 600;
-    color: var(--color-text-primary);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
 }
 .pitcher-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
     color: var(--color-accent);
+    font-size: 0.95rem;
+    font-weight: 700;
     text-decoration: none;
-    transition: all 0.2s ease;
-    border-bottom: 1px solid transparent;
+    transition: all 0.15s ease;
+}
+.pitcher-link::after {
+    content: '\f061';
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    font-size: 0.7rem;
+    opacity: 0.6;
+    transition: opacity 0.15s ease, transform 0.15s ease;
 }
 .pitcher-link:hover {
-    color: var(--color-accent-bright);
-    border-bottom-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 25%, transparent);
+    color: var(--color-accent-bright, var(--color-accent));
+}
+.pitcher-link:hover::after {
+    opacity: 1;
+    transform: translateX(2px);
+}
+.pitcher-unknown {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--color-text-subtle);
+    font-style: italic;
 }
 .pitcher-unknown {
     color: var(--color-text-subtle);
@@ -2683,6 +2734,70 @@ document.addEventListener('DOMContentLoaded', function () {
         console.error("Error loading gameday schedule:", e);
     }
     // initSchedule will be called after schedule loads via loadGamedaySchedule
+
+    // Handle date-tab clicks to swap game details within a series card
+    document.addEventListener('click', function(e) {
+        var tab = e.target.closest('.game-date-tab');
+        if (!tab) return;
+
+        var card = tab.closest('.matchup-card');
+        var tabsContainer = tab.closest('.game-date-tabs');
+        var games = JSON.parse(tabsContainer.dataset.games);
+        var index = parseInt(tab.dataset.gameIndex, 10);
+        var game = games[index];
+
+        // Update active tab
+        tabsContainer.querySelectorAll('.game-date-tab').forEach(function(t) {
+            t.classList.toggle('is-active', t === tab);
+        });
+
+        // Update game time
+        var timeEl = card.querySelector('.matchup-game-time');
+        if (timeEl && game.game_datetime_iso) {
+            timeEl.dataset.gameDatetime = game.game_datetime_iso;
+            var d = new Date(game.game_datetime_iso);
+            if (!isNaN(d.getTime())) {
+                timeEl.textContent = d.toLocaleTimeString(undefined, {
+                    hour: 'numeric', minute: '2-digit', timeZoneName: 'short'
+                });
+            }
+        } else if (timeEl) {
+            timeEl.textContent = 'TBD';
+        }
+
+        // Update venue
+        var venueItem = card.querySelectorAll('.matchup-detail-item')[1];
+        if (venueItem) {
+            var venueVal = venueItem.querySelector('.matchup-detail-value');
+            if (venueVal) venueVal.textContent = game.venue || '';
+        }
+
+        // Update pitcher
+        var pitcherEl = card.querySelector('.matchup-pitcher-name');
+        if (pitcherEl) {
+            if (game.probable_pitchers && game.probable_pitchers.length > 0) {
+                pitcherEl.innerHTML = game.probable_pitchers.map(function(p) {
+                    return '<a href="/player-database?player=' + encodeURIComponent(p) + '" class="pitcher-link">' + p + '</a>';
+                }).join(', ');
+            } else {
+                pitcherEl.innerHTML = '<span class="pitcher-unknown">Unknown</span>';
+            }
+        }
+
+        // Update home/away
+        var labelEl = card.querySelector('.matchup-opponent-label');
+        if (labelEl) {
+            labelEl.innerHTML = game.home
+                ? '<i class="fas fa-home"></i> Home'
+                : '<i class="fas fa-plane"></i> Road';
+        }
+
+        // Update series label
+        var seriesEl = card.querySelector('.matchup-series');
+        if (seriesEl) {
+            seriesEl.textContent = 'Game ' + (index + 1) + ' of ' + games.length;
+        }
+    });
 });
 
 // Countdown clock for next game

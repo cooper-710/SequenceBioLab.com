@@ -758,7 +758,7 @@ def gameday_schedule():
 
     upcoming_games: List[Dict[str, Any]] = []
     # Use cached series list for gameday (built from full-season schedule).
-    upcoming_games = collect_series_for_gameday(target_user) or []
+    upcoming_games = collect_series_for_gameday(target_user, force_refresh=force_refresh) or []
 
     # Attach admin-uploaded series reports (stored as player documents) to the series cards.
     report_docs: List[Dict[str, Any]] = []

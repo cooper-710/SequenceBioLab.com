@@ -522,12 +522,36 @@ def build_series_from_games(raw_games: List[Dict[str, Any]], today: date) -> Lis
         elif series_start > today and next_upcoming_series_key is None:
             next_upcoming_series_key = (series["opponent_id"], series["start_date"])
 
+    def _parse_game_date(g: Dict[str, Any]) -> Optional[date]:
+        """Extract the date object from a game dict."""
+        ds = g.get("game_date") or g.get("game_date_iso") or g.get("date")
+        if not ds:
+            return None
+        try:
+            if isinstance(ds, str):
+                return datetime.fromisoformat(ds.split("T")[0] if "T" in ds else ds).date()
+            return ds if isinstance(ds, date) else None
+        except Exception:
+            return None
+
+    def _extract_pitchers(g: Dict[str, Any]) -> List[str]:
+        """Extract probable pitcher names from a game dict."""
+        raw = g.get("probable_pitchers") or []
+        names: List[str] = []
+        for p in raw:
+            if isinstance(p, dict):
+                name = p.get("name")
+                if name:
+                    names.append(name)
+            elif isinstance(p, str):
+                names.append(p)
+        return names
+
     formatted: List[Dict[str, Any]] = []
     for series in series_groups:
         if not series["games"]:
             continue
 
-        first_game = series["games"][0]
         series_start = series["start_date"]
         series_end = series["end_date"]
 
@@ -544,31 +568,53 @@ def build_series_from_games(raw_games: List[Dict[str, Any]], today: date) -> Lis
         else:
             category = "future"
 
+        # Find next game to play (first game with date >= today, fallback to last)
+        next_game = None
+        next_game_index = 0
+        for i, g in enumerate(series["games"]):
+            g_date = _parse_game_date(g)
+            if g_date and g_date >= today:
+                next_game = g
+                next_game_index = i
+                break
+        if next_game is None:
+            next_game = series["games"][-1]
+            next_game_index = len(series["games"]) - 1
+
+        # Build per-game details list
+        games_list = []
+        for i, g in enumerate(series["games"]):
+            g_date = _parse_game_date(g)
+            games_list.append({
+                "date_label": g_date.strftime("%a, %b %d") if g_date else "TBD",
+                "game_datetime_iso": g.get("game_datetime"),
+                "time": format_game_time_venue(g.get("game_datetime"), g.get("venue")),
+                "venue": g.get("venue"),
+                "home": g.get("is_home"),
+                "probable_pitchers": _extract_pitchers(g),
+                "status": g.get("status", "Scheduled"),
+                "game_pk": g.get("game_pk"),
+            })
+
+        # Display date from the next game
+        next_game_date = _parse_game_date(next_game)
         if series_start == series_end:
             display_date = series_start.strftime("%a, %b %d")
         else:
-            display_date = f"{series_start.strftime('%a, %b %d')} - {series_end.strftime('%b %d')}"
+            display_date = next_game_date.strftime("%a, %b %d") if next_game_date else series_start.strftime("%a, %b %d")
 
-        game_time = first_game.get("game_datetime")
-        venue = first_game.get("venue")
+        game_time = next_game.get("game_datetime")
+        venue = next_game.get("venue")
         display_time = format_game_time_venue(game_time, venue)
 
-        series_label = (
-            f"{len(series['games'])}-game series"
-            if len(series["games"]) > 1
-            else "Single game"
-        )
-        status = first_game.get("status", "Scheduled")
+        total = len(series["games"])
+        if total == 1:
+            series_label = "Single game"
+        else:
+            series_label = f"Game {next_game_index + 1} of {total}"
 
-        probables_raw = first_game.get("probable_pitchers") or []
-        probables: List[str] = []
-        for p in probables_raw:
-            if isinstance(p, dict):
-                name = p.get("name")
-                if name:
-                    probables.append(name)
-            elif isinstance(p, str):
-                probables.append(p)
+        status = next_game.get("status", "Scheduled")
+        probables = _extract_pitchers(next_game)
 
         formatted.append(
             {
@@ -578,12 +624,14 @@ def build_series_from_games(raw_games: List[Dict[str, Any]], today: date) -> Lis
                 "opponent": series["opponent_name"],
                 "opponent_abbr": team_abbr_from_id(series["opponent_id"]),
                 "opponent_id": series["opponent_id"],
-                "home": first_game.get("is_home"),
-                "venue": first_game.get("venue"),
+                "home": next_game.get("is_home"),
+                "venue": next_game.get("venue"),
                 "series": series_label,
                 "status": status,
-                "game_pk": first_game.get("game_pk"),
+                "game_pk": next_game.get("game_pk"),
                 "probable_pitchers": probables,
+                "games_list": games_list,
+                "default_game_index": next_game_index,
                 "reports": [],
                 "category": category,
                 "_series_start_date": series_start,
@@ -594,7 +642,7 @@ def build_series_from_games(raw_games: List[Dict[str, Any]], today: date) -> Lis
     return formatted
 
 
-def collect_series_for_gameday(user: Dict[str, Any]) -> List[Dict[str, Any]]:
+def collect_series_for_gameday(user: Dict[str, Any], *, force_refresh: bool = False) -> List[Dict[str, Any]]:
     """Return a cached list of series for the Gameday schedule card.
 
     Uses the same schedule window as the calendar to ensure consistency.
@@ -630,12 +678,21 @@ def collect_series_for_gameday(user: Dict[str, Any]) -> List[Dict[str, Any]]:
             ) or []
         return build_series_from_games(raw_games, today)
 
-    series = persistent_get_or_set_json(
-        "gameday_series",
-        cache_payload,
-        ttl_seconds=6 * 60 * 60,
-        builder=_builder,
-    )
+    if force_refresh:
+        series = _builder()
+        # Overwrite the cache with fresh data
+        try:
+            from app.services.persistent_cache import set_json as persistent_cache_set_json
+            persistent_cache_set_json("gameday_series", cache_payload, series, 6 * 60 * 60)
+        except Exception:
+            pass
+    else:
+        series = persistent_get_or_set_json(
+            "gameday_series",
+            cache_payload,
+            ttl_seconds=6 * 60 * 60,
+            builder=_builder,
+        )
 
     # If cached result is empty, try building fresh as fallback
     if not series or not isinstance(series, list) or len(series) == 0:
