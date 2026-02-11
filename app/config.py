@@ -106,7 +106,7 @@ class Config:
     USER_CACHE_TTL_SECONDS = int(os.environ.get("USER_CACHE_TTL_SECONDS", "300"))
 
     # Maximum concurrent device sessions per non-admin user
-    MAX_DEVICES_PER_USER = 2
+    MAX_DEVICES_PER_USER = 1
     
     @classmethod
     def ensure_directories(cls):
