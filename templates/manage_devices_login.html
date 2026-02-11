@@ -6,37 +6,12 @@
 <div class="page-container auth-page">
     <div class="auth-card" style="max-width: 480px;">
         <div class="auth-header">
-            <h1>Device Limit Reached</h1>
-            <p>You're already signed in on {{ active_sessions|length }} device{{ 's' if active_sessions|length != 1 else '' }}. Sign out of one to continue on this device.</p>
-        </div>
-
-        <div class="device-list">
-            {% for sess in active_sessions %}
-            <div class="device-item">
-                <div class="device-icon">
-                    {% if 'iPhone' in (sess.device_name or '') or 'iPad' in (sess.device_name or '') or 'Android' in (sess.device_name or '') %}
-                        <i class="fas fa-mobile-screen-button"></i>
-                    {% else %}
-                        <i class="fas fa-laptop"></i>
-                    {% endif %}
-                </div>
-                <div class="device-info">
-                    <span class="device-name">{{ sess.device_name or 'Unknown device' }}</span>
-                    <span class="device-meta">
-                        {% if sess.ip_address %}{{ sess.ip_address }} &middot; {% endif %}Active
-                    </span>
-                </div>
-                <form method="post" class="device-revoke-form">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <input type="hidden" name="revoke_session_id" value="{{ sess.id }}">
-                    <button type="submit" class="btn-danger-outline" title="Sign out this device and continue">
-                        Sign Out &amp; Continue
-                    </button>
-                </form>
+            <div style="width:56px;height:56px;border-radius:16px;background:color-mix(in srgb, #ef4444 12%, transparent);border:1px solid color-mix(in srgb, #ef4444 25%, transparent);display:grid;place-items:center;margin:0 auto 16px;color:#ef4444;font-size:1.5rem;">
+                <i class="fas fa-desktop"></i>
             </div>
-            {% endfor %}
+            <h1>Device Limit Reached</h1>
+            <p>This account is already signed in on the maximum number of devices. To use this device, sign in on one of your existing devices and go to <strong>Profile Settings &rarr; Active Devices</strong> to sign out a device first.</p>
         </div>
-
         <div class="auth-switch" style="margin-top: 24px;">
             <a href="{{ url_for('auth.login') }}">Back to login</a>
         </div>
