@@ -168,6 +168,53 @@
                 </div>
             </section>
 
+            {% if active_sessions is defined and active_sessions %}
+            <section class="profile-panel devices-panel">
+                <div class="panel-heading">
+                    <div>
+                        <h2>Active Devices</h2>
+                        <p>Manage the devices signed in to your account.</p>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div class="device-list">
+                        {% for sess in active_sessions %}
+                        <div class="device-item{% if sess.device_id == current_device_id %} device-item--current{% endif %}">
+                            <div class="device-icon">
+                                {% if 'iPhone' in (sess.device_name or '') or 'iPad' in (sess.device_name or '') or 'Android' in (sess.device_name or '') %}
+                                    <i class="fas fa-mobile-screen-button"></i>
+                                {% else %}
+                                    <i class="fas fa-laptop"></i>
+                                {% endif %}
+                            </div>
+                            <div class="device-info">
+                                <div class="device-details">
+                                    <span class="device-name">{{ sess.device_name or 'Unknown device' }}</span>
+                                    {% if sess.device_id == current_device_id %}
+                                        <span class="device-badge">This device</span>
+                                    {% endif %}
+                                </div>
+                                <span class="device-meta">
+                                    {% if sess.ip_address %}{{ sess.ip_address }} &middot; {% endif %}{{ sess.last_active_str or 'Active' }}
+                                </span>
+                            </div>
+                            {% if sess.device_id != current_device_id %}
+                            <form method="post" class="device-revoke-form">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <input type="hidden" name="form_name" value="revoke-device">
+                                <input type="hidden" name="revoke_session_id" value="{{ sess.id }}">
+                                <button type="submit" class="btn-danger-outline" onclick="return confirm('Sign out this device?')">
+                                    Sign Out
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </section>
+            {% endif %}
+
             <section class="profile-panel logout-panel">
                 <div class="panel-heading">
                     <div>

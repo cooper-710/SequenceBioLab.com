@@ -117,6 +117,7 @@ AUTH_EXEMPT_ENDPOINTS = {
     "auth.account_deactivated",
     "auth.verify_email",
     "auth.verify_email_pending",
-    "auth.resend_verification"
+    "auth.resend_verification",
+    "auth.manage_devices_login"
 }
 

@@ -53,6 +53,47 @@ def current_player_full_name() -> Optional[str]:
     return " ".join(parts)
 
 
+def parse_device_name(user_agent: str) -> str:
+    """Parse a User-Agent string into a friendly device name like 'Chrome on macOS'."""
+    if not user_agent:
+        return "Unknown device"
+    ua = user_agent
+
+    # Detect browser
+    browser = "Unknown browser"
+    if "Edg/" in ua or "Edge/" in ua:
+        browser = "Edge"
+    elif "OPR/" in ua or "Opera" in ua:
+        browser = "Opera"
+    elif "Chrome/" in ua and "Safari/" in ua:
+        browser = "Chrome"
+    elif "Firefox/" in ua:
+        browser = "Firefox"
+    elif "Safari/" in ua and "Chrome/" not in ua:
+        browser = "Safari"
+    elif "MSIE" in ua or "Trident/" in ua:
+        browser = "Internet Explorer"
+
+    # Detect OS
+    os_name = "Unknown OS"
+    if "iPhone" in ua:
+        os_name = "iPhone"
+    elif "iPad" in ua:
+        os_name = "iPad"
+    elif "Android" in ua:
+        os_name = "Android"
+    elif "Mac OS X" in ua or "Macintosh" in ua:
+        os_name = "macOS"
+    elif "Windows" in ua:
+        os_name = "Windows"
+    elif "Linux" in ua:
+        os_name = "Linux"
+    elif "CrOS" in ua:
+        os_name = "ChromeOS"
+
+    return f"{browser} on {os_name}"
+
+
 def resolve_default_season_start() -> str:
     """Resolve the default season start date from settings."""
     settings = getattr(g, "app_settings", {}) or Config.get_settings()

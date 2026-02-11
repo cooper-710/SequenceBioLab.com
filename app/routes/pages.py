@@ -1634,6 +1634,17 @@ def profile_settings():
                     g.user = refresh_user_cache_with_db(db, viewer["id"])
                     flash("Password updated.", "success")
 
+            elif form_name == "revoke-device":
+                revoke_id = request.form.get("revoke_session_id")
+                if revoke_id:
+                    try:
+                        db.revoke_session(int(revoke_id), viewer["id"])
+                        flash("Device signed out successfully.", "success")
+                    except Exception:
+                        flash("Unable to sign out device.", "error")
+                else:
+                    flash("No device selected.", "error")
+
             elif form_name == "avatar":
                 file = request.files.get("profile_image")
                 if not file or not file.filename:
@@ -1700,9 +1711,38 @@ def profile_settings():
 
         return redirect(url_for("pages.profile_settings"))
 
+    # Fetch active device sessions for the "Active Devices" panel
+    active_sessions = []
+    current_device_id = session.get("_device_id", "")
+    if PlayerDB and viewer.get("id"):
+        try:
+            db = PlayerDB()
+            active_sessions = db.get_active_sessions(viewer["id"])
+            db.close()
+            # Annotate with relative time strings
+            import time as _time
+            now = _time.time()
+            for sess in active_sessions:
+                elapsed = now - (sess.get("last_active") or now)
+                if elapsed < 60:
+                    sess["last_active_str"] = "Just now"
+                elif elapsed < 3600:
+                    mins = int(elapsed / 60)
+                    sess["last_active_str"] = f"{mins}m ago"
+                elif elapsed < 86400:
+                    hrs = int(elapsed / 3600)
+                    sess["last_active_str"] = f"{hrs}h ago"
+                else:
+                    days = int(elapsed / 86400)
+                    sess["last_active_str"] = f"{days}d ago"
+        except Exception:
+            active_sessions = []
+
     return render_template(
         "profile_settings.html",
-        notification_prefs=notification_prefs
+        notification_prefs=notification_prefs,
+        active_sessions=active_sessions,
+        current_device_id=current_device_id,
     )
 
 

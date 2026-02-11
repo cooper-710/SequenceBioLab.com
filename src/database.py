@@ -731,8 +731,47 @@ class PlayerDB:
             )
         """)
         
+        # User sessions for device tracking and concurrent session limits
+        self._execute(cursor, f"""
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                id {auto_inc},
+                user_id INTEGER NOT NULL,
+                device_id {text_type} NOT NULL,
+                session_token {text_type} UNIQUE NOT NULL,
+                device_name {text_type},
+                user_agent {text_type},
+                ip_address {text_type},
+                created_at {real_type} NOT NULL,
+                last_active {real_type} NOT NULL,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+        try:
+            self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id)")
+        except Exception:
+            pass
+        try:
+            self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_user_sessions_device_id ON user_sessions(device_id)")
+        except Exception:
+            pass
+        try:
+            self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(session_token)")
+        except Exception:
+            pass
+        try:
+            self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_user_sessions_active ON user_sessions(user_id, is_active)")
+        except Exception:
+            pass
+        # Partial unique index for Postgres upsert (user_id + device_id where active)
+        if self.is_postgres:
+            try:
+                self._execute(cursor, "CREATE UNIQUE INDEX IF NOT EXISTS idx_user_sessions_user_device_active ON user_sessions(user_id, device_id) WHERE is_active = 1")
+            except Exception:
+                pass
+
         self.conn.commit()
-    
+
     def _ensure_columns_exist(self, table_name: str, columns: Dict[str, str]):
         """Ensure columns exist in table (for migrations)"""
         existing_columns = self._get_table_columns(table_name)
@@ -1236,6 +1275,126 @@ class PlayerDB:
                 user_dict['email_verified'] = 0
             return user_dict
         return None
+
+    # ---------------------------
+    # Device session management
+    # ---------------------------
+
+    def create_user_session(self, user_id: int, device_id: str, session_token: str,
+                            device_name: str = None, user_agent: str = None,
+                            ip_address: str = None) -> int:
+        """Create or update a session for a user+device pair (upsert by user_id+device_id)."""
+        cursor = self.conn.cursor()
+        now_ts = float(datetime.now().timestamp())
+        if self.is_postgres:
+            self._execute(cursor, """
+                INSERT INTO user_sessions (user_id, device_id, session_token, device_name, user_agent, ip_address, created_at, last_active, is_active)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 1)
+                ON CONFLICT (user_id, device_id) WHERE is_active = 1
+                DO UPDATE SET session_token = EXCLUDED.session_token,
+                              device_name = EXCLUDED.device_name,
+                              user_agent = EXCLUDED.user_agent,
+                              ip_address = EXCLUDED.ip_address,
+                              last_active = EXCLUDED.last_active,
+                              is_active = 1
+                RETURNING id
+            """, (int(user_id), device_id, session_token, device_name, user_agent, ip_address, now_ts, now_ts))
+            row = cursor.fetchone()
+            session_id = row['id'] if row else 0
+        else:
+            # SQLite: check for existing active session on this device
+            self._execute(cursor,
+                "SELECT id FROM user_sessions WHERE user_id = ? AND device_id = ? AND is_active = 1",
+                (int(user_id), device_id))
+            existing = cursor.fetchone()
+            if existing:
+                session_id = existing[0] if not isinstance(existing, dict) else existing['id']
+                self._execute(cursor, """
+                    UPDATE user_sessions SET session_token = ?, device_name = ?, user_agent = ?,
+                        ip_address = ?, last_active = ?, is_active = 1
+                    WHERE id = ?
+                """, (session_token, device_name, user_agent, ip_address, now_ts, session_id))
+            else:
+                self._execute(cursor, """
+                    INSERT INTO user_sessions (user_id, device_id, session_token, device_name, user_agent, ip_address, created_at, last_active, is_active)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+                """, (int(user_id), device_id, session_token, device_name, user_agent, ip_address, now_ts, now_ts))
+                session_id = cursor.lastrowid
+        self.conn.commit()
+        return session_id
+
+    def get_active_sessions(self, user_id: int) -> List[Dict[str, Any]]:
+        """Return all active sessions for a user, ordered by last_active DESC."""
+        cursor = self.conn.cursor()
+        self._execute(cursor,
+            "SELECT * FROM user_sessions WHERE user_id = ? AND is_active = 1 ORDER BY last_active DESC",
+            (int(user_id),))
+        return [dict(row) for row in cursor.fetchall()]
+
+    def count_active_devices(self, user_id: int) -> int:
+        """Count distinct active devices for a user."""
+        cursor = self.conn.cursor()
+        self._execute(cursor,
+            "SELECT COUNT(DISTINCT device_id) as cnt FROM user_sessions WHERE user_id = ? AND is_active = 1",
+            (int(user_id),))
+        row = cursor.fetchone()
+        if row is None:
+            return 0
+        return row['cnt'] if isinstance(row, dict) else row[0]
+
+    def revoke_session(self, session_id: int, user_id: int) -> bool:
+        """Soft-delete a session (set is_active=0). Requires user_id for authorization."""
+        cursor = self.conn.cursor()
+        self._execute(cursor,
+            "UPDATE user_sessions SET is_active = 0 WHERE id = ? AND user_id = ?",
+            (int(session_id), int(user_id)))
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def revoke_all_sessions(self, user_id: int, except_session_token: str = None) -> int:
+        """Revoke all active sessions for a user, optionally keeping one."""
+        cursor = self.conn.cursor()
+        if except_session_token:
+            self._execute(cursor,
+                "UPDATE user_sessions SET is_active = 0 WHERE user_id = ? AND is_active = 1 AND session_token != ?",
+                (int(user_id), except_session_token))
+        else:
+            self._execute(cursor,
+                "UPDATE user_sessions SET is_active = 0 WHERE user_id = ? AND is_active = 1",
+                (int(user_id),))
+        self.conn.commit()
+        return cursor.rowcount
+
+    def update_session_activity(self, session_token: str) -> bool:
+        """Update last_active timestamp for a session."""
+        cursor = self.conn.cursor()
+        now_ts = float(datetime.now().timestamp())
+        self._execute(cursor,
+            "UPDATE user_sessions SET last_active = ? WHERE session_token = ? AND is_active = 1",
+            (now_ts, session_token))
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def get_session_by_token(self, session_token: str) -> Optional[Dict[str, Any]]:
+        """Look up an active session by its token."""
+        if not session_token:
+            return None
+        cursor = self.conn.cursor()
+        self._execute(cursor,
+            "SELECT * FROM user_sessions WHERE session_token = ? AND is_active = 1",
+            (session_token,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def cleanup_expired_sessions(self, max_age_seconds: int = 2592000) -> int:
+        """Deactivate sessions older than max_age_seconds (default 30 days)."""
+        cursor = self.conn.cursor()
+        cutoff = float(datetime.now().timestamp()) - max_age_seconds
+        self._execute(cursor,
+            "UPDATE user_sessions SET is_active = 0 WHERE is_active = 1 AND last_active < ?",
+            (cutoff,))
+        self.conn.commit()
+        return cursor.rowcount
 
     def list_users(self) -> List[Dict[str, Any]]:
         """Return all users sorted by creation date."""

@@ -1,12 +1,14 @@
 """
 Authentication routes
 """
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, abort
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, abort, g
 from werkzeug.security import generate_password_hash, check_password_hash
 from app.middleware.csrf import validate_csrf, generate_csrf_token
 from app.utils.validators import validate_auth_form_fields
-from app.utils.helpers import clean_str, get_safe_redirect
+from app.utils.helpers import clean_str, get_safe_redirect, parse_device_name
+from app.config import Config
 import sys
+import secrets
 from pathlib import Path
 from datetime import datetime, timedelta
 from collections import defaultdict
@@ -129,23 +131,66 @@ def login():
             if not email_verified:
                 flash("Please verify your email address before signing in. Check your inbox for the verification link.", "warning")
                 return redirect(url_for('auth.verify_email_pending', email=email))
-        
+
+        # --- Device limit check ---
+        device_id = request.cookies.get("device_id") or getattr(g, "_new_device_id", None) or str(__import__("uuid").uuid4())
+        is_admin = bool(user.get("is_admin", False))
+
+        if not is_admin:
+            try:
+                db2 = PlayerDB()
+                active_sessions = db2.get_active_sessions(user["id"])
+                already_active = any(s["device_id"] == device_id for s in active_sessions)
+                device_count = len({s["device_id"] for s in active_sessions})
+
+                if not already_active and device_count >= Config.MAX_DEVICES_PER_USER:
+                    # Store pending login info in session so manage-devices-login can complete it
+                    session["_pending_login_user_id"] = user["id"]
+                    session["_pending_login_device_id"] = device_id
+                    session["_pending_login_next"] = request.form.get("next")
+                    db2.close()
+                    return redirect(url_for("auth.manage_devices_login"))
+
+                db2.close()
+            except Exception:
+                pass  # Fail-open: allow login if device check fails
+
+        # --- Create device session record ---
+        import time as _time
+        session_token = secrets.token_urlsafe(32)
+        try:
+            db3 = PlayerDB()
+            ua = request.headers.get("User-Agent", "")
+            db3.create_user_session(
+                user_id=user["id"],
+                device_id=device_id,
+                session_token=session_token,
+                device_name=parse_device_name(ua),
+                user_agent=ua,
+                ip_address=request.remote_addr,
+            )
+            db3.cleanup_expired_sessions()
+            db3.close()
+        except Exception:
+            pass  # Fail-open
+
         # Set session
         session.pop('csrf_token', None)
         session['user_id'] = user['id']
         session['first_name'] = user.get('first_name', '')
         session['last_name'] = user.get('last_name', '')
-        session['is_admin'] = bool(user.get('is_admin', False))
+        session['is_admin'] = is_admin
+        session['_session_token'] = session_token
+        session['_device_id'] = device_id
         session.permanent = True  # Make session persist across browser restarts
-        
+
         # Cache full user object (exclude password_hash for security)
-        import time
         user_cache = {k: v for k, v in user.items() if k != "password_hash"}
         session["_cached_user"] = user_cache
-        session["_user_cache_timestamp"] = time.time()
-        
+        session["_user_cache_timestamp"] = _time.time()
+
         generate_csrf_token()
-        
+
         flash("Signed in successfully.", "success")
         # Try to redirect to pages.home, fallback to home
         try:
@@ -283,8 +328,21 @@ def logout():
     """User logout"""
     if not validate_csrf(request.form.get("csrf_token")):
         abort(400, description="Invalid CSRF token")
-    
-    for key in ("user_id", "first_name", "last_name", "is_admin"):
+
+    # Revoke device session in DB
+    session_token = session.get("_session_token")
+    user_id = session.get("user_id")
+    if session_token and user_id and PlayerDB:
+        try:
+            db = PlayerDB()
+            db_sess = db.get_session_by_token(session_token)
+            if db_sess:
+                db.revoke_session(db_sess["id"], user_id)
+            db.close()
+        except Exception:
+            pass
+
+    for key in ("user_id", "first_name", "last_name", "is_admin", "_session_token", "_device_id"):
         session.pop(key, None)
     # Clear user cache
     session.pop("_cached_user", None)
@@ -292,9 +350,100 @@ def logout():
     session.pop("_user_cache_version", None)
     session.pop('csrf_token', None)
     generate_csrf_token()
-    
+
     flash("You have been logged out.", "info")
     return redirect(url_for('pages.home'))
+
+
+@bp.route('/manage-devices-login', methods=['GET', 'POST'])
+def manage_devices_login():
+    """Device picker shown when a 3rd-device login is attempted."""
+    pending_user_id = session.get("_pending_login_user_id")
+    pending_device_id = session.get("_pending_login_device_id")
+
+    if not pending_user_id or not pending_device_id or not PlayerDB:
+        flash("Session expired. Please sign in again.", "error")
+        return redirect(url_for("auth.login"))
+
+    if request.method == "GET":
+        try:
+            db = PlayerDB()
+            active_sessions = db.get_active_sessions(pending_user_id)
+            db.close()
+        except Exception:
+            active_sessions = []
+        return render_template(
+            "manage_devices_login.html",
+            active_sessions=active_sessions,
+            csrf_token=generate_csrf_token(),
+        )
+
+    # POST — revoke selected session and complete login
+    if not validate_csrf(request.form.get("csrf_token")):
+        flash("Invalid form submission. Please try again.", "error")
+        return redirect(url_for("auth.manage_devices_login"))
+
+    revoke_session_id = request.form.get("revoke_session_id")
+    if not revoke_session_id:
+        flash("Please select a device to sign out.", "error")
+        return redirect(url_for("auth.manage_devices_login"))
+
+    try:
+        import time as _time
+
+        db = PlayerDB()
+        db.revoke_session(int(revoke_session_id), pending_user_id)
+
+        # Create new session for the pending device
+        session_token = secrets.token_urlsafe(32)
+        ua = request.headers.get("User-Agent", "")
+        db.create_user_session(
+            user_id=pending_user_id,
+            device_id=pending_device_id,
+            session_token=session_token,
+            device_name=parse_device_name(ua),
+            user_agent=ua,
+            ip_address=request.remote_addr,
+        )
+
+        user = db.get_user_by_id(pending_user_id)
+        db.close()
+
+        if not user:
+            flash("Account not found. Please sign in again.", "error")
+            return redirect(url_for("auth.login"))
+
+        # Clear pending keys
+        pending_next = session.pop("_pending_login_next", None)
+        session.pop("_pending_login_user_id", None)
+        session.pop("_pending_login_device_id", None)
+
+        # Set up session
+        session.pop("csrf_token", None)
+        session["user_id"] = user["id"]
+        session["first_name"] = user.get("first_name", "")
+        session["last_name"] = user.get("last_name", "")
+        session["is_admin"] = bool(user.get("is_admin", False))
+        session["_session_token"] = session_token
+        session["_device_id"] = pending_device_id
+        session.permanent = True
+
+        user_cache = {k: v for k, v in user.items() if k != "password_hash"}
+        session["_cached_user"] = user_cache
+        session["_user_cache_timestamp"] = _time.time()
+
+        generate_csrf_token()
+        flash("Signed in successfully.", "success")
+        if pending_next and pending_next.startswith("/") and not pending_next.startswith("//"):
+            return redirect(pending_next)
+        return redirect(url_for("pages.home"))
+
+    except Exception as exc:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Device management login error: {exc}", exc_info=True)
+        flash("An error occurred. Please try again.", "error")
+        return redirect(url_for("auth.manage_devices_login"))
 
 
 @bp.route('/verify-email', methods=['GET'])

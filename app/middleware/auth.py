@@ -7,6 +7,7 @@ from app.config import Config
 from app.constants import AUTH_EXEMPT_ENDPOINTS
 import sys
 import time
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
@@ -82,7 +83,32 @@ def refresh_user_cache_with_db(db, user_id: int):
 
 def setup_auth_middleware(app):
     """Setup authentication middleware"""
-    
+
+    @app.before_request
+    def ensure_device_id():
+        """Ensure every request has a device_id cookie; generate one if missing."""
+        device_id = request.cookies.get("device_id")
+        if not device_id:
+            g._new_device_id = str(uuid.uuid4())
+        else:
+            g._new_device_id = None
+
+    @app.after_request
+    def set_device_id_cookie(response):
+        """Attach device_id cookie to response when newly generated."""
+        new_id = getattr(g, "_new_device_id", None)
+        if new_id:
+            is_production = not Config.DEBUG
+            response.set_cookie(
+                "device_id",
+                new_id,
+                max_age=365 * 24 * 60 * 60,  # 1 year
+                httponly=True,
+                samesite="Lax",
+                secure=is_production,
+            )
+        return response
+
     @app.before_request
     def load_authenticated_user():
         """Load authenticated user for request with session caching"""
@@ -127,8 +153,25 @@ def setup_auth_middleware(app):
         try:
             db = PlayerDB()
             g.user = db.get_user_by_id(user_id)
+
+            # Validate device session is still active (only when we hit the DB)
+            session_token = session.get("_session_token")
+            if g.user and session_token:
+                try:
+                    db_session = db.get_session_by_token(session_token)
+                    if db_session is None:
+                        # Session was revoked — force logout
+                        db.close()
+                        session.clear()
+                        g.user = None
+                        return redirect(url_for("auth.login"))
+                    # Update activity timestamp while we have the connection
+                    db.update_session_activity(session_token)
+                except Exception:
+                    pass  # Fail-open: don't break auth on session-tracking errors
+
             db.close()
-            
+
             if g.user:
                 # Store in cache (exclude password_hash for security)
                 user_cache = {k: v for k, v in g.user.items() if k != "password_hash"}
@@ -185,8 +228,9 @@ def setup_auth_middleware(app):
             return
         
         # Allow access to favicon and auth endpoints (both old and new)
-        if endpoint in {"favicon", "login", "register", "auth.login", "auth.register", "auth.account_deactivated", 
-                        "auth.verify_email", "auth.verify_email_pending", "auth.resend_verification"}:
+        if endpoint in {"favicon", "login", "register", "auth.login", "auth.register", "auth.account_deactivated",
+                        "auth.verify_email", "auth.verify_email_pending", "auth.resend_verification",
+                        "auth.manage_devices_login"}:
             return
         
         # For routes still in app.py (not yet migrated), use old endpoint names

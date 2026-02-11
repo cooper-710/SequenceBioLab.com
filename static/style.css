@@ -5179,3 +5179,131 @@ body[data-theme='light'] .journal-timeline::-webkit-scrollbar-thumb {
     justify-content: center !important;
     text-align: center !important;
 }
+
+/* ===== Device Management ===== */
+.device-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.device-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: var(--color-layer-soft);
+    border: 1px solid var(--color-layer-border);
+    transition: border-color 0.2s ease;
+}
+
+.device-item--current {
+    border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-layer-border));
+    background: color-mix(in srgb, var(--color-accent) 6%, var(--color-layer-soft));
+}
+
+.device-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 18%, var(--color-layer-border));
+    color: var(--color-accent);
+    font-size: 1rem;
+}
+
+.device-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.device-details {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.device-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.device-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+    color: var(--color-accent);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
+    white-space: nowrap;
+}
+
+.device-meta {
+    font-size: 0.82rem;
+    color: var(--color-text-subtle);
+}
+
+.device-revoke-form {
+    flex-shrink: 0;
+}
+
+.btn-danger-outline {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #ef4444;
+    background: transparent;
+    border: 1px solid color-mix(in srgb, #ef4444 35%, transparent);
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    white-space: nowrap;
+}
+
+.btn-danger-outline:hover {
+    background: color-mix(in srgb, #ef4444 12%, transparent);
+    border-color: #ef4444;
+    color: #f87171;
+}
+
+@media (max-width: 768px) {
+    .device-item {
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 12px;
+    }
+
+    .device-info {
+        flex: 1 1 calc(100% - 54px);
+        min-width: 0;
+    }
+
+    .device-revoke-form {
+        width: 100%;
+    }
+
+    .btn-danger-outline {
+        width: 100%;
+        justify-content: center;
+    }
+}

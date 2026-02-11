@@ -104,6 +104,9 @@ class Config:
     # User cache TTL in seconds (default: 5 minutes)
     # This controls how long user data is cached in session before refreshing from database
     USER_CACHE_TTL_SECONDS = int(os.environ.get("USER_CACHE_TTL_SECONDS", "300"))
+
+    # Maximum concurrent device sessions per non-admin user
+    MAX_DEVICES_PER_USER = 2
     
     @classmethod
     def ensure_directories(cls):
