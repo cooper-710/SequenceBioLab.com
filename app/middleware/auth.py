@@ -137,16 +137,53 @@ def setup_auth_middleware(app):
                     session["last_name"] = cached_user.get("last_name", "")
                     if cached_user.get("theme_preference"):
                         session["theme_preference"] = cached_user["theme_preference"]
-                
+
                 # Still check is_active for security (but don't query DB)
                 if not cached_user.get("is_admin"):
                     is_active = cached_user.get("is_active")
                     if is_active is not None and not is_active:
                         session.clear()
                         endpoint = request.endpoint or ""
-                        if endpoint not in {"auth.account_deactivated", "auth.login", "auth.register", "auth.verify_email", 
+                        if endpoint not in {"auth.account_deactivated", "auth.login", "auth.register", "auth.verify_email",
                                             "auth.verify_email_pending", "auth.resend_verification", "static"}:
                             return redirect(url_for("auth.account_deactivated"))
+
+                # --- Session revocation check (every 60s, even on cache-hit) ---
+                session_token = session.get("_session_token")
+                last_session_check = session.get("_session_check_at", 0)
+                if (now - last_session_check) >= 60:
+                    try:
+                        db = PlayerDB()
+                        if not session_token:
+                            # Pre-deployment session: create a DB record so it can be managed
+                            import secrets as _secrets
+                            from app.utils.helpers import parse_device_name
+                            session_token = _secrets.token_urlsafe(32)
+                            device_id = request.cookies.get("device_id") or getattr(g, "_new_device_id", None) or str(uuid.uuid4())
+                            ua = request.headers.get("User-Agent", "")
+                            db.create_user_session(
+                                user_id=user_id,
+                                device_id=device_id,
+                                session_token=session_token,
+                                device_name=parse_device_name(ua),
+                                user_agent=ua,
+                                ip_address=request.remote_addr,
+                            )
+                            session["_session_token"] = session_token
+                            session["_device_id"] = device_id
+                        else:
+                            db_session = db.get_session_by_token(session_token)
+                            if db_session is None:
+                                db.close()
+                                session.clear()
+                                g.user = None
+                                return redirect(url_for("auth.login"))
+                            db.update_session_activity(session_token)
+                        db.close()
+                        session["_session_check_at"] = now
+                    except Exception:
+                        pass  # Fail-open
+
                 return
         
         # Cache miss or expired - query database
@@ -154,19 +191,37 @@ def setup_auth_middleware(app):
             db = PlayerDB()
             g.user = db.get_user_by_id(user_id)
 
-            # Validate device session is still active (only when we hit the DB)
+            # Validate device session is still active
             session_token = session.get("_session_token")
-            if g.user and session_token:
+            if g.user:
                 try:
-                    db_session = db.get_session_by_token(session_token)
-                    if db_session is None:
-                        # Session was revoked — force logout
-                        db.close()
-                        session.clear()
-                        g.user = None
-                        return redirect(url_for("auth.login"))
-                    # Update activity timestamp while we have the connection
-                    db.update_session_activity(session_token)
+                    if not session_token:
+                        # Pre-deployment session: create a DB record
+                        import secrets as _secrets
+                        from app.utils.helpers import parse_device_name
+                        session_token = _secrets.token_urlsafe(32)
+                        device_id = request.cookies.get("device_id") or getattr(g, "_new_device_id", None) or str(uuid.uuid4())
+                        ua = request.headers.get("User-Agent", "")
+                        db.create_user_session(
+                            user_id=user_id,
+                            device_id=device_id,
+                            session_token=session_token,
+                            device_name=parse_device_name(ua),
+                            user_agent=ua,
+                            ip_address=request.remote_addr,
+                        )
+                        session["_session_token"] = session_token
+                        session["_device_id"] = device_id
+                    else:
+                        db_session = db.get_session_by_token(session_token)
+                        if db_session is None:
+                            # Session was revoked — force logout
+                            db.close()
+                            session.clear()
+                            g.user = None
+                            return redirect(url_for("auth.login"))
+                        db.update_session_activity(session_token)
+                    session["_session_check_at"] = now
                 except Exception:
                     pass  # Fail-open: don't break auth on session-tracking errors
 
