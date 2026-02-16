@@ -54,6 +54,15 @@ def register_routes(app):
         logger = logging.getLogger(__name__)
         logger.error(f"Failed to register admin blueprint: {e}", exc_info=True)
     
+    # Register upload API blueprint
+    try:
+        from app.routes.api import upload
+        app.register_blueprint(upload.bp)
+    except (ImportError, AttributeError) as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Upload routes not available: {e}")
+
     # Register other API blueprints
     try:
         from app.routes.api import players, analytics, visuals
