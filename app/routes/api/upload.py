@@ -105,7 +105,7 @@ def upload_report():
                 try:
                     # Convert opponent name to abbreviation
                     team_map = {
-                        'Arizona Diamondbacks': 'ARI', 'Atlanta Braves': 'ATL',
+                        'Arizona Diamondbacks': 'AZ', 'Atlanta Braves': 'ATL',
                         'Baltimore Orioles': 'BAL', 'Boston Red Sox': 'BOS',
                         'Chicago Cubs': 'CHC', 'Chicago White Sox': 'CWS',
                         'Cincinnati Reds': 'CIN', 'Cleveland Guardians': 'CLE',
@@ -138,17 +138,27 @@ def upload_report():
                     if opp_abbr:
                         s_opponent = opp_abbr
 
-                    if user_team_abbr and opp_abbr:
+                    if user_team_abbr and (opp_abbr or opponent):
                         from app.services.schedule_service import collect_series_for_team
                         from datetime import datetime, timedelta
 
                         series_list = collect_series_for_team(user_team_abbr, days_ahead=30)
                         log.info(f"[upload] collect_series_for_team({user_team_abbr}) returned {len(series_list)} series")
                         series_debug['total_series'] = len(series_list)
-                        series_debug['all_opponents'] = [s.get('opponent_abbr') for s in series_list]
+                        series_debug['all_opponents'] = [(s.get('opponent_abbr'), s.get('opponent_name')) for s in series_list]
 
+                        # Match by abbreviation first, then fall back to opponent name
                         matches = [s for s in series_list if s.get('opponent_abbr') == opp_abbr]
-                        log.info(f"[upload] Matches for {opp_abbr}: {len(matches)}")
+                        if not matches and opponent:
+                            # Try matching by opponent name (handles abbreviation mismatches)
+                            opp_lower = opponent.lower()
+                            matches = [s for s in series_list
+                                       if s.get('opponent_name') and opp_lower in s['opponent_name'].lower()]
+                        if not matches and opp_abbr:
+                            # Try case-insensitive abbreviation match
+                            matches = [s for s in series_list
+                                       if s.get('opponent_abbr') and s['opponent_abbr'].upper() == opp_abbr.upper()]
+                        log.info(f"[upload] Matches for opp_abbr={opp_abbr}, name='{opponent}': {len(matches)}")
                         series_debug['matches_found'] = len(matches)
 
                         if matches and series_date:
