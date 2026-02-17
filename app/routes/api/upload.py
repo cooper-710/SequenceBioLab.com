@@ -61,6 +61,7 @@ def upload_report():
         # Insert into player_documents database
         doc_id = None
         series_debug = {}
+        db = None
         try:
             import logging
             log = logging.getLogger('upload')
@@ -204,6 +205,12 @@ def upload_report():
             import logging
             logging.getLogger(__name__).warning(f"Database insert failed: {e}")
             series_debug['db_error'] = str(e)
+        finally:
+            if db:
+                try:
+                    db.close()
+                except Exception:
+                    pass
 
         return jsonify({
             "success": True,
