@@ -60,7 +60,11 @@ def upload_report():
 
         # Insert into player_documents database
         doc_id = None
+        series_debug = {}
         try:
+            import logging
+            log = logging.getLogger('upload')
+
             from database import PlayerDB
             db = PlayerDB()
 
@@ -82,9 +86,15 @@ def upload_report():
                 """, (first_name, last_name))
             row = cursor.fetchone()
 
-            if row:
+            if not row:
+                log.warning(f"[upload] User not found: '{first_name}' '{last_name}'")
+                series_debug['error'] = f"User not found: {first_name} {last_name}"
+            else:
                 player_id = row['id']
                 user_team_abbr = row['team_abbr'] if row['team_abbr'] else None
+                log.info(f"[upload] Found user id={player_id}, team_abbr={user_team_abbr}")
+                series_debug['player_id'] = player_id
+                series_debug['user_team_abbr'] = user_team_abbr
 
                 # --- Series matching ---
                 s_opponent = opponent if opponent != 'Unknown' else None
@@ -122,6 +132,9 @@ def upload_report():
                                     opp_abbr = ab
                                     break
 
+                    log.info(f"[upload] opponent='{opponent}' -> opp_abbr={opp_abbr}")
+                    series_debug['opp_abbr'] = opp_abbr
+
                     if opp_abbr:
                         s_opponent = opp_abbr
 
@@ -130,7 +143,13 @@ def upload_report():
                         from datetime import datetime, timedelta
 
                         series_list = collect_series_for_team(user_team_abbr, days_ahead=30)
+                        log.info(f"[upload] collect_series_for_team({user_team_abbr}) returned {len(series_list)} series")
+                        series_debug['total_series'] = len(series_list)
+                        series_debug['all_opponents'] = [s.get('opponent_abbr') for s in series_list]
+
                         matches = [s for s in series_list if s.get('opponent_abbr') == opp_abbr]
+                        log.info(f"[upload] Matches for {opp_abbr}: {len(matches)}")
+                        series_debug['matches_found'] = len(matches)
 
                         if matches and series_date:
                             try:
@@ -142,14 +161,22 @@ def upload_report():
                         if matches:
                             best = matches[0]
                             s_label = best.get('series_label')
+                            log.info(f"[upload] Best match: label={s_label}, start={best.get('start')}, end={best.get('end')}")
+                            series_debug['matched_series'] = s_label
                             try:
                                 s_start = datetime.fromisoformat(best['start']).timestamp()
                                 end_dt = datetime.fromisoformat(best['end'])
                                 s_end = (end_dt + timedelta(days=1)).timestamp()
-                            except Exception:
-                                pass
-                except Exception:
-                    pass  # Series matching failed, continue without it
+                            except Exception as e:
+                                log.warning(f"[upload] Failed to parse series dates: {e}")
+                        else:
+                            log.warning(f"[upload] No series match for {opp_abbr} in schedule")
+                    else:
+                        log.warning(f"[upload] Skipping series match: team_abbr={user_team_abbr}, opp_abbr={opp_abbr}")
+                        series_debug['skip_reason'] = f"team_abbr={user_team_abbr}, opp_abbr={opp_abbr}"
+                except Exception as e:
+                    log.warning(f"[upload] Series matching exception: {e}")
+                    series_debug['exception'] = str(e)
 
                 doc_id = db.create_player_document(
                     player_id=player_id,
@@ -162,10 +189,11 @@ def upload_report():
                     series_start=s_start,
                     series_end=s_end
                 )
+                log.info(f"[upload] Created doc id={doc_id}, series_opponent={s_opponent}, series_label={s_label}, s_start={s_start}, s_end={s_end}")
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"Database insert failed: {e}")
-            # Continue anyway - file is saved
+            series_debug['db_error'] = str(e)
 
         return jsonify({
             "success": True,
@@ -173,7 +201,8 @@ def upload_report():
             "filename": filename,
             "player": player_name,
             "opponent": opponent,
-            "doc_id": doc_id
+            "doc_id": doc_id,
+            "series_debug": series_debug
         }), 200
 
     except Exception as e:
