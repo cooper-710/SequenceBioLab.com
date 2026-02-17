@@ -118,7 +118,6 @@ AUTH_EXEMPT_ENDPOINTS = {
     "auth.verify_email",
     "auth.verify_email_pending",
     "auth.resend_verification",
-    "auth.manage_devices_login",
-    "upload.upload_report"
+    "auth.manage_devices_login"
 }
 
