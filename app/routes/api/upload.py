@@ -58,12 +58,46 @@ def upload_report():
         filepath = UPLOAD_FOLDER / filename
         file.save(str(filepath))
 
+        # Insert into player_documents database
+        doc_id = None
+        try:
+            from database import PlayerDB
+            db = PlayerDB()
+
+            # Look up user by first + last name
+            parts = player_name.strip().split(None, 1)
+            first_name = parts[0] if parts else player_name
+            last_name = parts[1] if len(parts) > 1 else ''
+
+            cursor = db.conn.cursor()
+            db._execute(cursor, """
+                SELECT id FROM users
+                WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?)
+            """, (first_name, last_name))
+            row = cursor.fetchone()
+
+            if row:
+                player_id = row['id']
+                doc_id = db.create_player_document(
+                    player_id=player_id,
+                    filename=filename,
+                    path=str(filepath),
+                    uploaded_by=None,
+                    category='report',
+                    series_opponent=opponent if opponent != 'Unknown' else None
+                )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Database insert failed: {e}")
+            # Continue anyway - file is saved
+
         return jsonify({
             "success": True,
             "message": "Upload successful",
             "filename": filename,
             "player": player_name,
-            "opponent": opponent
+            "opponent": opponent,
+            "doc_id": doc_id
         }), 200
 
     except Exception as e:
