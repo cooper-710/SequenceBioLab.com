@@ -58,7 +58,7 @@ def register_routes(app):
     try:
         from app.routes.api import upload
         app.register_blueprint(upload.bp)
-    except (ImportError, AttributeError) as e:
+    except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
         logger.warning(f"Upload routes not available: {e}")
