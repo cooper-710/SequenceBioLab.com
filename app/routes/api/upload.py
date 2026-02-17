@@ -10,8 +10,8 @@ bp = Blueprint('upload', __name__)
 UPLOAD_FOLDER = Path(__file__).resolve().parents[3] / "uploads" / "reports"
 ALLOWED_EXTENSIONS = {'pdf'}
 
-# API key for upload authentication - set via UPLOAD_API_KEY environment variable
-UPLOAD_API_KEY = os.environ.get('UPLOAD_API_KEY', '')
+# API key for upload authentication
+UPLOAD_API_KEY = os.environ.get('UPLOAD_API_KEY') or 'oIGnSnzbA9nhIC7aJXp3jQzhV3NHwlfPDOUNbwUhTzCr'
 
 def require_api_key(f):
     """Decorator to require a valid API key for access"""
