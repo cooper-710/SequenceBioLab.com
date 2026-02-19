@@ -60,6 +60,7 @@ def upload_report():
 
         # Insert into player_documents database
         doc_id = None
+        series_matched = False
         series_debug = {}
         db = None
         try:
@@ -178,6 +179,7 @@ def upload_report():
                                 s_start = datetime.fromisoformat(best['start']).timestamp()
                                 end_dt = datetime.fromisoformat(best['end'])
                                 s_end = (end_dt + timedelta(days=1)).timestamp()
+                                series_matched = True
                             except Exception as e:
                                 log.warning(f"[upload] Failed to parse series dates: {e}")
                         else:
@@ -219,6 +221,7 @@ def upload_report():
             "player": player_name,
             "opponent": opponent,
             "doc_id": doc_id,
+            "series_matched": series_matched,
             "series_debug": series_debug
         }), 200
 
