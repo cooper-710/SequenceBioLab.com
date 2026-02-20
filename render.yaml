@@ -3,8 +3,8 @@ services:
     name: sequencebiolab
     env: python
     buildCommand: pip install -r requirements-web.txt && playwright install chromium && (python scripts/update_player_teams.py || true)
-    # Use a single gunicorn worker on 1 CPU / 2GB instances to keep memory usage under control
-    startCommand: gunicorn -w 1 -b 0.0.0.0:$PORT --timeout 600 wsgi:application
+    # Use 2 gunicorn workers so file uploads don't block the entire app
+    startCommand: gunicorn -w 2 -b 0.0.0.0:$PORT --timeout 600 wsgi:application
     envVars:
       - key: DATABASE_URL
         sync: false
