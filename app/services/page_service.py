@@ -761,6 +761,12 @@ def collect_series_for_gameday(user: Dict[str, Any], *, force_refresh: bool = Fa
                 inserted = False
                 for i, s in enumerate(series):
                     series_date = s.get("_series_start_date")
+                    # Handle string dates from cache deserialization
+                    if series_date and isinstance(series_date, str):
+                        try:
+                            series_date = datetime.fromisoformat(series_date).date()
+                        except Exception:
+                            continue
                     if series_date and series_date > allstar_date:
                         series.insert(i, allstar_entry)
                         inserted = True
