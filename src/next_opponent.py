@@ -72,8 +72,11 @@ def _probables_from_game(game: Dict[str, Any], team_id: int) -> List[Dict[str, A
         opp_name = game.get('home_probable_pitcher')
         opp_id   = game.get('home_probable_pitcher_id')
 
-    if opp_name and opp_id:
-        prob.append({"id": int(opp_id), "name": str(opp_name)})
+    if opp_name:
+        entry: Dict[str, Any] = {"name": str(opp_name)}
+        if opp_id:
+            entry["id"] = int(opp_id)
+        prob.append(entry)
 
     return prob
 
@@ -99,11 +102,14 @@ def next_games(team_key: str, days_ahead: int = 7, include_started: bool = False
     team_id = _resolve_team_id(team_key)
     tz = timezone.utc
     today = datetime.now(tz).date()
+    # Start 1 day in the past so the user's local "today" game is always
+    # included even when the server (UTC) has rolled over to the next day.
+    start_date = today - timedelta(days=1)
 
     end_date = today + timedelta(days=days_ahead)
     try:
         schedule = statsapi.schedule(
-            start_date=today.isoformat(),
+            start_date=start_date.isoformat(),
             end_date=end_date.isoformat(),
             team=team_id
         )

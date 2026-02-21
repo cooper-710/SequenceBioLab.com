@@ -325,13 +325,17 @@ def load_gameday_schedule_window(user: Dict[str, Any]) -> List[Dict[str, Any]]:
     first-time loads are faster while still providing enough future games
     for the calendar and upcoming-games sidebar. Set to 270 days to
     cover the full MLB season through October.
+
+    Starts 1 day in the past so that the user's local "today" game is always
+    included even when the server (UTC) has already rolled over to the next day.
     """
     try:
         today = datetime.now().date()
+        start_date = today - timedelta(days=1)
         end_date = today + timedelta(days=270)
         return load_full_season_schedule(
             user,
-            start_date=today.isoformat(),
+            start_date=start_date.isoformat(),
             end_date=end_date.isoformat(),
         )
     except Exception as exc:
@@ -789,31 +793,82 @@ def collect_series_for_gameday(user: Dict[str, Any], *, force_refresh: bool = Fa
 def _overlay_fresh_probables(series: List[Dict[str, Any]], team_abbr: Optional[str]) -> None:
     """Fetch fresh probable pitcher data and overlay it onto current/upcoming series.
 
-    Uses next_games() with a short window and a 30-minute cache so pitcher
-    announcements show up without waiting for the full schedule cache to expire.
+    Calls the MLB StatsAPI directly (without sportId restriction) so that
+    spring training probables are included.  Results are cached for 30 minutes.
     """
-    if not next_games or not team_abbr or not series:
+    if not team_abbr or not series:
         return
 
     try:
+        from next_opponent import _resolve_team_id
+    except ImportError:
+        logger.warning("Cannot import _resolve_team_id for fresh probables")
+        return
+
+    try:
+        team_id = _resolve_team_id(team_abbr)
+    except Exception as exc:
+        logger.warning(f"Cannot resolve team_id for {team_abbr}: {exc}")
+        return
+
+    try:
+        today = datetime.now().date()
+        end_dt = today + timedelta(days=14)
+
         cache_key = {
-            "type": "fresh_probables",
+            "type": "fresh_probables_v2",
             "team_abbr": (team_abbr or "").upper(),
-            "date": datetime.now().date().isoformat(),
+            "date": today.isoformat(),
         }
 
         def _fetch_probables():
-            games = next_games(team_abbr, days_ahead=14, include_started=False)
-            # Return a lightweight list: just game_pk, date, opponent_id, and pitchers
-            return [
-                {
-                    "game_pk": g.get("game_pk"),
+            # Call statsapi.schedule without sportId restriction (sportId=0 is falsy,
+            # so the library omits it from the request, returning all game types
+            # including spring training).
+            try:
+                raw_schedule = statsapi.schedule(
+                    start_date=today.isoformat(),
+                    end_date=end_dt.isoformat(),
+                    team=team_id,
+                    sportId=0,
+                )
+            except Exception as e:
+                logger.warning(f"Fresh probables API call failed: {e}")
+                # Fallback: try with default sportId
+                try:
+                    raw_schedule = statsapi.schedule(
+                        start_date=today.isoformat(),
+                        end_date=end_dt.isoformat(),
+                        team=team_id,
+                    )
+                except Exception:
+                    return []
+
+            results = []
+            for g in raw_schedule:
+                game_pk = g.get("game_id") or g.get("game_pk")
+                home_id = g.get("home_id")
+                away_id = g.get("away_id")
+
+                # Get opponent's probable pitcher
+                pitchers = []
+                if team_id == home_id:
+                    opp_name = g.get("away_probable_pitcher")
+                else:
+                    opp_name = g.get("home_probable_pitcher")
+
+                if opp_name:
+                    pitchers.append({"name": str(opp_name)})
+
+                results.append({
+                    "game_pk": game_pk,
                     "game_date": g.get("game_date"),
-                    "opponent_id": g.get("opponent_id"),
-                    "probable_pitchers": g.get("probable_pitchers", []),
-                }
-                for g in games
-            ]
+                    "probable_pitchers": pitchers,
+                })
+
+            logger.info(f"Fresh probables: fetched {len(results)} games, "
+                        f"{sum(1 for r in results if r['probable_pitchers'])} have pitchers")
+            return results
 
         fresh_games = persistent_get_or_set_json(
             "fresh_probables",
@@ -832,6 +887,7 @@ def _overlay_fresh_probables(series: List[Dict[str, Any]], team_abbr: Optional[s
             if pk:
                 by_pk[pk] = fg.get("probable_pitchers", [])
 
+        matched_count = 0
         # Walk through each series and update pitcher data
         for s in series:
             category = s.get("category", "")
@@ -854,6 +910,7 @@ def _overlay_fresh_probables(series: List[Dict[str, Any]], team_abbr: Optional[s
                             names.append(p)
                     if names:
                         game_entry["probable_pitchers"] = names
+                        matched_count += 1
 
             # Update the top-level probable_pitchers (used for the series card header)
             top_pk = s.get("game_pk")
@@ -869,6 +926,8 @@ def _overlay_fresh_probables(series: List[Dict[str, Any]], team_abbr: Optional[s
                         names.append(p)
                 if names:
                     s["probable_pitchers"] = names
+
+        logger.info(f"Fresh probables overlay: updated {matched_count} games with pitcher data")
 
     except Exception as exc:
         logger.warning(f"Warning overlaying fresh probables: {exc}")
