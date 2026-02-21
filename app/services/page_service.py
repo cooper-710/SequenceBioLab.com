@@ -772,7 +772,100 @@ def collect_series_for_gameday(user: Dict[str, Any], *, force_refresh: bool = Fa
         except Exception as exc:
             logger.warning(f"Error injecting All-Star Game into gameday series: {exc}")
 
+    # Overlay fresh probable pitchers for current/upcoming series.
+    # The schedule cache (6 hr TTL) often has stale/empty pitcher data because
+    # MLB doesn't announce probables until close to game time.
+    _overlay_fresh_probables(series, team_abbr)
+
     return series
+
+
+def _overlay_fresh_probables(series: List[Dict[str, Any]], team_abbr: Optional[str]) -> None:
+    """Fetch fresh probable pitcher data and overlay it onto current/upcoming series.
+
+    Uses next_games() with a short window and a 30-minute cache so pitcher
+    announcements show up without waiting for the full schedule cache to expire.
+    """
+    if not next_games or not team_abbr or not series:
+        return
+
+    try:
+        cache_key = {
+            "type": "fresh_probables",
+            "team_abbr": (team_abbr or "").upper(),
+            "date": datetime.now().date().isoformat(),
+        }
+
+        def _fetch_probables():
+            games = next_games(team_abbr, days_ahead=14, include_started=False)
+            # Return a lightweight list: just game_pk, date, opponent_id, and pitchers
+            return [
+                {
+                    "game_pk": g.get("game_pk"),
+                    "game_date": g.get("game_date"),
+                    "opponent_id": g.get("opponent_id"),
+                    "probable_pitchers": g.get("probable_pitchers", []),
+                }
+                for g in games
+            ]
+
+        fresh_games = persistent_get_or_set_json(
+            "fresh_probables",
+            cache_key,
+            ttl_seconds=30 * 60,  # 30 minutes
+            builder=_fetch_probables,
+        )
+
+        if not fresh_games or not isinstance(fresh_games, list):
+            return
+
+        # Build lookup by game_pk for fast matching
+        by_pk: Dict[int, List[Dict[str, Any]]] = {}
+        for fg in fresh_games:
+            pk = fg.get("game_pk")
+            if pk:
+                by_pk[pk] = fg.get("probable_pitchers", [])
+
+        # Walk through each series and update pitcher data
+        for s in series:
+            category = s.get("category", "")
+            if category == "past":
+                continue  # skip past series
+
+            # Update the per-game pitchers in games_list
+            games_list = s.get("games_list", [])
+            for game_entry in games_list:
+                pk = game_entry.get("game_pk")
+                if pk and pk in by_pk:
+                    fresh_pitchers = by_pk[pk]
+                    names = []
+                    for p in fresh_pitchers:
+                        if isinstance(p, dict):
+                            name = p.get("name")
+                            if name:
+                                names.append(name)
+                        elif isinstance(p, str):
+                            names.append(p)
+                    if names:
+                        game_entry["probable_pitchers"] = names
+
+            # Update the top-level probable_pitchers (used for the series card header)
+            top_pk = s.get("game_pk")
+            if top_pk and top_pk in by_pk:
+                fresh_pitchers = by_pk[top_pk]
+                names = []
+                for p in fresh_pitchers:
+                    if isinstance(p, dict):
+                        name = p.get("name")
+                        if name:
+                            names.append(name)
+                    elif isinstance(p, str):
+                        names.append(p)
+                if names:
+                    s["probable_pitchers"] = names
+
+    except Exception as exc:
+        logger.warning(f"Warning overlaying fresh probables: {exc}")
 
 
 def format_player_document(doc: Dict[str, Any]) -> Dict[str, Any]:
