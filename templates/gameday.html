@@ -592,11 +592,61 @@
 .calendar-day.other-month {
     opacity: 0.3;
 }
+/* Today: only the day number gets a filled circle — cell border/bg stays as game type dictates */
 .calendar-day.today {
-    background: rgba(255, 127, 0, 0.2);
-    border: 2px solid var(--color-accent);
-    font-weight: 700;
-    box-shadow: 0 0 0 2px rgba(255, 127, 0, 0.3), 0 2px 8px rgba(255, 127, 0, 0.4);
+    position: relative;
+}
+
+/* Base circle: orange (no game, or regular home) */
+.calendar-day.today .calendar-day-number {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    color: #111;
+    font-weight: 900;
+    font-size: 0.7rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+    line-height: 1;
+}
+
+/* Regular away: solid blue */
+.calendar-day.today.game-away .calendar-day-number {
+    background: rgba(100, 150, 255, 1);
+    color: #fff;
+}
+
+/* Spring home: muted orange */
+.calendar-day.today.game-type-spring.game-home .calendar-day-number {
+    background: rgba(255, 127, 0, 0.55);
+    color: rgba(255, 255, 255, 0.85);
+}
+
+/* Spring away: muted blue */
+.calendar-day.today.game-type-spring.game-away .calendar-day-number {
+    background: rgba(100, 150, 255, 0.55);
+    color: rgba(255, 255, 255, 0.85);
+}
+
+/* All-Star confirmed: gold */
+.calendar-day.today.game-type-allstar .calendar-day-number {
+    background: #ffd700;
+    color: #111;
+}
+
+/* All-Star pending: dim gold */
+.calendar-day.today.game-type-allstar-pending .calendar-day-number {
+    background: rgba(255, 215, 0, 0.35);
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* Playoffs: championship gold */
+.calendar-day.today.game-type-playoff .calendar-day-number {
+    background: #daa520;
+    color: #111;
 }
 .calendar-day.has-game.game-home {
     background: rgba(255, 127, 0, 0.15);
