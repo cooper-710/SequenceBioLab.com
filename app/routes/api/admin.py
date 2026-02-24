@@ -1548,8 +1548,6 @@ def download_player_document(doc_id: int):
 
         abort(404)
 
-    purge_concluded_series_documents()
-
     db = None
     try:
         db = PlayerDB()

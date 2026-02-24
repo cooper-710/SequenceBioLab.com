@@ -118,7 +118,7 @@ def load_next_series_snapshot(user: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
     next_active = None
     for series in series_list:
-        if series.get("status") != "expired":
+        if series.get("status") in ("upcoming", "active"):
             next_active = series
             break
 
