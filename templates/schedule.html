@@ -680,16 +680,9 @@ body[data-theme='light'] .schedule-month-display {
     opacity: 0.3;
 }
 
-@keyframes today-glow {
-    0%, 100% { box-shadow: 0 0 0 0px rgba(255, 127, 0, 0), 0 1px 4px rgba(0,0,0,0.15); }
-    50%       { box-shadow: 0 0 0 3px rgba(255, 127, 0, 0.15), 0 2px 12px rgba(255, 127, 0, 0.3); }
-}
-
+/* Today: only the day number gets a filled circle — cell border/bg stays as game type dictates */
 .calendar-day.today {
-    background: linear-gradient(145deg, rgba(255, 127, 0, 0.17) 0%, rgba(255, 127, 0, 0.06) 100%);
-    border: 1.5px solid rgba(255, 127, 0, 0.85);
     position: relative;
-    animation: today-glow 2.8s ease-in-out infinite;
 }
 
 .calendar-day.today::before {
@@ -703,22 +696,7 @@ body[data-theme='light'] .schedule-month-display {
     display: block;
 }
 
-.calendar-day.today::after {
-    content: 'TODAY';
-    position: absolute;
-    bottom: 3px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 6px;
-    font-weight: 800;
-    letter-spacing: 0.12em;
-    color: var(--color-accent);
-    opacity: 0.85;
-    pointer-events: none;
-    white-space: nowrap;
-    line-height: 1;
-}
-
+/* Base circle: orange (no game, or regular home) */
 .calendar-day.today .calendar-day-number {
     width: 22px;
     height: 22px;
@@ -732,6 +710,42 @@ body[data-theme='light'] .schedule-month-display {
     justify-content: center;
     margin: 0 auto;
     line-height: 1;
+}
+
+/* Regular away: solid blue */
+.calendar-day.today.game-away .calendar-day-number {
+    background: rgba(100, 150, 255, 1);
+    color: #fff;
+}
+
+/* Spring home: muted orange */
+.calendar-day.today.game-type-spring.game-home .calendar-day-number {
+    background: rgba(255, 127, 0, 0.55);
+    color: rgba(255, 255, 255, 0.85);
+}
+
+/* Spring away: muted blue */
+.calendar-day.today.game-type-spring.game-away .calendar-day-number {
+    background: rgba(100, 150, 255, 0.55);
+    color: rgba(255, 255, 255, 0.85);
+}
+
+/* All-Star confirmed: gold */
+.calendar-day.today.game-type-allstar .calendar-day-number {
+    background: #ffd700;
+    color: #111;
+}
+
+/* All-Star pending: dim gold */
+.calendar-day.today.game-type-allstar-pending .calendar-day-number {
+    background: rgba(255, 215, 0, 0.35);
+    color: rgba(255, 255, 255, 0.6);
+}
+
+/* Playoffs: championship gold */
+.calendar-day.today.game-type-playoff .calendar-day-number {
+    background: #daa520;
+    color: #111;
 }
 
 .calendar-day.has-game {

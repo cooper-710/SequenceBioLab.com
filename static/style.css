@@ -5167,10 +5167,6 @@ body[data-theme='light'] .journal-timeline::-webkit-scrollbar-thumb {
     border: 2px solid rgba(255, 127, 0, 0.6);
 }
 
-/* Calendar day today border */
-.calendar-day.today {
-    border: 1.5px solid rgba(255, 127, 0, 0.85);
-}
 
 /* Team abbreviation badge - ensure text is centered */
 .team-abbr-badge {
