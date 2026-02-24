@@ -680,32 +680,58 @@ body[data-theme='light'] .schedule-month-display {
     opacity: 0.3;
 }
 
+@keyframes today-glow {
+    0%, 100% { box-shadow: 0 0 0 0px rgba(255, 127, 0, 0), 0 1px 4px rgba(0,0,0,0.15); }
+    50%       { box-shadow: 0 0 0 3px rgba(255, 127, 0, 0.15), 0 2px 12px rgba(255, 127, 0, 0.3); }
+}
+
 .calendar-day.today {
-    background: rgba(255, 127, 0, 0.2);
-    border: 2px solid var(--color-accent);
-    border-color: var(--color-accent);
-    font-weight: 700;
-    box-shadow: 0 0 0 2px rgba(255, 127, 0, 0.3), 0 2px 8px rgba(255, 127, 0, 0.4);
+    background: linear-gradient(145deg, rgba(255, 127, 0, 0.17) 0%, rgba(255, 127, 0, 0.06) 100%);
+    border: 1.5px solid rgba(255, 127, 0, 0.85);
     position: relative;
+    animation: today-glow 2.8s ease-in-out infinite;
 }
 
 .calendar-day.today::before {
-    content: '';
+    display: none;
+}
+
+/* Re-enable ::before for game types that use it for icons (★ All-Star, 🏆 Playoff) */
+.calendar-day.today.has-game.game-type-allstar::before,
+.calendar-day.today.has-game.game-type-allstar-pending::before,
+.calendar-day.today.has-game.game-type-playoff::before {
+    display: block;
+}
+
+.calendar-day.today::after {
+    content: 'TODAY';
     position: absolute;
-    top: -2px;
-    left: -2px;
-    right: -2px;
-    bottom: -2px;
-    border: 2px solid var(--color-accent);
-    border-radius: 8px;
-    opacity: 0.5;
+    bottom: 3px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 6px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    color: var(--color-accent);
+    opacity: 0.85;
     pointer-events: none;
+    white-space: nowrap;
+    line-height: 1;
 }
 
 .calendar-day.today .calendar-day-number {
-    font-weight: 800;
-    font-size: 0.85rem;
-    color: var(--color-accent);
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    color: #111;
+    font-weight: 900;
+    font-size: 0.7rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+    line-height: 1;
 }
 
 .calendar-day.has-game {
@@ -725,18 +751,6 @@ body[data-theme='light'] .schedule-month-display {
 .calendar-day.has-game.game-away {
     background: rgba(100, 150, 255, 0.15);
     border-color: rgba(100, 150, 255, 0.4);
-}
-
-.calendar-day.has-game.today.game-home {
-    background: rgba(255, 127, 0, 0.3);
-    border: 2px solid var(--color-accent);
-    box-shadow: 0 0 0 2px rgba(255, 127, 0, 0.4), 0 2px 8px rgba(255, 127, 0, 0.5);
-}
-
-.calendar-day.has-game.today.game-away {
-    background: rgba(100, 150, 255, 0.3);
-    border: 2px solid var(--color-accent);
-    box-shadow: 0 0 0 2px rgba(255, 127, 0, 0.4), 0 2px 8px rgba(255, 127, 0, 0.5);
 }
 
 /* Spring Training - subtle muted style with dashed border */
