@@ -592,56 +592,38 @@
 .calendar-day.other-month {
     opacity: 0.3;
 }
-/* Today: inline span inside the number div — div layout is untouched */
+/* Today: span stays inline-block (normal text size), circle is abs-positioned ::before */
 .today-circle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    position: relative;
+    display: inline-block;
+    z-index: 0;
+    font-weight: 900;
+    color: #111;
+}
+.today-circle::before {
+    content: '';
+    position: absolute;
     width: 20px;
     height: 20px;
     border-radius: 50%;
     background: var(--color-accent);
-    color: #111;
-    font-weight: 900;
-    font-size: 0.75rem;
-    line-height: 1;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: -1;
 }
-
-/* Regular away: solid blue */
-.calendar-day.game-away .today-circle {
-    background: rgba(100, 150, 255, 1);
-    color: #fff;
-}
-
-/* Spring home: muted orange */
-.calendar-day.game-type-spring.game-home .today-circle {
-    background: rgba(255, 127, 0, 0.55);
-    color: rgba(255, 255, 255, 0.85);
-}
-
-/* Spring away: muted blue */
-.calendar-day.game-type-spring.game-away .today-circle {
-    background: rgba(100, 150, 255, 0.55);
-    color: rgba(255, 255, 255, 0.85);
-}
-
-/* All-Star confirmed: gold */
-.calendar-day.game-type-allstar .today-circle {
-    background: #ffd700;
-    color: #111;
-}
-
-/* All-Star pending: dim gold */
-.calendar-day.game-type-allstar-pending .today-circle {
-    background: rgba(255, 215, 0, 0.35);
-    color: rgba(255, 255, 255, 0.6);
-}
-
-/* Playoffs: championship gold */
-.calendar-day.game-type-playoff .today-circle {
-    background: #daa520;
-    color: #111;
-}
+.calendar-day.game-away .today-circle { color: #fff; }
+.calendar-day.game-away .today-circle::before { background: rgba(100, 150, 255, 1); }
+.calendar-day.game-type-spring.game-home .today-circle { color: rgba(255, 255, 255, 0.85); }
+.calendar-day.game-type-spring.game-home .today-circle::before { background: rgba(255, 127, 0, 0.55); }
+.calendar-day.game-type-spring.game-away .today-circle { color: rgba(255, 255, 255, 0.85); }
+.calendar-day.game-type-spring.game-away .today-circle::before { background: rgba(100, 150, 255, 0.55); }
+.calendar-day.game-type-allstar .today-circle { color: #111; }
+.calendar-day.game-type-allstar .today-circle::before { background: #ffd700; }
+.calendar-day.game-type-allstar-pending .today-circle { color: rgba(255, 255, 255, 0.6); }
+.calendar-day.game-type-allstar-pending .today-circle::before { background: rgba(255, 215, 0, 0.35); }
+.calendar-day.game-type-playoff .today-circle { color: #111; }
+.calendar-day.game-type-playoff .today-circle::before { background: #daa520; }
 .calendar-day.has-game.game-home {
     background: rgba(255, 127, 0, 0.15);
     border-color: rgba(255, 127, 0, 0.4);
