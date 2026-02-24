@@ -326,12 +326,12 @@ def load_gameday_schedule_window(user: Dict[str, Any]) -> List[Dict[str, Any]]:
     for the calendar and upcoming-games sidebar. Set to 270 days to
     cover the full MLB season through October.
 
-    Starts 1 day in the past so that the user's local "today" game is always
-    included even when the server (UTC) has already rolled over to the next day.
+    Starts from February 1st of the current year so the calendar always
+    includes the full season history (spring training through October).
     """
     try:
         today = datetime.now().date()
-        start_date = today - timedelta(days=1)
+        start_date = date(today.year, 2, 1)
         end_date = today + timedelta(days=270)
         return load_full_season_schedule(
             user,
@@ -414,11 +414,11 @@ def load_full_season_schedule(user: Dict[str, Any], start_date: Optional[str] = 
                                 "venue": "TBD",
                             })
             elif next_games:
-                days_ahead = max((end_dt - today).days, 0)
+                days_ahead = max((end_dt - start_dt).days, 0)
                 if days_ahead == 0:
                     days_ahead = 365
                 try:
-                    games_local = next_games(team_abbr, days_ahead=min(days_ahead, 365), include_started=True)
+                    games_local = next_games(team_abbr, days_ahead=min(days_ahead, 365), include_started=True, start_date=start_date)
                     logger.info(f"Loaded {len(games_local)} games from real API for {team_abbr}")
                 except Exception as e:
                     logger.warning(f"Error fetching games from API: {e}")

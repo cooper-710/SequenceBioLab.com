@@ -80,9 +80,13 @@ def _probables_from_game(game: Dict[str, Any], team_id: int) -> List[Dict[str, A
 
     return prob
 
-def next_games(team_key: str, days_ahead: int = 7, include_started: bool = False) -> List[Dict[str, Any]]:
+def next_games(team_key: str, days_ahead: int = 7, include_started: bool = False, start_date: Optional[str] = None) -> List[Dict[str, Any]]:
     """
-    Find all upcoming games for a team in [today, today+days_ahead], earliest first.
+    Find all games for a team in [start_date, start_date+days_ahead], earliest first.
+
+    If *start_date* is not provided, defaults to yesterday (UTC) so the
+    user's local "today" game is always included even when the server (UTC)
+    has rolled over to the next day.
 
     Returns a list of dicts:
       {
@@ -102,14 +106,17 @@ def next_games(team_key: str, days_ahead: int = 7, include_started: bool = False
     team_id = _resolve_team_id(team_key)
     tz = timezone.utc
     today = datetime.now(tz).date()
-    # Start 1 day in the past so the user's local "today" game is always
-    # included even when the server (UTC) has rolled over to the next day.
-    start_date = today - timedelta(days=1)
 
-    end_date = today + timedelta(days=days_ahead)
+    if start_date:
+        query_start = datetime.fromisoformat(start_date).date()
+    else:
+        # Default: 1 day in the past for timezone safety
+        query_start = today - timedelta(days=1)
+
+    end_date = query_start + timedelta(days=days_ahead)
     try:
         schedule = statsapi.schedule(
-            start_date=start_date.isoformat(),
+            start_date=query_start.isoformat(),
             end_date=end_date.isoformat(),
             team=team_id
         )
