@@ -592,59 +592,53 @@
 .calendar-day.other-month {
     opacity: 0.3;
 }
-/* Today: only the day number gets a filled circle — cell border/bg stays as game type dictates */
-.calendar-day.today {
-    position: relative;
-}
-
-/* Base circle: orange (no game, or regular home) */
-.calendar-day.today .calendar-day-number {
-    width: 22px;
-    height: 22px;
+/* Today: inline span inside the number div — div layout is untouched */
+.today-circle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
     border-radius: 50%;
     background: var(--color-accent);
     color: #111;
     font-weight: 900;
-    font-size: 0.7rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    align-self: flex-start;
+    font-size: 0.75rem;
     line-height: 1;
 }
 
 /* Regular away: solid blue */
-.calendar-day.today.game-away .calendar-day-number {
+.calendar-day.game-away .today-circle {
     background: rgba(100, 150, 255, 1);
     color: #fff;
 }
 
 /* Spring home: muted orange */
-.calendar-day.today.game-type-spring.game-home .calendar-day-number {
+.calendar-day.game-type-spring.game-home .today-circle {
     background: rgba(255, 127, 0, 0.55);
     color: rgba(255, 255, 255, 0.85);
 }
 
 /* Spring away: muted blue */
-.calendar-day.today.game-type-spring.game-away .calendar-day-number {
+.calendar-day.game-type-spring.game-away .today-circle {
     background: rgba(100, 150, 255, 0.55);
     color: rgba(255, 255, 255, 0.85);
 }
 
 /* All-Star confirmed: gold */
-.calendar-day.today.game-type-allstar .calendar-day-number {
+.calendar-day.game-type-allstar .today-circle {
     background: #ffd700;
     color: #111;
 }
 
 /* All-Star pending: dim gold */
-.calendar-day.today.game-type-allstar-pending .calendar-day-number {
+.calendar-day.game-type-allstar-pending .today-circle {
     background: rgba(255, 215, 0, 0.35);
     color: rgba(255, 255, 255, 0.6);
 }
 
 /* Playoffs: championship gold */
-.calendar-day.today.game-type-playoff .calendar-day-number {
+.calendar-day.game-type-playoff .today-circle {
     background: #daa520;
     color: #111;
 }
@@ -3078,8 +3072,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             }
             
+            const dayLabel = isToday ? `<span class="today-circle">${day}</span>` : day;
             dayDiv.innerHTML = `
-                <div class="calendar-day-number">${day}</div>
+                <div class="calendar-day-number">${dayLabel}</div>
                 ${logoHtml}
             `;
             
