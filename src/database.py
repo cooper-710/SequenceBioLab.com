@@ -1883,6 +1883,35 @@ class PlayerDB:
         self.conn.commit()
         return dict(row)
 
+    def delete_all_player_documents(self, player_id: int) -> int:
+        """Delete all documents for a player and return the count of deleted records."""
+        cursor = self.conn.cursor()
+        # Get all doc IDs first (for blob cleanup and file removal)
+        self._execute(cursor, """
+            SELECT id, filename, path
+            FROM player_documents
+            WHERE player_id = ?
+        """, (int(player_id),))
+        rows = cursor.fetchall()
+        if not rows:
+            return 0
+        doc_ids = [dict(r)["id"] for r in rows]
+        # Delete blobs
+        for did in doc_ids:
+            try:
+                self._execute(cursor, "DELETE FROM player_document_blobs WHERE doc_id = ?", (int(did),))
+            except Exception:
+                pass
+        # Delete documents
+        self._execute(cursor, "DELETE FROM player_documents WHERE player_id = ?", (int(player_id),))
+        # Invalidate dashboard cache
+        try:
+            self._invalidate_dashboard_context_cache(int(player_id))
+        except Exception:
+            pass
+        self.conn.commit()
+        return len(doc_ids)
+
     def list_player_documents(self, player_id: int,
                               category: Optional[str] = None) -> List[Dict[str, Any]]:
         """List uploaded documents for a player."""

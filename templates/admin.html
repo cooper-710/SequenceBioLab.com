@@ -54,6 +54,9 @@
                         </select>
                     </label>
                     <span id="playerDocStatus" class="subtle">Select a player to view uploaded files.</span>
+                    <button id="deleteAllDocsBtn" class="btn-secondary" style="display:none; margin-left:auto; color:#e74c3c; border-color:#e74c3c; font-size:0.8rem; padding:4px 10px;">
+                        <i class="fas fa-trash"></i> Delete All
+                    </button>
                 </header>
                 <table class="data-table">
                     <thead>
@@ -1169,6 +1172,7 @@
     const playerDocStatus = document.getElementById('playerDocStatus');
 
     const playerDocList = document.getElementById('playerDocList');
+    const deleteAllDocsBtn = document.getElementById('deleteAllDocsBtn');
     const adminPlayerSelect = document.getElementById('adminPlayerSelect');
     const accountsTableBody = document.getElementById('accountsTableBody');
     const accountsSearch = document.getElementById('accountsSearch');
@@ -1541,6 +1545,10 @@
     }
 
     function renderPlayerDocs() {
+        // Show/hide "Delete All" button based on whether docs exist
+        if (deleteAllDocsBtn) {
+            deleteAllDocsBtn.style.display = currentDocs.length > 0 ? '' : 'none';
+        }
         if (!currentDocs.length) {
             playerDocList.innerHTML = '<tr><td colspan="4" class="table-placeholder">No documents uploaded yet.</td></tr>';
             if (docsCountPill) {
@@ -1967,6 +1975,40 @@
             }
         }
     });
+
+    // Delete All documents for the current player
+    if (deleteAllDocsBtn) {
+        deleteAllDocsBtn.addEventListener('click', async () => {
+            if (!currentPlayer || !currentDocs.length) return;
+            const count = currentDocs.length;
+            if (!confirm(`Delete all ${count} document${count === 1 ? '' : 's'} for this player? This cannot be undone.`)) {
+                return;
+            }
+            try {
+                deleteAllDocsBtn.disabled = true;
+                deleteAllDocsBtn.textContent = 'Deleting…';
+                const response = await fetch(`/api/admin/player-docs/by-player/${currentPlayer.id}`, {
+                    method: 'DELETE',
+                    credentials: 'same-origin'
+                });
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({}));
+                    throw new Error(error.error || 'Delete all failed');
+                }
+                currentDocs = [];
+                if (playerDocStatus) {
+                    playerDocStatus.textContent = '0 documents found';
+                }
+                if (totalDocsEl) totalDocsEl.textContent = formatCount(0, 'doc');
+                renderPlayerDocs();
+            } catch (err) {
+                alert(`Failed to delete all documents: ${err.message}`);
+            } finally {
+                deleteAllDocsBtn.disabled = false;
+                deleteAllDocsBtn.innerHTML = '<i class="fas fa-trash"></i> Delete All';
+            }
+        });
+    }
 
     // Legacy queue uploader removed.
 

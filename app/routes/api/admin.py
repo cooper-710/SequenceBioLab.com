@@ -1760,6 +1760,26 @@ def api_admin_player_docs_delete(doc_id: int):
     return jsonify({"status": "deleted", "document": _format_player_document(doc)})
 
 
+@bp.route('/player-docs/by-player/<int:player_id>', methods=['DELETE'])
+@admin_required
+def api_admin_player_docs_delete_all(player_id: int):
+    """Delete all documents for a given player."""
+    if not PlayerDB:
+        return jsonify({"error": "Database unavailable"}), 500
+
+    db = None
+    try:
+        db = PlayerDB()
+        count = db.delete_all_player_documents(player_id)
+        return jsonify({"status": "deleted", "count": count})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        try:
+            if db:
+                db.close()
+        except Exception:
+            pass
 
 
 
