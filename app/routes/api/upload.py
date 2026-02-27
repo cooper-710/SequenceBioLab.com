@@ -203,6 +203,16 @@ def upload_report():
                     series_end=s_end
                 )
                 log.info(f"[upload] Created doc id={doc_id}, series_opponent={s_opponent}, series_label={s_label}, s_start={s_start}, s_end={s_end}")
+
+                # Store blob in DB so the file survives Render's ephemeral filesystem
+                if doc_id:
+                    try:
+                        with open(str(filepath), 'rb') as f:
+                            pdf_data = f.read()
+                        db.upsert_player_document_blob(int(doc_id), "application/pdf", pdf_data)
+                        log.info(f"[upload] Stored blob for doc_id={doc_id}, size={len(pdf_data)} bytes")
+                    except Exception as blob_err:
+                        log.warning(f"[upload] Failed to store blob for doc_id={doc_id}: {blob_err}")
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"Database insert failed: {e}")
