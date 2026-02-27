@@ -102,12 +102,7 @@
                 {% for game in games %}
                 <a href="{{ url_for('pages.box_score', game_pk=game.game_pk) }}" class="score-card-link">
                 <div class="score-card {% if game.is_live %}score-card-live{% endif %}" data-game-pk="{{ game.game_pk }}">
-                    {% if game.is_live %}
-                    <div class="live-badge">
-                        <span class="live-dot-pulse"></span>
-                        <span>LIVE</span>
-                    </div>
-                    {% endif %}
+                    {# Live badge removed — the status label already indicates live games #}
                     
                     <div class="score-header">
                         <div class="score-status">
