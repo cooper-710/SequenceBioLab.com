@@ -777,10 +777,17 @@ def gameday_schedule():
                 pass
 
     if report_docs and upcoming_games:
+        # Normalize common alternative abbreviations to canonical MLB forms
+        _ABBR_ALIASES = {"WAS": "WSH", "AZ": "ARI", "WSN": "WSH", "ATH": "OAK"}
+
+        def _normalize_abbr(abbr: str) -> str:
+            a = abbr.strip().upper()
+            return _ABBR_ALIASES.get(a, a)
+
         # Build per-opponent lists and match by series window overlap.
         by_opp: Dict[str, List[Dict[str, Any]]] = {}
         for doc in report_docs:
-            opp = (doc.get("series_opponent") or "").strip().upper()
+            opp = _normalize_abbr(doc.get("series_opponent") or "")
             if not opp:
                 continue
             start_ts = doc.get("series_start")
@@ -790,7 +797,7 @@ def gameday_schedule():
             by_opp.setdefault(opp, []).append(doc)
 
         for game in upcoming_games:
-            opp = (game.get("opponent_abbr") or "").strip().upper()
+            opp = _normalize_abbr(game.get("opponent_abbr") or "")
             if not opp:
                 continue
             # Recover the series window from display_date is hard; use category grouping window if present.
