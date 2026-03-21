@@ -8,7 +8,6 @@ gunicorn>=21.2.0
 Pillow>=10.0.0
 pillow-heif>=0.13.0
 psutil>=5.9.0
-supabase>=2.0.0
 
 # Required for CSV-based player search/data pages
 pandas>=2.0.0
