@@ -641,6 +641,7 @@ class PlayerDB:
                 series_label {text_type},
                 series_start {real_type},
                 series_end {real_type},
+                storage_path {text_type},
                 FOREIGN KEY (player_id) REFERENCES users(id),
                 FOREIGN KEY (uploaded_by) REFERENCES users(id)
             )
@@ -654,6 +655,7 @@ class PlayerDB:
             'series_label': text_type,
             'series_start': real_type,
             'series_end': real_type,
+            'storage_path': text_type,
         })
         
         # Player document log
@@ -1930,7 +1932,8 @@ class PlayerDB:
         cursor = self.conn.cursor()
         self._execute(cursor, """
             SELECT id, player_id, filename, path, uploaded_by, uploaded_at,
-                   category, series_opponent, series_label, series_start, series_end
+                   category, series_opponent, series_label, series_start, series_end,
+                   storage_path
             FROM player_documents
             WHERE id = ?
         """, (doc_id,))
@@ -2044,12 +2047,21 @@ class PlayerDB:
         cursor = self.conn.cursor()
         self._execute(cursor, """
             SELECT id, player_id, filename, path, uploaded_by, uploaded_at,
-                   category, series_opponent, series_label, series_start, series_end
+                   category, series_opponent, series_label, series_start, series_end,
+                   storage_path
             FROM player_documents
             WHERE id = ?
         """, (doc_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
+
+    def set_document_storage_path(self, doc_id: int, storage_path: str) -> None:
+        """Record the Supabase Storage path for a player document."""
+        cursor = self.conn.cursor()
+        self._execute(cursor, """
+            UPDATE player_documents SET storage_path = ? WHERE id = ?
+        """, (storage_path, int(doc_id)))
+        self.conn.commit()
 
     # ---------------------------
     # Player document blobs (DB-backed)

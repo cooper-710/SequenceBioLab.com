@@ -2442,6 +2442,12 @@ def purge_concluded_series_documents(reference_ts: Optional[float] = None) -> No
                     file_path.unlink()
                 except OSError as exc:
                     logger.warning(f"Warning removing expired document file {file_path}: {exc}")
+            if deleted.get("storage_path"):
+                try:
+                    from supabase_storage import delete_file as storage_delete
+                    storage_delete(deleted["storage_path"])
+                except Exception as exc:
+                    logger.warning(f"Warning removing Supabase Storage file for doc {doc['id']}: {exc}")
 
         # 2) Non-series docs: expire after a fixed retention window from upload time.
         retention_seconds = getattr(Config, "NON_SERIES_AUTO_DELETE_SECONDS", 0)
@@ -2471,6 +2477,12 @@ def purge_concluded_series_documents(reference_ts: Optional[float] = None) -> No
                         file_path.unlink()
                     except OSError as exc:
                         logger.warning(f"Warning removing expired document file {file_path}: {exc}")
+                if deleted.get("storage_path"):
+                    try:
+                        from supabase_storage import delete_file as storage_delete
+                        storage_delete(deleted["storage_path"])
+                    except Exception as exc:
+                        logger.warning(f"Warning removing Supabase Storage file for doc {doc['id']}: {exc}")
         db.close()
     except Exception as exc:
         logger.warning(f"Warning purging expired player documents: {exc}")

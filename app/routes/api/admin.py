@@ -1579,7 +1579,30 @@ def download_player_document(doc_id: int):
             pass
         return send_file(path, as_attachment=True, download_name=doc.get("filename") or path.name)
 
-    # DB-backed fallback (fixes Render ephemeral filesystem 404s)
+    # Supabase Storage fallback — primary persistent store (fixes Render ephemeral filesystem 404s)
+    storage_path = doc.get("storage_path")
+    if storage_path:
+        try:
+            from supabase_storage import download_file as storage_download
+            data = storage_download(storage_path)
+            filename = (doc.get("filename") or "").strip() or f"document-{doc_id}"
+            try:
+                if db:
+                    db.close()
+            except Exception:
+                pass
+            return send_file(
+                BytesIO(data),
+                mimetype="application/pdf",
+                as_attachment=True,
+                download_name=filename,
+            )
+        except Exception as storage_err:
+            logging.getLogger(__name__).warning(
+                f"[download] Supabase Storage fetch failed for doc_id={doc_id}: {storage_err}"
+            )
+
+    # Legacy DB blob fallback — supports existing documents until migration is complete
     blob = None
     try:
         blob = db.get_player_document_blob(int(doc_id)) if db else None
@@ -1755,7 +1778,12 @@ def api_admin_player_docs_delete(doc_id: int):
 
         print(f"Warning removing document file: {exc}")
 
-
+    if doc.get("storage_path"):
+        try:
+            from supabase_storage import delete_file as storage_delete
+            storage_delete(doc["storage_path"])
+        except Exception as exc:
+            print(f"Warning removing Supabase Storage file for doc {doc_id}: {exc}")
 
     return jsonify({"status": "deleted", "document": _format_player_document(doc)})
 
