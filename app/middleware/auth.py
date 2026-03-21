@@ -285,7 +285,8 @@ def setup_auth_middleware(app):
         # Allow access to favicon and auth endpoints (both old and new)
         if endpoint in {"favicon", "login", "register", "auth.login", "auth.register", "auth.account_deactivated",
                         "auth.verify_email", "auth.verify_email_pending", "auth.resend_verification",
-                        "auth.manage_devices_login"}:
+                        "auth.manage_devices_login", "auth.forgot_password", "auth.forgot_password_sent",
+                        "auth.reset_password"}:
             return
         
         # For routes still in app.py (not yet migrated), use old endpoint names

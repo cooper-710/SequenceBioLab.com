@@ -119,6 +119,9 @@ AUTH_EXEMPT_ENDPOINTS = {
     "auth.verify_email_pending",
     "auth.resend_verification",
     "auth.manage_devices_login",
+    "auth.forgot_password",
+    "auth.forgot_password_sent",
+    "auth.reset_password",
     "upload.upload_report"
 }
 

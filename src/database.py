@@ -580,7 +580,28 @@ class PlayerDB:
         """)
         self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_verification_tokens_token ON email_verification_tokens(token)")
         self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_verification_tokens_user ON email_verification_tokens(user_id)")
-        
+
+        # Password reset tokens table
+        self._execute(cursor, f"""
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                id {auto_inc},
+                user_id INTEGER NOT NULL,
+                token {text_type} UNIQUE NOT NULL,
+                created_at {real_type} NOT NULL,
+                expires_at {real_type} NOT NULL,
+                used_at {real_type},
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+        try:
+            self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_reset_tokens_token ON password_reset_tokens(token)")
+        except Exception:
+            pass
+        try:
+            self._execute(cursor, f"CREATE INDEX IF NOT EXISTS idx_reset_tokens_user ON password_reset_tokens(user_id)")
+        except Exception:
+            pass
+
         # Ensure legacy columns exist (invite_codes table)
         self._ensure_columns_exist('invite_codes', {
             'used_at': real_type,
@@ -1547,6 +1568,56 @@ class PlayerDB:
             DELETE FROM email_verification_tokens 
             WHERE expires_at < ? OR used_at IS NOT NULL
         """, (datetime.now().timestamp(),))
+        self.conn.commit()
+
+    def create_password_reset_token(self, user_id: int, token: str, expires_in_hours: int = 1) -> int:
+        """Create a password reset token, invalidating any previous unused ones for this user"""
+        cursor = self.conn.cursor()
+        now = datetime.now().timestamp()
+        # Invalidate any existing unused tokens for this user first
+        self._execute(cursor, """
+            UPDATE password_reset_tokens
+            SET used_at = ?
+            WHERE user_id = ? AND used_at IS NULL
+        """, (now, user_id))
+        expires_at = now + (expires_in_hours * 3600)
+        params = (user_id, token, now, expires_at)
+
+        if self.is_postgres:
+            self._execute(cursor, """
+                INSERT INTO password_reset_tokens (user_id, token, created_at, expires_at)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+            """, params)
+            token_id = cursor.fetchone()['id']
+        else:
+            self._execute(cursor, """
+                INSERT INTO password_reset_tokens (user_id, token, created_at, expires_at)
+                VALUES (?, ?, ?, ?)
+            """, params)
+            token_id = cursor.lastrowid
+
+        self.conn.commit()
+        return token_id
+
+    def get_password_reset_token(self, token: str) -> Optional[Dict[str, Any]]:
+        """Get a password reset token by token string (must be unused and not expired)"""
+        cursor = self.conn.cursor()
+        self._execute(cursor, """
+            SELECT * FROM password_reset_tokens
+            WHERE token = ? AND used_at IS NULL AND expires_at > ?
+        """, (token, datetime.now().timestamp()))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def mark_reset_token_used(self, token_id: int) -> None:
+        """Mark a password reset token as used"""
+        cursor = self.conn.cursor()
+        self._execute(cursor, """
+            UPDATE password_reset_tokens
+            SET used_at = ?
+            WHERE id = ?
+        """, (datetime.now().timestamp(), token_id))
         self.conn.commit()
 
     def create_invite_code(self, code: str, created_by: Optional[int] = None) -> int:

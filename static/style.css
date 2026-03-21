@@ -1038,11 +1038,27 @@ body[data-theme='light'] .sidebar-overlay {
 }
 
 .auth-field label {
-    display: block;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
     margin-bottom: 8px;
     color: var(--color-text-secondary);
     font-size: 0.9rem;
     font-weight: 500;
+}
+
+.field-label-link {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--color-accent, #ff7f00);
+    text-decoration: none;
+    opacity: 0.85;
+    transition: opacity 0.15s ease;
+}
+
+.field-label-link:hover {
+    opacity: 1;
+    text-decoration: underline;
 }
 
 .field-label {

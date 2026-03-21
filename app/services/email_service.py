@@ -512,3 +512,210 @@ Sequence BioLab Team
             print(f"ERROR: {error_msg}")
             return False
 
+    @staticmethod
+    def send_password_reset_email(user_email: str, user_name: str, reset_token: str, base_url: str = None):
+        """Send a password reset email"""
+        config = EmailService.get_smtp_config()
+
+        if not config['username'] or not config['password']:
+            logger.error("SMTP not configured. Cannot send password reset email.")
+            return False
+        if not config['from_email']:
+            logger.error("SMTP from_email not configured. Cannot send password reset email.")
+            return False
+        if not config['host']:
+            logger.error("SMTP host not configured. Cannot send password reset email.")
+            return False
+
+        try:
+            if not base_url:
+                base_url = os.environ.get('BASE_URL')
+                if not base_url:
+                    flask_env = os.environ.get('FLASK_ENV', 'development')
+                    if flask_env == 'production':
+                        base_url = os.environ.get('RENDER_EXTERNAL_URL') or 'https://sequencebiolab.onrender.com'
+                    else:
+                        base_url = 'http://localhost:5001'
+            reset_url = f"{base_url}/reset-password?token={reset_token}"
+
+            msg = MIMEMultipart('related')
+            msg['Subject'] = 'Reset Your Password - Sequence BioLab'
+            if config['from_name']:
+                msg['From'] = f"{config['from_name']} <{config['from_email']}>"
+            else:
+                msg['From'] = config['from_email']
+            msg['To'] = user_email
+
+            msg_alternative = MIMEMultipart('alternative')
+            msg.attach(msg_alternative)
+
+            text_body = f"""
+Hello {user_name},
+
+We received a request to reset your password for your Sequence BioLab account.
+
+Click the link below to set a new password:
+
+{reset_url}
+
+This link will expire in 1 hour. If you did not request a password reset, you can safely ignore this email — your password will not change.
+
+Best regards,
+Sequence BioLab Team
+"""
+
+            # Load and attach logo as inline image
+            logo_cid = None
+            try:
+                possible_paths = [
+                    Path(__file__).parent.parent.parent / "static" / "sequence-logo.png",
+                    Path("static") / "sequence-logo.png",
+                ]
+                logo_path = None
+                for path in possible_paths:
+                    if path.exists():
+                        logo_path = path
+                        break
+                if logo_path:
+                    with open(logo_path, 'rb') as f:
+                        logo_data = f.read()
+                    logo_cid = f"logo_{uuid.uuid4().hex[:8]}@sequencebiolab.com"
+                    logo_img = MIMEImage(logo_data)
+                    logo_img.add_header('Content-ID', f'<{logo_cid}>')
+                    logo_img.add_header('Content-Disposition', 'inline', filename='sequence-logo.png')
+                    msg.attach(logo_img)
+            except Exception as e:
+                logger.warning(f"Could not attach logo to reset email: {e}")
+
+            if logo_cid:
+                logo_src = f"cid:{logo_cid}"
+            else:
+                logo_src = f"{base_url}/static/sequence-logo.png"
+
+            html_body = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reset Your Password - Sequence BioLab</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6; color: #1f2937; background-color: #f4f5f9;
+            -webkit-font-smoothing: antialiased;
+        }}
+        .email-wrapper {{ background: linear-gradient(135deg, #f4f5f9 0%, #f9fafc 100%); min-height: 100vh; padding: 60px 20px; }}
+        .email-container {{ max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18); }}
+        .email-header {{ background: linear-gradient(135deg, #ffffff 0%, #f9fafc 100%); padding: 50px 40px 40px; text-align: center; border-bottom: 2px solid #f1f3f8; }}
+        .logo-img {{ height: 80px; width: auto; max-width: 200px; display: block; margin: 0 auto 20px; }}
+        .email-title {{ font-size: 28px; font-weight: 700; color: #1f2937; margin-bottom: 8px; letter-spacing: -0.5px; }}
+        .email-subtitle {{ color: #6b7280; font-size: 15px; font-weight: 500; text-transform: uppercase; letter-spacing: 1.2px; }}
+        .email-content {{ padding: 50px 40px; }}
+        .greeting {{ font-size: 26px; font-weight: 600; color: #1f2937; margin-bottom: 24px; line-height: 1.3; }}
+        .message {{ color: #374151; font-size: 16px; line-height: 1.8; margin-bottom: 24px; }}
+        .highlight-box {{ background: linear-gradient(135deg, rgba(255, 127, 0, 0.08) 0%, rgba(255, 127, 0, 0.04) 100%); border-left: 4px solid #ff7f00; padding: 20px 24px; margin: 32px 0; border-radius: 8px; }}
+        .highlight-text {{ color: #374151; font-size: 15px; line-height: 1.7; margin: 0; }}
+        .button-container {{ text-align: center; margin: 40px 0; }}
+        .reset-button {{ display: inline-block; padding: 18px 48px; background: linear-gradient(135deg, #ff7f00 0%, #ff8f1a 100%); color: #000000; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 17px; letter-spacing: 0.3px; box-shadow: 0 6px 20px rgba(255, 127, 0, 0.35); }}
+        .link-fallback {{ margin-top: 36px; padding: 24px; background-color: #f9fafc; border-radius: 10px; border: 1px solid #d4d8e1; }}
+        .link-fallback-title {{ color: #6b7280; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 14px; }}
+        .link-fallback-url {{ color: #ff7f00; font-size: 13px; word-break: break-all; font-family: 'Courier New', 'Monaco', monospace; line-height: 1.8; text-decoration: none; }}
+        .info-section {{ margin-top: 40px; padding-top: 32px; border-top: 1px solid #e5e7eb; }}
+        .info-item {{ display: flex; align-items: flex-start; margin-bottom: 20px; }}
+        .info-icon {{ color: #ff7f00; font-size: 20px; margin-right: 12px; margin-top: 2px; flex-shrink: 0; }}
+        .info-text {{ color: #4b5563; font-size: 14px; line-height: 1.7; flex: 1; }}
+        .email-footer {{ background: linear-gradient(135deg, #f9fafc 0%, #f4f5f9 100%); padding: 40px; text-align: center; border-top: 2px solid #f1f3f8; }}
+        .footer-text {{ color: #6b7280; font-size: 14px; line-height: 1.8; margin-bottom: 8px; }}
+        .footer-brand {{ color: #ff7f00; font-weight: 700; font-size: 16px; }}
+        .footer-tagline {{ color: #9ca3af; font-size: 12px; margin-top: 12px; }}
+        @media only screen and (max-width: 600px) {{
+            .email-wrapper {{ padding: 30px 15px; }}
+            .email-header {{ padding: 40px 25px 30px; }}
+            .email-content {{ padding: 40px 25px; }}
+            .greeting {{ font-size: 22px; }}
+            .reset-button {{ padding: 16px 36px; font-size: 16px; }}
+            .logo-img {{ height: 60px; }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="email-wrapper">
+        <div class="email-container">
+            <div class="email-header">
+                <img src="{logo_src}" alt="Sequence BioLab" class="logo-img" width="80" height="80" border="0">
+                <h1 class="email-title">Password Reset</h1>
+                <p class="email-subtitle">Sequence BioLab Analytics</p>
+            </div>
+            <div class="email-content">
+                <h1 class="greeting">Hello {user_name},</h1>
+                <p class="message">
+                    We received a request to reset the password for your Sequence BioLab account.
+                    Click the button below to choose a new password.
+                </p>
+                <div class="highlight-box">
+                    <p class="highlight-text">
+                        <strong>This link expires in 1 hour.</strong> If you didn't request a password reset, no action is needed — your password will remain unchanged.
+                    </p>
+                </div>
+                <div class="button-container">
+                    <a href="{reset_url}" class="reset-button" style="display: inline-block; padding: 18px 48px; background: linear-gradient(135deg, #ff7f00 0%, #ff8f1a 100%); color: #000000; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 17px;">Reset Password</a>
+                </div>
+                <div class="link-fallback">
+                    <div class="link-fallback-title">Or copy and paste this link into your browser:</div>
+                    <a href="{reset_url}" class="link-fallback-url">{reset_url}</a>
+                </div>
+                <div class="info-section">
+                    <div class="info-item">
+                        <span class="info-icon">⏱️</span>
+                        <p class="info-text">This reset link will expire in <strong>1 hour</strong> for your security.</p>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-icon">🔒</span>
+                        <p class="info-text">If you didn't request this, you can safely ignore this email.</p>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-icon">⚠️</span>
+                        <p class="info-text">For your security, all active sessions will be signed out when you reset your password.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="email-footer">
+                <p class="footer-text">
+                    Best regards,<br>
+                    <span class="footer-brand">Sequence BioLab</span> Team
+                </p>
+                <p class="footer-tagline">Empowering data-driven decisions in baseball analytics</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+"""
+
+            part1 = MIMEText(text_body, 'plain')
+            part2 = MIMEText(html_body, 'html')
+            msg_alternative.attach(part1)
+            msg_alternative.attach(part2)
+
+            with smtplib.SMTP(config['host'], config['port'], timeout=10) as server:
+                if config['use_tls']:
+                    server.starttls()
+                server.login(config['username'], config['password'])
+                server.send_message(msg)
+
+            logger.info(f"Password reset email sent successfully to {user_email}")
+            print(f"SUCCESS: Password reset email sent to {user_email}")
+            return True
+
+        except smtplib.SMTPAuthenticationError as e:
+            logger.error(f"SMTP authentication failed sending reset email: {e}")
+            return False
+        except smtplib.SMTPException as e:
+            logger.error(f"SMTP error sending reset email to {user_email}: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to send password reset email to {user_email}: {e}", exc_info=True)
+            return False
+

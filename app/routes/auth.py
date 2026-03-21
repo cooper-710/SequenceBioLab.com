@@ -27,6 +27,11 @@ _resend_verification_attempts = defaultdict(list)
 _RESEND_VERIFICATION_LIMIT = 3
 _RESEND_VERIFICATION_WINDOW = timedelta(hours=1)
 
+# Rate limiting for forgot password (3 requests per hour per email)
+_forgot_password_attempts = defaultdict(list)
+_FORGOT_PASSWORD_LIMIT = 3
+_FORGOT_PASSWORD_WINDOW = timedelta(hours=1)
+
 def _check_resend_rate_limit(email: str) -> tuple[bool, str]:
     """Check if email has exceeded rate limit for resend verification.
     Returns (allowed, message) tuple."""
@@ -479,4 +484,192 @@ def resend_verification():
 def account_deactivated():
     """Display deactivated account page"""
     return render_template('account_deactivated.html')
+
+
+def _check_forgot_password_rate_limit(email: str) -> tuple[bool, str]:
+    """Check if email has exceeded rate limit for forgot password requests.
+    Returns (allowed, message) tuple."""
+    now = datetime.now()
+    email_lower = email.lower()
+
+    # Clean old attempts outside the window
+    _forgot_password_attempts[email_lower] = [
+        attempt_time for attempt_time in _forgot_password_attempts[email_lower]
+        if now - attempt_time < _FORGOT_PASSWORD_WINDOW
+    ]
+
+    # Check if limit exceeded
+    if len(_forgot_password_attempts[email_lower]) >= _FORGOT_PASSWORD_LIMIT:
+        oldest_attempt = min(_forgot_password_attempts[email_lower])
+        time_until_reset = _FORGOT_PASSWORD_WINDOW - (now - oldest_attempt)
+        minutes_left = int(time_until_reset.total_seconds() / 60) + 1
+        return False, f"Too many password reset requests. Please wait {minutes_left} minute(s) before trying again."
+
+    # Record this attempt
+    _forgot_password_attempts[email_lower].append(now)
+    return True, ""
+
+
+@bp.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    """Forgot password — request a reset link"""
+    if request.method == 'GET':
+        return render_template('forgot_password.html', csrf_token=generate_csrf_token())
+
+    # POST request
+    if not validate_csrf(request.form.get("csrf_token")):
+        flash("Invalid form submission. Please try again.", "error")
+        return redirect(url_for('auth.forgot_password'))
+
+    email = clean_str(request.form.get('email', '')).lower()
+
+    if not email:
+        flash("Email address is required.", "error")
+        return redirect(url_for('auth.forgot_password'))
+
+    # Always redirect to the same confirmation page regardless of whether the
+    # email exists — this prevents email enumeration attacks.
+    SAFE_RESPONSE = redirect(url_for('auth.forgot_password_sent'))
+
+    # Rate limit check (still return safe response on failure to avoid enumeration)
+    allowed, rate_limit_msg = _check_forgot_password_rate_limit(email)
+    if not allowed:
+        flash(rate_limit_msg, "error")
+        return redirect(url_for('auth.forgot_password'))
+
+    if not PlayerDB:
+        return SAFE_RESPONSE
+
+    try:
+        db = PlayerDB()
+        user = db.get_user_by_email(email)
+
+        # Only send if the user exists and has a verified email
+        if user and user.get('email_verified') and user.get('is_active', 1):
+            import secrets as _secrets
+            from app.services.email_service import EmailService
+            reset_token = _secrets.token_urlsafe(32)
+            db.create_password_reset_token(user['id'], reset_token, expires_in_hours=1)
+
+            base_url = request.host_url.rstrip('/')
+            EmailService.send_password_reset_email(
+                email,
+                f"{user.get('first_name', '')} {user.get('last_name', '')}".strip(),
+                reset_token,
+                base_url
+            )
+
+        db.close()
+    except Exception as exc:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Forgot password error: {exc}", exc_info=True)
+        # Still show the safe response — don't leak errors to the user
+
+    return SAFE_RESPONSE
+
+
+@bp.route('/forgot-password-sent', methods=['GET'])
+def forgot_password_sent():
+    """Confirmation page shown after submitting a forgot-password request"""
+    return render_template('forgot_password_sent.html')
+
+
+@bp.route('/reset-password', methods=['GET', 'POST'])
+def reset_password():
+    """Reset password using a token from email"""
+    if request.method == 'GET':
+        token = request.args.get('token', '').strip()
+
+        if not token:
+            flash("Invalid or missing reset link.", "error")
+            return redirect(url_for('auth.forgot_password'))
+
+        if not PlayerDB:
+            flash("Database unavailable. Please contact support.", "error")
+            return redirect(url_for('auth.login'))
+
+        try:
+            db = PlayerDB()
+            token_record = db.get_password_reset_token(token)
+            db.close()
+        except Exception as exc:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Reset password token lookup error: {exc}", exc_info=True)
+            flash("An error occurred. Please try again.", "error")
+            return redirect(url_for('auth.forgot_password'))
+
+        if not token_record:
+            flash("This password reset link is invalid or has expired. Please request a new one.", "error")
+            return redirect(url_for('auth.forgot_password'))
+
+        return render_template('reset_password.html', token=token, csrf_token=generate_csrf_token())
+
+    # POST request
+    if not validate_csrf(request.form.get("csrf_token")):
+        flash("Invalid form submission. Please try again.", "error")
+        return redirect(url_for('auth.forgot_password'))
+
+    token = request.form.get('token', '').strip()
+    new_password = request.form.get('new_password', '')
+    confirm_password = request.form.get('confirm_password', '')
+
+    if not token:
+        flash("Invalid reset link. Please request a new one.", "error")
+        return redirect(url_for('auth.forgot_password'))
+
+    # Validate password
+    if not new_password:
+        flash("Password is required.", "error")
+        return render_template('reset_password.html', token=token, csrf_token=generate_csrf_token())
+
+    if len(new_password) < 8:
+        flash("Password must be at least 8 characters.", "error")
+        return render_template('reset_password.html', token=token, csrf_token=generate_csrf_token())
+
+    if new_password != confirm_password:
+        flash("Passwords do not match.", "error")
+        return render_template('reset_password.html', token=token, csrf_token=generate_csrf_token())
+
+    if not PlayerDB:
+        flash("Database unavailable. Please contact support.", "error")
+        return redirect(url_for('auth.login'))
+
+    try:
+        db = PlayerDB()
+        token_record = db.get_password_reset_token(token)
+
+        if not token_record:
+            db.close()
+            flash("This password reset link is invalid or has expired. Please request a new one.", "error")
+            return redirect(url_for('auth.forgot_password'))
+
+        user_id = token_record['user_id']
+
+        # Update the password
+        new_hash = generate_password_hash(new_password)
+        db.update_user_password(user_id, new_hash)
+
+        # Mark the token as used
+        db.mark_reset_token_used(token_record['id'])
+
+        # Revoke ALL active sessions for this user (security: sign out all devices)
+        db.revoke_all_sessions(user_id, except_session_token=None)
+
+        db.close()
+
+        # Clear the current Flask session in case the user happened to be logged in
+        session.clear()
+        generate_csrf_token()
+
+        flash("Your password has been reset successfully. Please sign in with your new password.", "success")
+        return redirect(url_for('auth.login'))
+
+    except Exception as exc:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Reset password error: {exc}", exc_info=True)
+        flash("An error occurred while resetting your password. Please try again.", "error")
+        return redirect(url_for('auth.forgot_password'))
 
