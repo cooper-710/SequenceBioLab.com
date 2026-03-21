@@ -54,8 +54,9 @@ def migrate(dry_run: bool = False) -> None:
     cursor = db.conn.cursor()
 
     # Count total blobs to migrate
-    db._execute(cursor, "SELECT COUNT(*) FROM player_document_blobs")
-    total = cursor.fetchone()[0]
+    db._execute(cursor, "SELECT COUNT(*) as total FROM player_document_blobs")
+    count_row = cursor.fetchone()
+    total = count_row["total"] if hasattr(count_row, "keys") else count_row[0]
     log.info(f"Found {total} blob(s) to migrate.")
 
     if total == 0:
@@ -72,9 +73,10 @@ def migrate(dry_run: bool = False) -> None:
     failed = 0
 
     for row in rows:
-        doc_id = row[0]
-        content_type = row[1] or "application/pdf"
-        data = bytes(row[2]) if row[2] else None
+        row = dict(row)
+        doc_id = row["doc_id"]
+        content_type = row["content_type"] or "application/pdf"
+        data = bytes(row["data"]) if row["data"] else None
 
         if not data:
             log.warning(f"  doc_id={doc_id}: empty blob, skipping.")
