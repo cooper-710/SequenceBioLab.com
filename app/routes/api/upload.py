@@ -174,7 +174,12 @@ def upload_report():
                         if matches:
                             best = matches[0]
                             s_label = best.get('series_label')
-                            log.info(f"[upload] Best match: label={s_label}, start={best.get('start')}, end={best.get('end')}")
+                            # Use the abbreviation from the matched series so it aligns with
+                            # the gameday matching logic (which uses team_abbr_from_id).
+                            # This fixes AAA teams whose names aren't in the MLB team_map.
+                            if best.get('opponent_abbr'):
+                                s_opponent = best['opponent_abbr']
+                            log.info(f"[upload] Best match: label={s_label}, start={best.get('start')}, end={best.get('end')}, opponent_abbr={s_opponent}")
                             series_debug['matched_series'] = s_label
                             try:
                                 s_start = datetime.fromisoformat(best['start']).timestamp()

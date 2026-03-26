@@ -785,6 +785,7 @@ def gameday_schedule():
             return _ABBR_ALIASES.get(a, a)
 
         # Build per-opponent lists and match by series window overlap.
+        # by_opp is keyed by normalized abbreviation/name from the document.
         by_opp: Dict[str, List[Dict[str, Any]]] = {}
         for doc in report_docs:
             opp = _normalize_abbr(doc.get("series_opponent") or "")
@@ -795,6 +796,22 @@ def gameday_schedule():
             if not start_ts or not end_ts:
                 continue
             by_opp.setdefault(opp, []).append(doc)
+
+        def _docs_for_game(game_opp_abbr: str, game_opponent_name: str) -> List[Dict[str, Any]]:
+            """Return docs matching a game's opponent by abbreviation, with a full-name fallback.
+
+            Older AAA documents may have the full team name stored in series_opponent
+            instead of the abbreviation (upload.py didn't include AAA teams in its
+            team_map). This fallback handles those legacy records.
+            """
+            docs = by_opp.get(game_opp_abbr, [])
+            if not docs and game_opponent_name:
+                name_lower = game_opponent_name.lower()
+                for key, key_docs in by_opp.items():
+                    if len(key) > 5 and (name_lower in key.lower() or key.lower() in name_lower):
+                        docs = key_docs
+                        break
+            return docs
 
         for game in upcoming_games:
             opp = _normalize_abbr(game.get("opponent_abbr") or "")
@@ -811,7 +828,7 @@ def gameday_schedule():
                     series_start = datetime.strptime(series_start, "%Y-%m-%d").date()
                 if isinstance(series_end, str):
                     series_end = datetime.strptime(series_end, "%Y-%m-%d").date()
-                for doc in by_opp.get(opp, []):
+                for doc in _docs_for_game(opp, game.get("opponent") or ""):
                     doc_start = datetime.fromtimestamp(doc["series_start"]).date()
                     doc_end = datetime.fromtimestamp(doc["series_end"]).date()
                     if doc_start <= series_end and doc_end >= series_start:
@@ -822,7 +839,7 @@ def gameday_schedule():
                         })
             else:
                 # Fallback: match by opponent only.
-                for doc in by_opp.get(opp, []):
+                for doc in _docs_for_game(opp, game.get("opponent") or ""):
                     matched.append({
                         "title": doc.get("filename") or "Report",
                         "url": url_for("admin.download_player_document", doc_id=doc.get("id")),
