@@ -17,7 +17,7 @@ TEAM_ABBR_TO_ID = {
 
 # Team primary colors (hex codes)
 TEAM_COLORS = {
-    # Team ID -> Primary Color
+    # MLB team ID -> Primary Color
     109: "#A71930",  # ARI - Arizona Diamondbacks (Sedona Red)
     144: "#CE1141",  # ATL - Atlanta Braves (Braves Red)
     110: "#DF4601",  # BAL - Baltimore Orioles (Oriole Orange)
@@ -48,6 +48,37 @@ TEAM_COLORS = {
     140: "#003278",  # TEX - Texas Rangers (Rangers Blue)
     141: "#134A8E",  # TOR - Toronto Blue Jays (Blue Jays Blue)
     120: "#AB0003",  # WSH - Washington Nationals (Nationals Red)
+    # Triple-A (AAA) team ID -> Primary Color
+    342:  "#6B2D8B",  # ABQ - Albuquerque Isotopes (Purple)
+    422:  "#003087",  # BUF - Buffalo Bisons (Royal Blue)
+    494:  "#27251F",  # CLT - Charlotte Knights (Black)
+    445:  "#13274F",  # COL - Columbus Clippers (Navy)
+    234:  "#002D72",  # DUR - Durham Bulls (Navy)
+    4904: "#5B3427",  # ELP - El Paso Chihuahuas (Brown)
+    431:  "#13274F",  # GWN - Gwinnett Stripers (Navy)
+    484:  "#003087",  # IND - Indianapolis Indians (Blue)
+    451:  "#0E3386",  # IOW - Iowa Cubs (Cubs Blue)
+    564:  "#007B7B",  # JAX - Jacksonville Jumbo Shrimp (Teal)
+    1410: "#C41230",  # LHV - Lehigh Valley IronPigs (Red)
+    416:  "#C41E3A",  # LOU - Louisville Bats (Red)
+    400:  "#003087",  # LV  - Las Vegas Aviators (Navy)
+    235:  "#C41230",  # MEM - Memphis Redbirds (Red)
+    556:  "#003087",  # NAS - Nashville Sounds (Navy)
+    568:  "#003087",  # NOR - Norfolk Tides (Navy)
+    238:  "#005A9C",  # OKC - Oklahoma City Comets (Blue)
+    541:  "#004687",  # OMA - Omaha Storm Chasers (Blue)
+    2310: "#722F8A",  # RNO - Reno Aces (Purple)
+    534:  "#C41E3A",  # ROC - Rochester Red Wings (Red)
+    102:  "#003278",  # RR  - Round Rock Express (Blue)
+    105:  "#002856",  # SAC - Sacramento River Cats (Navy)
+    561:  "#003087",  # SL  - Salt Lake Bees (Blue)
+    1960: "#C41E3A",  # STP - St. Paul Saints (Red)
+    5434: "#002D62",  # SUG - Sugar Land Space Cowboys (Navy)
+    531:  "#0C2340",  # SWB - Scranton/WB RailRiders (Navy)
+    552:  "#002D72",  # SYR - Syracuse Mets (Blue)
+    529:  "#0C2C56",  # TAC - Tacoma Rainiers (Navy)
+    512:  "#0C2340",  # TOL - Toledo Mud Hens (Navy)
+    533:  "#0D2B56",  # WOR - Worcester Red Sox (Navy)
 }
 
 # Team abbreviation to primary color mapping
@@ -60,9 +91,40 @@ TEAM_ABBR_TO_COLOR = {
     "PHI": "#E81828", "PIT": "#FDB827", "SD": "#2F241D", "SF": "#FD5A1E",
     "SEA": "#0C2C56", "STL": "#C41E3A", "TB": "#092C5C", "TEX": "#003278",
     "TOR": "#134A8E", "WSH": "#AB0003",
-    # Alternative abbreviations
+    # MLB alternative abbreviations
     "ANA": "#BA0021", "CHW": "#27251F", "KCR": "#004687", "SDP": "#2F241D",
     "SFG": "#FD5A1E", "TBR": "#092C5C", "WSN": "#AB0003", "WAS": "#AB0003",
+    # Triple-A (AAA) team abbreviations
+    "ABQ": "#6B2D8B",  # Albuquerque Isotopes (Purple)
+    "BUF": "#003087",  # Buffalo Bisons (Royal Blue)
+    "CLT": "#27251F",  # Charlotte Knights (Black)
+    "CLB": "#13274F",  # Columbus Clippers (Navy)
+    "DUR": "#002D72",  # Durham Bulls (Navy)
+    "ELP": "#5B3427",  # El Paso Chihuahuas (Brown)
+    "GWN": "#13274F",  # Gwinnett Stripers (Navy)
+    "IND": "#003087",  # Indianapolis Indians (Blue)
+    "IOW": "#0E3386",  # Iowa Cubs (Cubs Blue)
+    "JAX": "#007B7B",  # Jacksonville Jumbo Shrimp (Teal)
+    "LHV": "#C41230",  # Lehigh Valley IronPigs (Red)
+    "LOU": "#C41E3A",  # Louisville Bats (Red)
+    "LV":  "#003087",  # Las Vegas Aviators (Navy)
+    "MEM": "#C41230",  # Memphis Redbirds (Red)
+    "NAS": "#003087",  # Nashville Sounds (Navy)
+    "NOR": "#003087",  # Norfolk Tides (Navy)
+    "OKC": "#005A9C",  # Oklahoma City Comets (Blue)
+    "OMA": "#004687",  # Omaha Storm Chasers (Blue)
+    "RNO": "#722F8A",  # Reno Aces (Purple)
+    "ROC": "#C41E3A",  # Rochester Red Wings (Red)
+    "RR":  "#003278",  # Round Rock Express (Blue)
+    "SAC": "#002856",  # Sacramento River Cats (Navy)
+    "SL":  "#003087",  # Salt Lake Bees (Blue)
+    "STP": "#C41E3A",  # St. Paul Saints (Red)
+    "SUG": "#002D62",  # Sugar Land Space Cowboys (Navy)
+    "SWB": "#0C2340",  # Scranton/WB RailRiders (Navy)
+    "SYR": "#002D72",  # Syracuse Mets (Blue)
+    "TAC": "#0C2C56",  # Tacoma Rainiers (Navy)
+    "TOL": "#0C2340",  # Toledo Mud Hens (Navy)
+    "WOR": "#0D2B56",  # Worcester Red Sox (Navy)
 }
 
 def get_team_color(team_id: Optional[int] = None, team_abbr: Optional[str] = None) -> str:

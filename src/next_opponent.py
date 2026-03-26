@@ -53,6 +53,46 @@ def _resolve_team_id(team_key: str) -> int:
         raise ValueError(f"Unrecognized team key: {team_key!r}")
     return idx[k]
 
+# ---------- AAA Team index helpers ----------
+
+def _build_aaa_team_index() -> Dict[str, int]:
+    """Build a case-insensitive index mapping keys -> teamId for Triple-A (sportId=11)."""
+    idx: Dict[str, int] = {}
+    teams = statsapi.get('teams', {'sportId': 11})['teams']
+    for t in teams:
+        tid = t['id']
+        keys = set()
+        for k in (
+            t.get('fileCode'),
+            t.get('abbreviation'),
+            t.get('teamName'),
+            t.get('name'),
+            t.get('clubName'),
+            t.get('shortName'),
+        ):
+            if k:
+                keys.add(k.upper())
+        city = t.get('venue', {}).get('city')
+        if city and t.get('teamName'):
+            keys.add(f"{city} {t['teamName']}".upper())
+        for k in keys:
+            idx[k] = tid
+    return idx
+
+
+@lru_cache(maxsize=1)
+def _aaa_team_index() -> Dict[str, int]:
+    """Lazy AAA team index builder."""
+    return _build_aaa_team_index()
+
+
+def _resolve_aaa_team_id(team_key: str) -> int:
+    k = team_key.strip().upper()
+    idx = _aaa_team_index()
+    if k not in idx:
+        raise ValueError(f"Unrecognized AAA team key: {team_key!r}")
+    return idx[k]
+
 # ---------- Core logic ----------
 
 def _probables_from_game(game: Dict[str, Any], team_id: int) -> List[Dict[str, Any]]:
@@ -178,6 +218,88 @@ def next_games(team_key: str, days_ahead: int = 7, include_started: bool = False
 
     results.sort(key=_sort_key)
     return results
+
+def next_games_aaa(team_key: str, days_ahead: int = 7, include_started: bool = False, start_date: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    Same as next_games() but for Triple-A (sportId=11).
+
+    AAA team abbreviations (e.g. SYR, LHV, WOR) are resolved via _aaa_team_index().
+    Returns the identical dict format as next_games() so all downstream logic is unchanged.
+    """
+    team_id = _resolve_aaa_team_id(team_key)
+    tz = timezone.utc
+    today = datetime.now(tz).date()
+
+    if start_date:
+        query_start = datetime.fromisoformat(start_date).date()
+    else:
+        query_start = today - timedelta(days=1)
+
+    end_date_val = query_start + timedelta(days=days_ahead)
+    try:
+        schedule = statsapi.schedule(
+            start_date=query_start.isoformat(),
+            end_date=end_date_val.isoformat(),
+            team=team_id,
+            sportId=11,
+        )
+    except Exception:
+        schedule = []
+
+    results: List[Dict[str, Any]] = []
+
+    for g in schedule:
+        status = g.get('status', '')
+        if not include_started and status in ('Final', 'Game Over'):
+            continue
+
+        game_date = g.get('game_date') or g.get('gameDate')
+        if not game_date:
+            continue
+
+        home_id, away_id = g['home_id'], g['away_id']
+        is_home = home_id == team_id
+        opponent_id = away_id if is_home else home_id
+        opponent_name = g['away_name'] if is_home else g['home_name']
+
+        game_datetime = None
+        if g.get('game_datetime'):
+            try:
+                dt = datetime.fromisoformat(g['game_datetime'].replace('Z', '+00:00')).astimezone(timezone.utc)
+                game_datetime = dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+            except Exception:
+                game_datetime = None
+
+        results.append({
+            "game_date": game_date,
+            "game_datetime": game_datetime,
+            "game_pk": g.get("game_id") or g.get("game_pk"),
+            "home_id": home_id,
+            "home_name": g.get('home_name'),
+            "away_id": away_id,
+            "away_name": g.get('away_name'),
+            "opponent_id": opponent_id,
+            "opponent_name": opponent_name,
+            "is_home": is_home,
+            "venue": g.get('venue_name'),
+            "series_description": g.get('series_description'),
+            "status": status,
+            "probable_pitchers": _probables_from_game(g, team_id),
+            "game_type": g.get('game_type', 'R'),
+        })
+
+    def _sort_key(item: Dict[str, Any]):
+        dt = item.get("game_datetime")
+        if dt:
+            try:
+                return (datetime.fromisoformat(dt.replace('Z', '+00:00')), 0)
+            except Exception:
+                pass
+        return (datetime.fromisoformat(item["game_date"]), 0)
+
+    results.sort(key=_sort_key)
+    return results
+
 
 def next_game_info(team_key: str, days_ahead: int = 7) -> Dict[str, Any]:
     """

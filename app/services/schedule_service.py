@@ -14,14 +14,15 @@ from app.utils.venue_timezones import format_game_time_venue
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 try:
-    from next_opponent import next_games
+    from next_opponent import next_games, next_games_aaa
 except ImportError:
     next_games = None
+    next_games_aaa = None
 
 
 @lru_cache(maxsize=1)
 def _team_directory() -> Dict[int, Dict[str, str]]:
-    """Cache team metadata keyed by team id for quick lookups."""
+    """Cache MLB team metadata keyed by team id for quick lookups."""
     try:
         teams = statsapi.get("teams", {"sportId": 1}).get("teams", [])
     except Exception:
@@ -39,11 +40,34 @@ def _team_directory() -> Dict[int, Dict[str, str]]:
     return directory
 
 
+@lru_cache(maxsize=1)
+def _aaa_team_directory() -> Dict[int, Dict[str, str]]:
+    """Cache Triple-A team metadata keyed by team id for quick lookups."""
+    try:
+        teams = statsapi.get("teams", {"sportId": 11}).get("teams", [])
+    except Exception:
+        return {}
+    directory: Dict[int, Dict[str, str]] = {}
+    for entry in teams:
+        team_id = entry.get("id")
+        if not team_id:
+            continue
+        abbr = entry.get("abbreviation") or entry.get("fileCode") or entry.get("teamCode")
+        directory[int(team_id)] = {
+            "abbr": (abbr or "").upper(),
+            "name": entry.get("teamName"),
+        }
+    return directory
+
+
 def team_abbr_from_id(team_id: Optional[int]) -> Optional[str]:
-    """Get team abbreviation from team ID."""
+    """Get team abbreviation from team ID (checks MLB then AAA directories)."""
     if not team_id:
         return None
-    return (_team_directory().get(int(team_id)) or {}).get("abbr")
+    result = (_team_directory().get(int(team_id)) or {}).get("abbr")
+    if not result:
+        result = (_aaa_team_directory().get(int(team_id)) or {}).get("abbr") or None
+    return result
 
 
 def build_mock_upcoming_games(team_abbr: Optional[str], limit: int = 5) -> List[Dict[str, Any]]:
@@ -206,15 +230,16 @@ def collect_upcoming_games(team_abbr: Optional[str], limit: int = 5) -> List[Dic
     return formatted
 
 
-def collect_series_for_team(team_abbr: Optional[str], days_ahead: int = 14) -> List[Dict[str, Any]]:
+def collect_series_for_team(team_abbr: Optional[str], days_ahead: int = 14, team_level: str = "MLB") -> List[Dict[str, Any]]:
     """Group schedule into opponent series for selection purposes."""
     if not team_abbr:
         return []
 
     games: List[Dict[str, Any]] = []
     use_mock = Config.USE_MOCK_SCHEDULE
+    is_aaa = (team_level or "MLB").upper() == "AAA"
 
-    if use_mock:
+    if use_mock and not is_aaa:
         raw = build_mock_upcoming_games(team_abbr, limit=20)
         for item in raw:
             try:
@@ -231,10 +256,11 @@ def collect_series_for_team(team_abbr: Optional[str], days_ahead: int = 14) -> L
             except Exception:
                 continue
     else:
-        if not next_games:
+        fetcher = next_games_aaa if is_aaa else next_games
+        if not fetcher:
             return []
         try:
-            games = next_games(team_abbr, days_ahead=days_ahead, include_started=True)
+            games = fetcher(team_abbr, days_ahead=days_ahead, include_started=True)
         except Exception as exc:
             import logging
             logger = logging.getLogger(__name__)

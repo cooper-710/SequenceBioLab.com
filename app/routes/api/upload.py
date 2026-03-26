@@ -78,12 +78,12 @@ def upload_report():
             cursor = db.conn.cursor()
             if db.is_postgres:
                 db._execute(cursor, """
-                    SELECT id, team_abbr FROM users
+                    SELECT id, team_abbr, team_level FROM users
                     WHERE LOWER(first_name) = LOWER(%s) AND LOWER(last_name) = LOWER(%s)
                 """, (first_name, last_name))
             else:
                 db._execute(cursor, """
-                    SELECT id, team_abbr FROM users
+                    SELECT id, team_abbr, team_level FROM users
                     WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?)
                 """, (first_name, last_name))
             row = cursor.fetchone()
@@ -94,7 +94,8 @@ def upload_report():
             else:
                 player_id = row['id']
                 user_team_abbr = row['team_abbr'] if row['team_abbr'] else None
-                log.info(f"[upload] Found user id={player_id}, team_abbr={user_team_abbr}")
+                user_team_level = (row['team_level'] if row.get('team_level') else None) or "MLB"
+                log.info(f"[upload] Found user id={player_id}, team_abbr={user_team_abbr}, team_level={user_team_level}")
                 series_debug['player_id'] = player_id
                 series_debug['user_team_abbr'] = user_team_abbr
 
@@ -144,8 +145,8 @@ def upload_report():
                         from app.services.schedule_service import collect_series_for_team
                         from datetime import datetime, timedelta
 
-                        series_list = collect_series_for_team(user_team_abbr, days_ahead=30)
-                        log.info(f"[upload] collect_series_for_team({user_team_abbr}) returned {len(series_list)} series")
+                        series_list = collect_series_for_team(user_team_abbr, days_ahead=30, team_level=user_team_level)
+                        log.info(f"[upload] collect_series_for_team({user_team_abbr}, team_level={user_team_level}) returned {len(series_list)} series")
                         series_debug['total_series'] = len(series_list)
                         series_debug['all_opponents'] = [(s.get('opponent_abbr'), s.get('opponent_name')) for s in series_list]
 

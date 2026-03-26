@@ -60,6 +60,8 @@ def _format_user_record(user: Dict[str, Any]) -> Dict[str, Any]:
         "is_admin": bool(user.get("is_admin")),
         "is_active": bool(user.get("is_active", True)),  # Default to True for backward compatibility
         "email_verified": bool(user.get("email_verified", False)),  # Default to False for backward compatibility
+        "team_abbr": user.get("team_abbr") or None,
+        "team_level": user.get("team_level") or "MLB",
     }
 
 
@@ -408,6 +410,43 @@ def api_admin_delete_user(user_id: int):
     return jsonify({"status": "deleted", "user_id": user_id})
 
 
+@bp.route('/users/<int:user_id>/team', methods=['POST'])
+@admin_required
+def api_admin_set_user_team(user_id: int):
+    """Set a user's team abbreviation and/or team level (MLB or AAA)."""
+    if not PlayerDB:
+        return jsonify({"error": "Database unavailable"}), 500
+
+    payload = request.get_json(silent=True) or {}
+    team_abbr = payload.get("team_abbr")
+    team_level = payload.get("team_level")
+
+    if team_abbr is None and team_level is None:
+        return jsonify({"error": "Provide team_abbr and/or team_level."}), 400
+
+    try:
+        db = PlayerDB()
+        target_user = db.get_user_by_id(user_id)
+        if not target_user:
+            db.close()
+            return jsonify({"error": "User not found"}), 404
+
+        if team_abbr is not None:
+            db.set_user_team_abbr(user_id, team_abbr)
+        if team_level is not None:
+            db.set_user_team_level(user_id, team_level)
+
+        updated = db.get_user_by_id(user_id)
+        db.close()
+
+        # Invalidate cache if updating current user
+        if g.user and g.user.get("id") == user_id:
+            from app.middleware.auth import invalidate_user_cache
+            invalidate_user_cache(user_id)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+    return jsonify({"user": _format_user_record(updated)})
 
 
 
@@ -1345,10 +1384,11 @@ def api_admin_player_series(user_id: int):
 
 
     team_abbr = determine_user_team(user)
+    team_level = (user.get("team_level") or "MLB").upper()
 
     # Use 365 days to match gameday hub timeframe
 
-    all_series = collect_series_for_team(team_abbr, days_ahead=365)
+    all_series = collect_series_for_team(team_abbr, days_ahead=365, team_level=team_level)
 
     
 

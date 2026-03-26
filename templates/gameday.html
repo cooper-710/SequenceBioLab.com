@@ -2831,7 +2831,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const countdownContainer = document.getElementById('gameday-countdown');
     if (!countdownContainer) return;
 
-    const gameDateTimeIso = '{% if next_series and next_series.first_game_datetime_iso %}{{ next_series.first_game_datetime_iso|safe }}{% else %}''{% endif %}';
+    const gameDateTimeIso = '{% if next_series and next_series.first_game_datetime_iso %}{{ next_series.first_game_datetime_iso|safe }}{% endif %}';
     if (!gameDateTimeIso || gameDateTimeIso === 'None' || gameDateTimeIso === '') return;
 
     const countdownDays = document.getElementById('gameday-countdown-days');
@@ -2921,16 +2921,24 @@ document.addEventListener('DOMContentLoaded', function () {
 (function() {
     // Defer calendar initialization until browser is idle to improve page load
     function initCalendar() {
-        // Team abbreviation to MLB team ID mapping
+        // Team abbreviation to team ID mapping (MLB + Triple-A)
         const TEAM_ABBR_TO_ID = {
+        // MLB
         "ARI": 109, "ATL": 144, "BAL": 110, "BOS": 111, "CHC": 112, "CWS": 145, "CIN": 113,
         "CLE": 114, "COL": 115, "DET": 116, "HOU": 117, "KC": 118, "LAA": 108, "LAD": 119,
         "MIA": 146, "MIL": 158, "MIN": 142, "NYM": 121, "NYY": 147, "OAK": 133, "PHI": 143,
         "PIT": 134, "SD": 135, "SF": 137, "SEA": 136, "STL": 138, "TB": 139, "TEX": 140,
-        "TOR": 141, "WSH": 120, "WSN": 120, "WAS": 120
+        "TOR": 141, "WSH": 120, "WSN": 120, "WAS": 120,
+        // Triple-A
+        "ABQ": 342, "BUF": 422, "CLT": 494, "CLB": 445, "DUR": 234, "ELP": 4904,
+        "GWN": 431, "IND": 484, "IOW": 451, "JAX": 564, "LHV": 1410, "LOU": 416,
+        "LV": 400, "MEM": 235, "NAS": 556, "NOR": 568, "OKC": 238, "OMA": 541,
+        "RNO": 2310, "ROC": 534, "RR": 102, "SAC": 105, "SL": 561, "STP": 1960,
+        "SUG": 5434, "SWB": 531, "SYR": 552, "TAC": 529, "TOL": 512, "WOR": 533
     };
-    
+
     const TEAM_COLORS = {
+        // MLB
         109: "#A71930", 144: "#CE1141", 110: "#DF4601", 111: "#BD3039",
         112: "#0E3386", 145: "#27251F", 113: "#C6011F", 114: "#E31937",
         115: "#33006F", 116: "#0C2340", 117: "#002D62", 118: "#004687",
@@ -2938,17 +2946,33 @@ document.addEventListener('DOMContentLoaded', function () {
         142: "#002B5C", 121: "#002D72", 147: "#132448", 133: "#003831",
         143: "#E81828", 134: "#FDB827", 135: "#2F241D", 137: "#FD5A1E",
         136: "#0C2C56", 138: "#C41E3A", 139: "#092C5C", 140: "#003278",
-        141: "#134A8E", 120: "#AB0003"
+        141: "#134A8E", 120: "#AB0003",
+        // Triple-A
+        342: "#6B2D8B", 422: "#003087", 494: "#27251F", 445: "#13274F",
+        234: "#002D72", 4904: "#5B3427", 431: "#13274F", 484: "#003087",
+        451: "#0E3386", 564: "#007B7B", 1410: "#C41230", 416: "#C41E3A",
+        400: "#003087", 235: "#C41230", 556: "#003087", 568: "#003087",
+        238: "#005A9C", 541: "#004687", 2310: "#722F8A", 534: "#C41E3A",
+        102: "#003278", 105: "#002856", 561: "#003087", 1960: "#C41E3A",
+        5434: "#002D62", 531: "#0C2340", 552: "#002D72", 529: "#0C2C56",
+        512: "#0C2340", 533: "#0D2B56"
     };
-    
+
     const TEAM_ID_TO_ABBR = {
+        // MLB
         109: "ARI", 144: "ATL", 110: "BAL", 111: "BOS", 112: "CHC", 145: "CWS", 113: "CIN",
         114: "CLE", 115: "COL", 116: "DET", 117: "HOU", 118: "KC", 108: "LAA", 119: "LAD",
         146: "MIA", 158: "MIL", 142: "MIN", 121: "NYM", 147: "NYY", 133: "OAK", 143: "PHI",
         134: "PIT", 135: "SD", 137: "SF", 136: "SEA", 138: "STL", 139: "TB", 140: "TEX",
-        141: "TOR", 120: "WSH"
+        141: "TOR", 120: "WSH",
+        // Triple-A
+        342: "ABQ", 422: "BUF", 494: "CLT", 445: "CLB", 234: "DUR", 4904: "ELP",
+        431: "GWN", 484: "IND", 451: "IOW", 564: "JAX", 1410: "LHV", 416: "LOU",
+        400: "LV", 235: "MEM", 556: "NAS", 568: "NOR", 238: "OKC", 541: "OMA",
+        2310: "RNO", 534: "ROC", 102: "RR", 105: "SAC", 561: "SL", 1960: "STP",
+        5434: "SUG", 531: "SWB", 552: "SYR", 529: "TAC", 512: "TOL", 533: "WOR"
     };
-    
+
     function getTeamColor(teamId) {
         return TEAM_COLORS[teamId] || '#666666';
     }

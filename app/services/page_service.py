@@ -30,14 +30,20 @@ except ImportError:
     PlayerDB = None
 
 try:
-    from next_opponent import next_games
+    from next_opponent import next_games, next_games_aaa
 except ImportError:
     next_games = None
+    next_games_aaa = None
 
 logger = logging.getLogger(__name__)
 
 # Cache for player news
 _PLAYER_NEWS_CACHE: Dict[str, Tuple[List[Dict[str, Any]], datetime]] = {}
+
+
+def _get_user_team_level(user: Dict[str, Any]) -> str:
+    """Return the user's team level ('MLB' or 'AAA'). Defaults to 'MLB' if unset."""
+    return ((user or {}).get("team_level") or "MLB").upper()
 
 
 def _get_use_mock_schedule() -> bool:
@@ -111,7 +117,8 @@ def load_next_series_snapshot(user: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     try:
         team_abbr = determine_user_team(user)
-        series_list = collect_series_for_team(team_abbr, days_ahead=365)
+        team_level = _get_user_team_level(user)
+        series_list = collect_series_for_team(team_abbr, days_ahead=365, team_level=team_level)
     except Exception as exc:
         logger.warning(f"Warning building next series snapshot: {exc}")
         series_list = []
@@ -205,10 +212,11 @@ def load_schedule_calendar(user: Dict[str, Any]) -> List[Dict[str, Any]]:
     try:
         team_abbr = determine_user_team(user)
         use_mock = _get_use_mock_schedule()
-        
+        is_aaa = _get_user_team_level(user) == "AAA"
+
         # Get games - use mock or real data
         games = []
-        if use_mock:
+        if use_mock and not is_aaa:
             # Get mock games with raw date data (same pattern as schedule page)
             now = datetime.now().astimezone()
             base_first_pitch = now.replace(hour=19, minute=10, second=0, microsecond=0)
@@ -241,11 +249,12 @@ def load_schedule_calendar(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                         "status": entry.get("status", "Scheduled"),
                         "venue": "TBD",
                     })
-        elif next_games:
-            # Use a shorter schedule window for the Gameday calendar to keep first load fast.
-            games = load_gameday_schedule_window(user)
         else:
-            return []
+            # Use a shorter schedule window for the Gameday calendar to keep first load fast.
+            # Also used for AAA players (bypasses mock regardless of USE_MOCK_SCHEDULE).
+            games = load_gameday_schedule_window(user)
+            if not games:
+                return []
         
         # Format for calendar display
         calendar_data = []
@@ -347,8 +356,10 @@ def load_full_season_schedule(user: Dict[str, Any], start_date: Optional[str] = 
     """Load full season schedule, optionally filtered by date range."""
     try:
         team_abbr = determine_user_team(user)
+        team_level = _get_user_team_level(user)
         use_mock = _get_use_mock_schedule()
-        
+        is_aaa = team_level == "AAA"
+
         # Default to full season (March to October)
         if not start_date:
             current_year = datetime.now().year
@@ -357,12 +368,13 @@ def load_full_season_schedule(user: Dict[str, Any], start_date: Optional[str] = 
             current_year = datetime.now().year
             end_date = f"{current_year}-10-31"
 
-        # Persistent cache (Supabase/Postgres) to avoid repeated MLB API calls in production
+        # Persistent cache (Supabase/Postgres) to avoid repeated API calls in production
         cache_key_payload = {
             "team_abbr": (team_abbr or "").upper(),
+            "team_level": team_level,
             "start_date": start_date,
             "end_date": end_date,
-            "use_mock": bool(use_mock),
+            "use_mock": bool(use_mock) and not is_aaa,
         }
 
         # Calculate days between dates (used by builder)
@@ -373,7 +385,7 @@ def load_full_season_schedule(user: Dict[str, Any], start_date: Optional[str] = 
         def _build_schedule():
             # Get games - use mock or real data
             games_local = []
-            if use_mock:
+            if use_mock and not is_aaa:
                 # Get mock games with raw date data (same as calendar widget)
                 # Start from start_date (March 1st) or today, whichever is later
                 if start_dt > datetime.now().date():
@@ -413,19 +425,21 @@ def load_full_season_schedule(user: Dict[str, Any], start_date: Optional[str] = 
                                 "status": entry.get("status", "Scheduled"),
                                 "venue": "TBD",
                             })
-            elif next_games:
-                days_ahead = max((end_dt - start_dt).days, 0)
-                if days_ahead == 0:
-                    days_ahead = 365
-                try:
-                    games_local = next_games(team_abbr, days_ahead=min(days_ahead, 365), include_started=True, start_date=start_date)
-                    logger.info(f"Loaded {len(games_local)} games from real API for {team_abbr}")
-                except Exception as e:
-                    logger.warning(f"Error fetching games from API: {e}")
-                    games_local = []
             else:
-                logger.warning("next_games not available, cannot load real schedule data")
-                games_local = []
+                fetcher = next_games_aaa if is_aaa else next_games
+                if not fetcher:
+                    logger.warning("Schedule fetcher not available, cannot load real schedule data")
+                    games_local = []
+                else:
+                    days_ahead = max((end_dt - start_dt).days, 0)
+                    if days_ahead == 0:
+                        days_ahead = 365
+                    try:
+                        games_local = fetcher(team_abbr, days_ahead=min(days_ahead, 365), include_started=True, start_date=start_date)
+                        logger.info(f"Loaded {len(games_local)} games from {'AAA' if is_aaa else 'MLB'} API for {team_abbr}")
+                    except Exception as e:
+                        logger.warning(f"Error fetching games from API: {e}")
+                        games_local = []
 
             filtered = []
             for game in games_local:
@@ -674,6 +688,7 @@ def collect_series_for_gameday(user: Dict[str, Any], *, force_refresh: bool = Fa
 
     cache_payload = {
         "team_abbr": (team_abbr or "").upper(),
+        "team_level": _get_user_team_level(user),
         "start_date": today.isoformat(),
         "end_date": end_date.isoformat(),
     }
