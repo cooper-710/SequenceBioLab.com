@@ -467,6 +467,7 @@ def build_series_from_games(raw_games: List[Dict[str, Any]], today: date) -> Lis
     current_series: Optional[Dict[str, Any]] = None
     last_opponent_id = None
     last_game_date: Optional[date] = None
+    last_is_home: Optional[bool] = None
 
     sorted_games = sorted(raw_games, key=lambda g: g.get("game_date", ""))
     for game in sorted_games:
@@ -486,9 +487,15 @@ def build_series_from_games(raw_games: List[Dict[str, Any]], today: date) -> Lis
             continue
 
         opponent_id = game.get("opponent_id")
+        is_home = game.get("is_home")
+        # A new series starts when the opponent changes, the home/away status changes
+        # (same opponent but switching from home to road or vice versa), or there is a
+        # gap of more than 4 days between games (handles off-days within a 3-4 game series
+        # while still splitting truly separate series against the same opponent).
         if last_opponent_id is not None and (
             opponent_id != last_opponent_id
-            or (last_game_date and (game_date - last_game_date).days > 1)
+            or is_home != last_is_home
+            or (last_game_date and (game_date - last_game_date).days > 4)
         ):
             if current_series:
                 series_groups.append(current_series)
@@ -508,6 +515,7 @@ def build_series_from_games(raw_games: List[Dict[str, Any]], today: date) -> Lis
         current_series["end_date"] = max(current_series["end_date"], game_date)
         last_opponent_id = opponent_id
         last_game_date = game_date
+        last_is_home = is_home
 
     if current_series:
         series_groups.append(current_series)
