@@ -260,7 +260,8 @@ def collect_series_for_team(team_abbr: Optional[str], days_ahead: int = 14, team
         if not fetcher:
             return []
         try:
-            games = fetcher(team_abbr, days_ahead=days_ahead, include_started=True)
+            lookback_start = (datetime.now(timezone.utc).date() - timedelta(days=10)).isoformat()
+            games = fetcher(team_abbr, days_ahead=days_ahead, include_started=True, start_date=lookback_start)
         except Exception as exc:
             import logging
             logger = logging.getLogger(__name__)
