@@ -93,7 +93,7 @@ class Config:
     CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "cooperrobinson@sequencebiolab.com")
     
     # Series management
-    SERIES_AUTO_DELETE_GRACE_SECONDS = 0
+    SERIES_AUTO_DELETE_GRACE_SECONDS = 86400  # 24-hour grace after series window ends
     # Retention for player documents not tied to a series (default: 7 days).
     # NOTE: This is enforced "lazily" via request-time purge hooks.
     NON_SERIES_AUTO_DELETE_SECONDS = 7 * 24 * 60 * 60

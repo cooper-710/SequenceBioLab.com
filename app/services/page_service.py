@@ -993,10 +993,10 @@ def format_player_document(doc: Dict[str, Any]) -> Dict[str, Any]:
     end_date = datetime.fromtimestamp(series_end_ts).date() if series_end_ts else None
     today_date = datetime.fromtimestamp(now_ts).date()
     if series_start_ts and series_end_ts:
-        if series_end_ts < now_ts:
-            series_status = "expired"
-        elif start_date and end_date and start_date <= today_date <= end_date:
+        if start_date and end_date and start_date <= today_date <= end_date:
             series_status = "current"
+        elif series_end_ts < now_ts:
+            series_status = "expired"
         elif series_start_ts <= now_ts <= series_end_ts:
             series_status = "current"
         else:
