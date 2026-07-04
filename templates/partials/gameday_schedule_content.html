@@ -123,7 +123,8 @@
           {% if game.reports %}
             {% for report in game.reports %}
             <a class="report-chip" href="{{ report.url }}" rel="noopener">
-              <i class="fas fa-file-pdf"></i> {{ report.title }}
+              <i class="fas fa-file-pdf"></i>
+              <span>{{ report.title }}</span>
             </a>
             {% endfor %}
           {% else %}

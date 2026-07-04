@@ -14,7 +14,7 @@
 </head>
 <body data-theme="{{ app_theme|default('dark') }}">
     {% set user_authenticated = session.get('user_id') %}
-    <div class="app-container{% if not user_authenticated %} app-container--unauth{% endif %}">
+    <div class="app-container{% if not user_authenticated %} app-container--unauth{% elif session.get('is_admin') %} app-container--admin{% else %} app-container--player{% endif %}">
         {% if user_authenticated %}
             <!-- Sidebar -->
             <aside class="sidebar" id="sidebar">
@@ -136,7 +136,7 @@
                     {% endif %}
                 </nav>
             </aside>
-            {% if user_authenticated %}
+            {% if user_authenticated and session.get('is_admin') %}
                 <!-- Sidebar Overlay for Mobile -->
                 <div class="sidebar-overlay" id="sidebarOverlay"></div>
                 <!-- Mobile Menu Button - Always visible on mobile -->
@@ -195,6 +195,136 @@
             {% endwith %}
             {% block content %}{% endblock %}
         </main>
+        {% if user_authenticated and not session.get('is_admin') %}
+            <nav class="mobile-bottom-nav" aria-label="Primary mobile navigation" aria-expanded="false">
+                <a href="{{ url_for('pages.home') }}" class="mobile-bottom-nav-item {% if request.endpoint == 'pages.home' %}active{% endif %}" aria-label="Home" title="Home">
+                    <i class="fas fa-house-chimney"></i>
+                    <span>Home</span>
+                </a>
+                <a href="{{ url_for('pages.gameday') }}" class="mobile-bottom-nav-item {% if request.endpoint == 'pages.gameday' %}active{% endif %}" aria-label="Gameday" title="Gameday">
+                    <i class="fas fa-trophy"></i>
+                    <span>Gameday</span>
+                </a>
+                <a href="{{ url_for('pages.pitchviz') }}" class="mobile-bottom-nav-item {% if request.endpoint == 'pages.pitchviz' %}active{% endif %}" aria-label="PitchViz" title="PitchViz">
+                    <i class="fas fa-wave-square"></i>
+                    <span>PitchViz</span>
+                </a>
+                <a href="{{ url_for('pages.mocap') }}" class="mobile-bottom-nav-item {% if request.endpoint == 'pages.mocap' %}active{% endif %}" aria-label="Mocap" title="Mocap">
+                    <i class="fas fa-person-running"></i>
+                    <span>Mocap</span>
+                </a>
+                <a href="{{ url_for('pages.matchups') }}" class="mobile-bottom-nav-item {% if request.endpoint == 'pages.matchups' %}active{% endif %}" aria-label="Matchups" title="Matchups">
+                    <i class="fas fa-crosshairs"></i>
+                    <span>Matchups</span>
+                </a>
+                <a href="{{ url_for('pages.profile_settings') }}" class="mobile-bottom-nav-item {% if request.endpoint == 'pages.profile_settings' %}active{% endif %}" aria-label="Settings" title="Settings">
+                    {% if current_user and current_user.profile_image_path %}
+                        <img src="{% if avatar_url is defined %}{{ avatar_url(current_user) }}{% else %}{{ url_for('static', filename=current_user.profile_image_path) }}{% endif %}" alt="" class="mobile-bottom-nav-avatar">
+                    {% else %}
+                        <i class="fas fa-user-gear"></i>
+                    {% endif %}
+                    <span>Settings</span>
+                </a>
+            </nav>
+        {% endif %}
+        {% if user_authenticated and session.get('is_admin') %}
+            {% set admin_more_endpoints = [
+                'pages.data_refresh',
+                'pages.live_scores',
+                'pages.player_database',
+                'pages.pitchviz',
+                'pages.mocap',
+                'pages.workouts',
+                'pages.matchups',
+                'pages.contractviz',
+                'pages.journaling',
+                'pages.journaling_admin',
+                'pages.reports_library'
+            ] %}
+            <nav class="mobile-bottom-nav mobile-bottom-nav--admin" aria-label="Admin mobile navigation" aria-expanded="false">
+                <a href="{{ url_for('pages.home') }}" class="mobile-bottom-nav-item {% if request.endpoint == 'pages.home' %}active{% endif %}" aria-label="Home" title="Home">
+                    <i class="fas fa-house-chimney"></i>
+                    <span>Home</span>
+                </a>
+                <a href="{{ url_for('pages.admin_dashboard') }}" class="mobile-bottom-nav-item {% if request.endpoint == 'pages.admin_dashboard' %}active{% endif %}" aria-label="Admin" title="Admin">
+                    <i class="fas fa-shield-halved"></i>
+                    <span>Admin</span>
+                </a>
+                <a href="{{ url_for('pages.gameday') }}" class="mobile-bottom-nav-item {% if request.endpoint == 'pages.gameday' %}active{% endif %}" aria-label="Gameday" title="Gameday">
+                    <i class="fas fa-trophy"></i>
+                    <span>Gameday</span>
+                </a>
+                <a href="{{ url_for('pages.schedule') }}" class="mobile-bottom-nav-item {% if request.endpoint == 'pages.schedule' %}active{% endif %}" aria-label="Schedule" title="Schedule">
+                    <i class="fas fa-calendar-days"></i>
+                    <span>Schedule</span>
+                </a>
+                <a href="{{ url_for('pages.profile_settings') }}" class="mobile-bottom-nav-item {% if request.endpoint == 'pages.profile_settings' %}active{% endif %}" aria-label="Settings" title="Settings">
+                    {% if current_user and current_user.profile_image_path %}
+                        <img src="{% if avatar_url is defined %}{{ avatar_url(current_user) }}{% else %}{{ url_for('static', filename=current_user.profile_image_path) }}{% endif %}" alt="" class="mobile-bottom-nav-avatar">
+                    {% else %}
+                        <i class="fas fa-user-gear"></i>
+                    {% endif %}
+                    <span>Settings</span>
+                </a>
+                <button type="button" class="mobile-bottom-nav-item mobile-bottom-nav-more {% if request.endpoint in admin_more_endpoints %}active{% endif %}" aria-label="More admin pages" aria-controls="adminMobileNavSheet" aria-expanded="false" title="More">
+                    <i class="fas fa-ellipsis"></i>
+                    <span>More</span>
+                </button>
+            </nav>
+            <div class="mobile-admin-sheet-backdrop" data-admin-sheet-close hidden></div>
+            <section class="mobile-admin-sheet" id="adminMobileNavSheet" aria-label="More admin navigation" aria-hidden="true" hidden>
+                <div class="mobile-admin-sheet-panel">
+                    <div class="mobile-admin-sheet-header">
+                        <span>More</span>
+                        <button type="button" class="mobile-admin-sheet-close" data-admin-sheet-close aria-label="Close admin navigation">
+                            <i class="fas fa-xmark"></i>
+                        </button>
+                    </div>
+                    <div class="mobile-admin-sheet-grid">
+                        <a href="{{ url_for('pages.data_refresh') }}" class="mobile-admin-sheet-link {% if request.endpoint == 'pages.data_refresh' %}active{% endif %}">
+                            <i class="fas fa-database"></i>
+                            <span>Data Refresh</span>
+                        </a>
+                        <a href="{{ url_for('pages.live_scores') }}" class="mobile-admin-sheet-link {% if request.endpoint == 'pages.live_scores' %}active{% endif %}">
+                            <i class="fas fa-baseball-ball"></i>
+                            <span>Live Scores</span>
+                        </a>
+                        <a href="{{ url_for('pages.player_database') }}" class="mobile-admin-sheet-link {% if request.endpoint == 'pages.player_database' %}active{% endif %}">
+                            <i class="fas fa-magnifying-glass"></i>
+                            <span>Stats</span>
+                        </a>
+                        <a href="{{ url_for('pages.pitchviz') }}" class="mobile-admin-sheet-link {% if request.endpoint == 'pages.pitchviz' %}active{% endif %}">
+                            <i class="fas fa-wave-square"></i>
+                            <span>PitchViz</span>
+                        </a>
+                        <a href="{{ url_for('pages.mocap') }}" class="mobile-admin-sheet-link {% if request.endpoint == 'pages.mocap' %}active{% endif %}">
+                            <i class="fas fa-person-running"></i>
+                            <span>Mocap</span>
+                        </a>
+                        <a href="{{ url_for('pages.workouts') }}" class="mobile-admin-sheet-link {% if request.endpoint == 'pages.workouts' %}active{% endif %}">
+                            <i class="fas fa-dumbbell"></i>
+                            <span>Workouts</span>
+                        </a>
+                        <a href="{{ url_for('pages.matchups') }}" class="mobile-admin-sheet-link {% if request.endpoint == 'pages.matchups' %}active{% endif %}">
+                            <i class="fas fa-crosshairs"></i>
+                            <span>Matchups</span>
+                        </a>
+                        <a href="{{ url_for('pages.contractviz') }}" class="mobile-admin-sheet-link {% if request.endpoint == 'pages.contractviz' %}active{% endif %}">
+                            <i class="fas fa-file-contract"></i>
+                            <span>ContractViz</span>
+                        </a>
+                        <a href="{{ url_for('pages.journaling_admin') }}" class="mobile-admin-sheet-link {% if request.endpoint == 'pages.journaling_admin' %}active{% endif %}">
+                            <i class="fas fa-book-open"></i>
+                            <span>Journal Admin</span>
+                        </a>
+                        <a href="{{ url_for('pages.reports_library') }}" class="mobile-admin-sheet-link {% if request.endpoint == 'pages.reports_library' %}active{% endif %}">
+                            <i class="fas fa-folder-open"></i>
+                            <span>Reports</span>
+                        </a>
+                    </div>
+                </div>
+            </section>
+        {% endif %}
     </div>
     
     {% block scripts %}{% endblock %}
@@ -345,6 +475,133 @@
                 startBackgroundDownload(link.href);
                 showDownloadToast();
             }, true);
+        })();
+
+        // Collapsible player mobile navigation
+        (function() {
+            const mobileBottomNav = document.querySelector('.mobile-bottom-nav');
+            if (!mobileBottomNav) return;
+            const adminSheet = document.getElementById('adminMobileNavSheet');
+            const adminSheetBackdrop = document.querySelector('.mobile-admin-sheet-backdrop');
+            const adminMoreButton = mobileBottomNav.querySelector('.mobile-bottom-nav-more');
+            let suppressNextNavClick = false;
+
+            function setExpanded(expanded) {
+                mobileBottomNav.classList.toggle('is-expanded', expanded);
+                mobileBottomNav.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            }
+
+            function setAdminSheetOpen(open) {
+                if (!adminSheet || !adminSheetBackdrop) return;
+
+                if (open) {
+                    adminSheet.hidden = false;
+                    adminSheetBackdrop.hidden = false;
+                    requestAnimationFrame(() => {
+                        adminSheet.classList.add('is-open');
+                        adminSheetBackdrop.classList.add('is-open');
+                    });
+                } else {
+                    adminSheet.classList.remove('is-open');
+                    adminSheetBackdrop.classList.remove('is-open');
+                    setTimeout(() => {
+                        if (!adminSheet.classList.contains('is-open')) {
+                            adminSheet.hidden = true;
+                            adminSheetBackdrop.hidden = true;
+                        }
+                    }, 180);
+                }
+
+                adminSheet.setAttribute('aria-hidden', open ? 'false' : 'true');
+                if (adminMoreButton) {
+                    adminMoreButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+                }
+                document.body.classList.toggle('mobile-admin-sheet-open', open);
+            }
+
+            function consumeNavEvent(event) {
+                event.preventDefault();
+                if (typeof event.stopImmediatePropagation === 'function') {
+                    event.stopImmediatePropagation();
+                } else {
+                    event.stopPropagation();
+                }
+            }
+
+            function handleMobileNavIntent(event) {
+                const navItem = event.target.closest('.mobile-bottom-nav-item');
+                if (!navItem || !mobileBottomNav.contains(navItem)) return false;
+
+                const isExpanded = mobileBottomNav.classList.contains('is-expanded');
+                const isMoreButton = navItem.classList.contains('mobile-bottom-nav-more');
+
+                if (isMoreButton) {
+                    consumeNavEvent(event);
+                    setExpanded(false);
+                    setAdminSheetOpen(!(adminSheet && adminSheet.classList.contains('is-open')));
+                    return true;
+                }
+
+                if (!isExpanded && navItem.classList.contains('active')) {
+                    consumeNavEvent(event);
+                    setExpanded(true);
+                    setAdminSheetOpen(false);
+                    return true;
+                }
+
+                if (isExpanded && navItem.classList.contains('active')) {
+                    consumeNavEvent(event);
+                    setExpanded(false);
+                    setAdminSheetOpen(false);
+                    return true;
+                }
+
+                return false;
+            }
+
+            mobileBottomNav.addEventListener('pointerdown', function(event) {
+                if (event.button && event.button !== 0) return;
+                suppressNextNavClick = handleMobileNavIntent(event);
+            }, true);
+
+            document.addEventListener('click', function(event) {
+                const navItem = event.target.closest('.mobile-bottom-nav-item');
+                if (!navItem || !mobileBottomNav.contains(navItem)) return;
+
+                if (suppressNextNavClick) {
+                    consumeNavEvent(event);
+                    suppressNextNavClick = false;
+                    return;
+                }
+
+                handleMobileNavIntent(event);
+            }, true);
+
+            document.addEventListener('click', function(event) {
+                if (!mobileBottomNav.classList.contains('is-expanded')) return;
+                if (mobileBottomNav.contains(event.target)) return;
+                setExpanded(false);
+            });
+
+            document.addEventListener('click', function(event) {
+                if (!adminSheet || !adminSheet.classList.contains('is-open')) return;
+                if (adminSheet.contains(event.target) || mobileBottomNav.contains(event.target)) return;
+                setAdminSheetOpen(false);
+            });
+
+            document.querySelectorAll('[data-admin-sheet-close]').forEach((closeControl) => {
+                closeControl.addEventListener('click', function(event) {
+                    consumeNavEvent(event);
+                    setAdminSheetOpen(false);
+                });
+            });
+
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape') {
+                    setExpanded(false);
+                    setAdminSheetOpen(false);
+                }
+            });
         })();
 
         // Global page loading overlay

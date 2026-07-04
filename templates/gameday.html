@@ -1310,6 +1310,7 @@
     flex-wrap: wrap;
     gap: 10px;
     align-items: center;
+    min-width: 0;
 }
 .schedule-tabs {
     display: inline-flex;
@@ -1356,12 +1357,23 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
+    min-width: 0;
+    max-width: 100%;
     padding: 8px 14px;
     border-radius: 999px;
     background: rgba(255, 127, 0, 0.16);
     color: var(--color-accent);
     font-weight: 600;
     text-decoration: none;
+}
+.report-chip i {
+    flex: 0 0 auto;
+}
+.report-chip span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .report-chip:hover {
     background: rgba(255, 127, 0, 0.24);
@@ -2180,16 +2192,26 @@
         padding: 16px !important;
     }
 
-    .gameday-page .matchup-reports {
+    .gameday-page .matchup-reports-content {
         width: 100% !important;
         flex-direction: column !important;
         align-items: stretch !important;
+        min-width: 0 !important;
     }
 
     .gameday-page .report-chip {
         width: 100% !important;
-        justify-content: center !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        justify-content: flex-start !important;
         box-sizing: border-box !important;
+    }
+
+    .gameday-page .report-chip span {
+        min-width: 0 !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;
     }
 
     .gameday-page .docs-header {
@@ -3242,4 +3264,3 @@ document.addEventListener('DOMContentLoaded', function () {
 })();
 </script>
 {% endblock %}
-
