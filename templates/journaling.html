@@ -141,14 +141,14 @@
                     </div>
                     <div class="journal-actions">
                         <button type="submit" class="btn btn-primary">Save Entry</button>
-                        <a class="journal-link" href="{{ url_for('journaling', date=today, visibility=selected_visibility) }}">
+                        <a class="journal-link" href="{{ url_for('pages.journaling', date=today, visibility=selected_visibility) }}">
                             Jump to Today
                         </a>
                     </div>
                 </form>
                 {% if entry %}
                 <form method="post"
-                      action="{{ url_for('pages.delete_journal_entry_route') }}"
+                      action="{{ url_for('pages.delete_journal_entry') }}"
                       class="journal-delete-inline"
                       onsubmit="return confirm('Delete this journal entry?');">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -186,9 +186,9 @@
                             {% for item in day.entries %}
                             {% set is_selected = (day.date == selected_date and item.visibility == selected_visibility) %}
                             {% if is_admin_view %}
-                            {% set entry_url = url_for('journaling_admin', user_id=target_user.id if target_user else None, date=day.date) %}
+                            {% set entry_url = url_for('pages.journaling_admin', user_id=target_user.id if target_user else None, date=day.date) %}
                             {% else %}
-                            {% set entry_url = url_for('journaling', date=day.date, visibility=item.visibility) %}
+                            {% set entry_url = url_for('pages.journaling', date=day.date, visibility=item.visibility) %}
                             {% endif %}
                             <a href="{{ entry_url }}"
                                class="journal-timeline-item {% if is_selected %}is-active{% endif %}">
@@ -218,7 +218,7 @@
                     <p>No public entries recorded yet.</p>
                     {% else %}
                     <p>Nothing here yet—capture your first entry to start the streak.</p>
-                    <a class="journal-link" href="{{ url_for('journaling', date=today, visibility=selected_visibility) }}">Start with today&rsquo;s entry</a>
+                    <a class="journal-link" href="{{ url_for('pages.journaling', date=today, visibility=selected_visibility) }}">Start with today&rsquo;s entry</a>
                     {% endif %}
                 </div>
                 {% endif %}
@@ -228,4 +228,3 @@
 
 </section>
 {% endblock %}
-

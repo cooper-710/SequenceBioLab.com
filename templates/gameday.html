@@ -10,8 +10,9 @@
                 <i class="fas fa-trophy"></i>
             </div>
             <span class="gameday-title-text">Gameday</span>
-            {% if next_series and next_series.first_game_datetime_iso %}
-            <div class="gameday-countdown-clock" id="gameday-countdown">
+            <div class="gameday-countdown-clock" id="gameday-countdown"
+                 data-game-datetime="{% if next_series and next_series.first_game_datetime_iso %}{{ next_series.first_game_datetime_iso }}{% endif %}"
+                 {% if not next_series or not next_series.first_game_datetime_iso %}hidden{% endif %}>
                 <div class="gameday-countdown-display">
                     <span class="gameday-countdown-label">Next Game</span>
                     <div class="gameday-countdown-time" id="gameday-countdown-time">
@@ -26,7 +27,6 @@
                     </div>
                 </div>
             </div>
-            {% endif %}
         </div>
         {% if session.get('is_admin') and admin_user_options %}
         <form class="gameday-user-picker" method="get" action="{{ url_for('pages.gameday') }}" id="gameday-user-form">
@@ -2749,7 +2749,27 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    function loadGamedaySchedule() {
+    var scheduleRequestController = null;
+
+    function renderScheduleError() {
+        scheduleContainer.innerHTML = `
+            <section class="gameday-card">
+                <div class="card-header"><h2><i class="fas fa-baseball"></i> Series</h2></div>
+                <div class="empty-state" role="alert">
+                    <i class="fas fa-triangle-exclamation"></i>
+                    <p>Schedule data is taking longer than expected.</p>
+                    <button type="button" class="btn btn-secondary" id="gameday-schedule-retry">Try again</button>
+                </div>
+            </section>`;
+        var retryButton = document.getElementById('gameday-schedule-retry');
+        if (retryButton) {
+            retryButton.addEventListener('click', function() {
+                loadGamedaySchedule(true);
+            });
+        }
+    }
+
+    function loadGamedaySchedule(forceRefresh) {
         if (!scheduleContainer) {
             return;
         }
@@ -2758,20 +2778,58 @@ document.addEventListener('DOMContentLoaded', function () {
             return;
         }
         var params = new URLSearchParams(window.location.search || "");
+        if (forceRefresh) {
+            params.set('refresh', '1');
+        }
         var url = endpoint + (params.toString() ? ("?" + params.toString()) : "");
 
-        fetch(url, { headers: { "Accept": "application/json" } })
-            .then(function (resp) { return resp.ok ? resp.json() : null; })
+        if (scheduleRequestController) {
+            scheduleRequestController.abort();
+        }
+        var requestController = new AbortController();
+        scheduleRequestController = requestController;
+        var timeoutId = window.setTimeout(function() {
+            requestController.abort();
+        }, 12000);
+
+        fetch(url, {
+            headers: { "Accept": "application/json" },
+            credentials: "same-origin",
+            signal: requestController.signal
+        })
+            .then(function (resp) {
+                if (!resp.ok) throw new Error('Schedule request failed');
+                return resp.json();
+            })
             .then(function (payload) {
                 if (!payload || typeof payload.schedule_html !== "string") {
-                    return;
+                    throw new Error('Invalid schedule response');
                 }
                 scheduleContainer.innerHTML = payload.schedule_html;
                 autoHideRedirectNote();
                 initSchedule();
+
+                if (typeof window.updateGamedayCountdown === 'function') {
+                    window.updateGamedayCountdown(payload.next_series || {});
+                }
+                window.pendingGamedayCalendar = payload.schedule_calendar || [];
+                if (typeof window.updateGamedayCalendar === 'function') {
+                    window.updateGamedayCalendar(window.pendingGamedayCalendar);
+                }
             })
-            .catch(function () {
-                // Keep placeholder if schedule request fails
+            .catch(function (error) {
+                if (error && error.name === 'AbortError') {
+                    console.warn('Gameday schedule request timed out');
+                } else {
+                    console.error('Error loading gameday schedule:', error);
+                }
+                renderScheduleError();
+            })
+            .finally(function () {
+                window.clearTimeout(timeoutId);
+                if (scheduleRequestController === requestController) {
+                    scheduleRequestController = null;
+                }
             });
     }
 
@@ -2853,9 +2911,6 @@ document.addEventListener('DOMContentLoaded', function () {
     const countdownContainer = document.getElementById('gameday-countdown');
     if (!countdownContainer) return;
 
-    const gameDateTimeIso = '{% if next_series and next_series.first_game_datetime_iso %}{{ next_series.first_game_datetime_iso|safe }}{% endif %}';
-    if (!gameDateTimeIso || gameDateTimeIso === 'None' || gameDateTimeIso === '') return;
-
     const countdownDays = document.getElementById('gameday-countdown-days');
     const countdownHours = document.getElementById('gameday-countdown-hours');
     const countdownMinutes = document.getElementById('gameday-countdown-minutes');
@@ -2866,6 +2921,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // Falls back to device clock if the endpoint is unreachable.
     let clockOffsetMs = 0;
     let hasSyncedClock = false;
+    let gameDateTimeIso = countdownContainer.dataset.gameDatetime || '';
+    let countdownTimer = null;
 
     async function syncClockOffset() {
         const t0 = Date.now();
@@ -2895,6 +2952,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function updateCountdown() {
+        if (!gameDateTimeIso) {
+            countdownContainer.hidden = true;
+            return;
+        }
         try {
             const gameDate = new Date(gameDateTimeIso);
             
@@ -2926,13 +2987,22 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    window.updateGamedayCountdown = function(nextSeries) {
+        gameDateTimeIso = (nextSeries && nextSeries.first_game_datetime_iso) || '';
+        countdownContainer.dataset.gameDatetime = gameDateTimeIso;
+        countdownContainer.hidden = !gameDateTimeIso;
+        if (gameDateTimeIso) {
+            updateCountdown();
+            if (!countdownTimer) {
+                countdownTimer = window.setInterval(updateCountdown, 60000);
+            }
+        }
+    };
+
     (async function initCountdown() {
         // Sync once on load; don't block countdown if it fails.
         await syncClockOffset();
-        updateCountdown();
-
-        // Update every minute (60000ms) for smooth countdown
-        setInterval(updateCountdown, 60000);
+        window.updateGamedayCountdown({ first_game_datetime_iso: gameDateTimeIso });
 
         // Re-sync periodically to handle drift (e.g., laptop sleep/wake).
         setInterval(syncClockOffset, 5 * 60 * 1000);
@@ -3004,15 +3074,19 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     
     // Use real schedule data from backend
-    const scheduleCalendar = {{ (schedule_calendar or [])|tojson|safe }};
+    let scheduleCalendar = {{ (schedule_calendar or [])|tojson|safe }};
     
     // Create a map of dates to games
-    const gamesByDate = {};
-    scheduleCalendar.forEach(game => {
-        if (game && game.date) {
-            gamesByDate[game.date] = game;
-        }
-    });
+    let gamesByDate = {};
+    function rebuildGamesByDate() {
+        gamesByDate = {};
+        scheduleCalendar.forEach(game => {
+            if (game && game.date) {
+                gamesByDate[game.date] = game;
+            }
+        });
+    }
+    rebuildGamesByDate();
     
     // Get current month based on today's date
     const today = new Date();
@@ -3155,6 +3229,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     
     // Populate upcoming games sidebar
+    function renderUpcomingGames() {
     const upcomingGamesList = document.getElementById('upcoming-games-list');
     if (upcomingGamesList && scheduleCalendar && scheduleCalendar.length > 0) {
         // Get today's date
@@ -3251,6 +3326,18 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     } else if (upcomingGamesList) {
         upcomingGamesList.innerHTML = '<div class="upcoming-game-empty">No upcoming games scheduled</div>';
+    }
+    }
+
+    renderUpcomingGames();
+    window.updateGamedayCalendar = function(games) {
+        scheduleCalendar = Array.isArray(games) ? games : [];
+        rebuildGamesByDate();
+        renderCalendar(currentMonth, currentYear);
+        renderUpcomingGames();
+    };
+    if (Array.isArray(window.pendingGamedayCalendar)) {
+        window.updateGamedayCalendar(window.pendingGamedayCalendar);
     }
     }
     

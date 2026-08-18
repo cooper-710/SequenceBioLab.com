@@ -1110,6 +1110,37 @@ class PlayerDB:
             except Exception:
                 return None
 
+    def cache_get_stale(self, cache_name: str, cache_key: str) -> Optional[str]:
+        """Get the newest raw cached value even when it has expired.
+
+        This is intentionally separate from ``cache_get`` so normal callers
+        never consume stale data accidentally. It is used only as a
+        last-known-good fallback for UI widgets backed by external APIs.
+        """
+        cursor = self.conn.cursor()
+        self._execute(
+            cursor,
+            """
+            SELECT value
+            FROM app_cache
+            WHERE cache_name = ?
+              AND cache_key = ?
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """,
+            (cache_name, cache_key),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        try:
+            return row["value"]
+        except Exception:
+            try:
+                return row[0]
+            except Exception:
+                return None
+
     def cache_set(self, cache_name: str, cache_key: str, value: str, ttl_seconds: int = 300) -> None:
         """Upsert raw cached value (JSON string) with TTL."""
         cursor = self.conn.cursor()

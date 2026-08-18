@@ -1629,7 +1629,7 @@ async function searchPitchers() {
 
         // Show suggestions
         suggestionsDiv.innerHTML = players.slice(0, 10).map((player, idx) =>
-            `<div class="suggestion-item" data-player-name="${player.name.replace(/"/g, '&quot;')}" data-index="${idx}">${player.name}</div>`
+            `<div class="suggestion-item" data-player-name="${player.name.replace(/"/g, '&quot;')}" data-player-id="${player.player_id || ''}" data-index="${idx}">${player.name}</div>`
         ).join('');
         suggestionsDiv.style.display = 'block';
 
@@ -1638,6 +1638,7 @@ async function searchPitchers() {
             item.addEventListener('click', function() {
                 const playerName = this.getAttribute('data-player-name');
                 searchInput.value = playerName;
+                searchInput.dataset.playerId = this.getAttribute('data-player-id') || '';
                 suggestionsDiv.style.display = 'none';
                 // Trigger prefetch when pitcher is selected
                 prefetchSeasons();
@@ -1677,7 +1678,7 @@ async function searchHitters() {
 
         // Show suggestions
         suggestionsDiv.innerHTML = players.slice(0, 10).map((player, idx) =>
-            `<div class="suggestion-item" data-player-name="${player.name.replace(/"/g, '&quot;')}" data-index="${idx}">${player.name}</div>`
+            `<div class="suggestion-item" data-player-name="${player.name.replace(/"/g, '&quot;')}" data-player-id="${player.player_id || ''}" data-index="${idx}">${player.name}</div>`
         ).join('');
         suggestionsDiv.style.display = 'block';
 
@@ -1686,6 +1687,7 @@ async function searchHitters() {
             item.addEventListener('click', function() {
                 const playerName = this.getAttribute('data-player-name');
                 searchInput.value = playerName;
+                searchInput.dataset.playerId = this.getAttribute('data-player-id') || '';
                 suggestionsDiv.style.display = 'none';
                 // Trigger prefetch when hitter is selected
                 prefetchSeasons();
@@ -1706,6 +1708,7 @@ let selectedSeasonFilter = 'all';
 let prefetchedSeasons = null;
 let prefetchKey = null; // "pitcher|hitter" to validate cache
 let prefetchInProgress = false;
+let prefetchPromise = null;
 
 // Abort controllers for canceling in-flight requests on navigation
 let matchupAbortController = null;
@@ -1732,6 +1735,7 @@ function cleanupMatchupLoading() {
     }
     isMatchupLoading = false;
     prefetchInProgress = false;
+    prefetchPromise = null;
     const loadingDiv = document.getElementById('loading');
     if (loadingDiv) loadingDiv.style.display = 'none';
 }
@@ -1740,12 +1744,14 @@ async function prefetchSeasons() {
     if (navigatingAway) return;
     const pitcherName = document.getElementById('pitcherName')?.value.trim();
     const hitterName = document.getElementById('hitterName')?.value.trim();
+    const pitcherId = document.getElementById('pitcherName')?.dataset.playerId || '';
+    const hitterId = document.getElementById('hitterName')?.dataset.playerId || '';
 
-    if (!pitcherName || pitcherName.length < 3 || !hitterName || hitterName.length < 3) {
+    if (!pitcherName || !hitterName || !pitcherId || !hitterId) {
         return;
     }
 
-    const key = `${pitcherName.toLowerCase()}|${hitterName.toLowerCase()}`;
+    const key = `${pitcherId}|${hitterId}`;
     if (prefetchKey === key) {
         // Already prefetched or prefetching this combo
         return;
@@ -1761,10 +1767,13 @@ async function prefetchSeasons() {
     prefetchKey = key;
     prefetchInProgress = true;
     prefetchedSeasons = null;
+    let activePromise = null;
 
     try {
         console.log('[Prefetch] Starting seasons prefetch for', pitcherName, 'vs', hitterName);
-        const seasons = await fetchAvailableSeasons(pitcherName, hitterName, 'pitcher', signal);
+        activePromise = fetchAvailableSeasons(pitcherName, hitterName, 'pitcher', signal, pitcherId, hitterId);
+        prefetchPromise = activePromise;
+        const seasons = await activePromise;
 
         // Bail out if navigating away
         if (navigatingAway) return;
@@ -1784,14 +1793,17 @@ async function prefetchSeasons() {
             prefetchedSeasons = null;
         }
     } finally {
-        prefetchInProgress = false;
         if (prefetchAbortController?.signal === signal) {
+            prefetchInProgress = false;
             prefetchAbortController = null;
+            if (prefetchPromise === activePromise) {
+                prefetchPromise = null;
+            }
         }
     }
 }
 
-async function fetchAvailableSeasons(player1Name, player2Name, role, signal = null) {
+async function fetchAvailableSeasons(player1Name, player2Name, role, signal = null, player1Id = '', player2Id = '') {
     // Bail out early if navigating
     if (navigatingAway) return [];
 
@@ -1799,6 +1811,8 @@ async function fetchAvailableSeasons(player1Name, player2Name, role, signal = nu
     params.append('player', player1Name);
     params.append('opponent', player2Name);
     params.append('role', role);
+    if (player1Id) params.append('player_id', player1Id);
+    if (player2Id) params.append('opponent_id', player2Id);
 
     const fetchOptions = signal ? { signal } : {};
     const response = await fetch(`/api/matchups/seasons?${params}`, fetchOptions);
@@ -1989,6 +2003,7 @@ function renderFromFilter() {
 let prefetchTimeout = null;
 document.getElementById('pitcherName').addEventListener('input', (e) => {
     const searchTerm = e.target.value.trim();
+    e.target.dataset.playerId = '';
 
     clearTimeout(pitcherSearchTimeout);
     clearTimeout(prefetchTimeout);
@@ -2014,6 +2029,7 @@ document.getElementById('pitcherName').addEventListener('input', (e) => {
 // Setup Hitter search
 document.getElementById('hitterName').addEventListener('input', (e) => {
     const searchTerm = e.target.value.trim();
+    e.target.dataset.playerId = '';
 
     clearTimeout(hitterSearchTimeout);
     clearTimeout(prefetchTimeout);
@@ -2090,6 +2106,8 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
     // Get pitcher and hitter names from the explicit fields
     const pitcherName = document.getElementById('pitcherName').value.trim();
     const hitterName = document.getElementById('hitterName').value.trim();
+    const pitcherId = document.getElementById('pitcherName').dataset.playerId || '';
+    const hitterId = document.getElementById('hitterName').dataset.playerId || '';
 
     // Role is always 'pitcher' since top field is pitcher (player param = pitcher)
     const role = 'pitcher';
@@ -2166,15 +2184,20 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
         try {
             // 1) Fetch seasons with matchup data between these two players
             // Check if we already prefetched this data
-            const currentKey = `${pitcherName.toLowerCase()}|${hitterName.toLowerCase()}`;
+            const currentKey = pitcherId && hitterId
+                ? `${pitcherId}|${hitterId}`
+                : `${pitcherName.toLowerCase()}|${hitterName.toLowerCase()}`;
             let seasons;
 
             if (prefetchKey === currentKey && prefetchedSeasons && prefetchedSeasons.length > 0) {
                 console.log('[Prefetch] Using prefetched seasons data');
                 seasons = prefetchedSeasons;
+            } else if (prefetchKey === currentKey && prefetchInProgress && prefetchPromise) {
+                updateLoadingStatus('Finishing season lookup...');
+                seasons = await prefetchPromise;
             } else {
                 updateLoadingStatus('Finding available seasons...');
-                seasons = await fetchAvailableSeasons(pitcherName, hitterName, role, signal);
+                seasons = await fetchAvailableSeasons(pitcherName, hitterName, role, signal, pitcherId, hitterId);
             }
 
             // Check if aborted or navigating away after fetching seasons
@@ -2188,81 +2211,52 @@ document.getElementById('matchupForm').addEventListener('submit', async (e) => {
                 return;
             }
 
-            // 2) Load each season in parallel
+            // 2) Load all seasons in one server request. The backend reuses one
+            // canonical matchup dataset, so this does not occupy both web
+            // workers with a fan-out of season requests.
             seasons.sort((a, b) => b - a);
             const total = seasons.length;
-            let completedCount = 0;
 
-            // Show progress bar
-            updateLoadingStatus(`Loading matchup data (0 of ${total} seasons)...`, 0);
+            updateLoadingStatus(`Loading matchup data for ${total} season${total === 1 ? '' : 's'}...`, 15);
             if (progressText) {
                 progressText.style.display = 'block';
                 progressText.textContent = seasons.join(', ');
             }
 
-            // Fetch all seasons in PARALLEL
-            const fetchPromises = seasons.map(async (year) => {
-                // Bail out immediately if navigating away
-                if (navigatingAway || signal.aborted) {
-                    return { success: false, aborted: true, year };
+            const params = new URLSearchParams();
+            params.append('player', pitcherName);
+            params.append('opponent', hitterName);
+            params.append('role', role);
+            if (pitcherId) params.append('player_id', pitcherId);
+            if (hitterId) params.append('opponent_id', hitterId);
+            seasons.forEach(year => params.append('seasons', String(year)));
+
+            let requestTimedOut = false;
+            const requestTimeout = window.setTimeout(() => {
+                requestTimedOut = true;
+                matchupAbortController?.abort();
+            }, 30000);
+            let resp;
+            let matchupData;
+            try {
+                resp = await fetch(`/api/matchups?${params}`, { signal });
+                matchupData = await resp.json();
+            } catch (err) {
+                if (requestTimedOut) {
+                    throw new Error('The matchup request timed out. Please try again.');
                 }
+                throw err;
+            } finally {
+                window.clearTimeout(requestTimeout);
+            }
 
-                const params = new URLSearchParams();
-                params.append('player', pitcherName);
-                params.append('opponent', hitterName);
-                params.append('role', role);
-                params.append('season', String(year));
-
-                try {
-                    // Check again before fetch in case we started navigating
-                    if (navigatingAway) return { success: false, aborted: true, year };
-
-                    const resp = await fetch(`/api/matchups?${params}`, { signal });
-
-                    // Check immediately after fetch returns
-                    if (navigatingAway || signal.aborted) return { success: false, aborted: true, year };
-
-                    const seasonData = await resp.json();
-
-                    // Check if aborted or navigating
-                    if (signal.aborted || navigatingAway) return { success: false, aborted: true, year };
-
-                    // Update progress
-                    completedCount++;
-                    const pct = Math.round((completedCount / total) * 100);
-                    updateLoadingStatus(`Loading matchup data (${completedCount} of ${total} seasons)...`, pct);
-
-                    if (resp.ok && seasonData.matchups && seasonData.matchups.length > 0) {
-                        return { success: true, matchups: seasonData.matchups, year };
-                    } else if (seasonData && (seasonData.error || seasonData.message)) {
-                        return { success: false, error: `${year}: ${seasonData.error || seasonData.message}`, year };
-                    }
-                    return { success: true, matchups: [], year };
-                } catch (err) {
-                    if (err.name === 'AbortError' || navigatingAway) {
-                        return { success: false, aborted: true, year };
-                    }
-                    completedCount++;
-                    const pct = Math.round((completedCount / total) * 100);
-                    updateLoadingStatus(`Loading matchup data (${completedCount} of ${total} seasons)...`, pct);
-                    return { success: false, error: `${year}: ${err.message || err}`, year };
-                }
-            });
-
-            // Wait for all fetches to complete
-            const results = await Promise.all(fetchPromises);
-
-            // Check if aborted or navigating away before processing results
             if (signal.aborted || navigatingAway) return;
+            updateLoadingStatus(`Loaded ${total} season${total === 1 ? '' : 's'}.`, 100);
 
-            // Collect results
-            for (const result of results) {
-                if (result.aborted) continue;
-                if (result.success && result.matchups) {
-                    combined.push(...result.matchups);
-                } else if (!result.success && result.error) {
-                    errors.push(result.error);
-                }
+            if (resp.ok && Array.isArray(matchupData.matchups)) {
+                combined.push(...matchupData.matchups);
+            } else {
+                errors.push(matchupData.error || matchupData.message || 'Unable to load matchup data.');
             }
 
             loadingDiv.style.display = 'none';
@@ -3179,5 +3173,3 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 {% endblock %}
-
-

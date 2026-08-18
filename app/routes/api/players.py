@@ -364,7 +364,7 @@ def api_matchups_seasons():
 
     try:
         sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
-        from scrape_savant import lookup_batter_id, fetch_batter_statcast, fetch_pitcher_statcast
+        from scrape_savant import lookup_batter_id, fetch_matchup_statcast
     except ImportError:
         return jsonify({"error": "Statcast module not available"}), 500
 
@@ -383,9 +383,14 @@ def api_matchups_seasons():
         return jsonify({"error": "Both player and opponent names are required"}), 400
 
     try:
-        # Look up IDs for both players
-        player_id = lookup_batter_id(player_name)
-        opponent_id = lookup_batter_id(opponent_name)
+        # Autocomplete now supplies stable MLB IDs from the local player index.
+        # Keep name lookup as a backwards-compatible fallback for old clients.
+        player_id = request.args.get("player_id", type=int)
+        opponent_id = request.args.get("opponent_id", type=int)
+        if not player_id:
+            player_id = lookup_batter_id(player_name)
+        if not opponent_id:
+            opponent_id = lookup_batter_id(opponent_name)
     except Exception as e:
         return jsonify({"error": f"Could not find player IDs: {str(e)}"}), 404
 
@@ -401,7 +406,7 @@ def api_matchups_seasons():
     SEASONS_CACHE_TTL = 86400  # 24 hours - seasons don't change often
     if persistent_cache:
         cached = persistent_cache.get_json("matchup_seasons", persistent_cache_key)
-        if cached:
+        if cached is not None:
             print(f"DEBUG: Seasons persistent cache HIT for {player_name} vs {opponent_name}")
             # Also store in memory cache for faster subsequent access
             with _seasons_cache_lock:
@@ -462,17 +467,18 @@ def api_matchups_seasons():
             print(f"DEBUG: Error checking Positions.csv: {pos_err}, falling back to full range")
             start_year = 2015
 
-        all_start = f"{start_year}-03-01"
-        all_end = f"{end_year}-11-30"
+        # Use one canonical full-history key so season discovery and the final
+        # batched matchup request share the same small Parquet file.
+        all_start = "2015-03-01"
+        all_end = f"{today.year}-11-30"
 
         print(f"DEBUG: Fetching seasons {start_year}-{end_year} in one call...")
 
         df_all = pd.DataFrame()
         try:
-            if player_role == 'pitcher':
-                df_all = fetch_pitcher_statcast(player_id, all_start, all_end)
-            else:
-                df_all = fetch_batter_statcast(player_id, all_start, all_end)
+            pitcher_id = player_id if player_role == 'pitcher' else opponent_id
+            batter_id = opponent_id if player_role == 'pitcher' else player_id
+            df_all = fetch_matchup_statcast(pitcher_id, batter_id, all_start, all_end)
             print(f"DEBUG: Fetched {len(df_all)} total rows for {player_name}")
         except Exception as e:
             print(f"Error fetching all seasons data: {e}")
@@ -648,7 +654,7 @@ def api_matchups():
 
     try:
         sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "src"))
-        from scrape_savant import lookup_batter_id, fetch_batter_statcast, fetch_pitcher_statcast
+        from scrape_savant import lookup_batter_id, fetch_matchup_statcast
     except ImportError:
         return jsonify({"error": "Statcast module not available"}), 500
 
@@ -669,9 +675,12 @@ def api_matchups():
         return jsonify({"error": "Both player and opponent names are required"}), 400
 
     try:
-        # Look up IDs for both players
-        player_id = lookup_batter_id(player_name)
-        opponent_id = lookup_batter_id(opponent_name)
+        player_id = request.args.get("player_id", type=int)
+        opponent_id = request.args.get("opponent_id", type=int)
+        if not player_id:
+            player_id = lookup_batter_id(player_name)
+        if not opponent_id:
+            opponent_id = lookup_batter_id(opponent_name)
 
         print(f"DEBUG: Player: {player_name} -> ID: {player_id}")
         print(f"DEBUG: Opponent: {opponent_name} -> ID: {opponent_id}")
@@ -688,11 +697,13 @@ def api_matchups():
         "seasons": sorted(seasons) if seasons else None
     }
 
-    # Check persistent cache first (1 hour TTL)
-    MATCHUP_CACHE_TTL = 3600  # 1 hour
+    # Current-season results change, while completed seasons are effectively
+    # immutable. Start with a six-hour TTL and extend historical-only payloads
+    # after parsing the requested seasons below.
+    MATCHUP_CACHE_TTL = 6 * 60 * 60
     if persistent_cache:
         cached_result = persistent_cache.get_json("matchups", cache_key)
-        if cached_result:
+        if isinstance(cached_result, dict):
             print(f"DEBUG: Cache HIT for {player_name} vs {opponent_name} ({player_role})")
             return jsonify(cached_result)
     
@@ -711,13 +722,15 @@ def api_matchups():
         
         today = date.today()
         
-        # MEMORY FIX: Process seasons one at a time to reduce memory (aggressive limits for 512MB)
-        MAX_SEASONS = 1  # Hard limit - max 1 year for 512MB instances
-        MAX_ROWS_PER_SEASON = 25000  # Reject if single season exceeds this (reduced for 512MB)
+        # Direct matchup data is small enough to process several seasons in one
+        # request, avoiding the client-side fan-out that used to occupy both
+        # synchronous production workers.
+        MAX_SEASONS = 20
+        MAX_MATCHUP_ROWS = 50000
         
         # Determine seasons with hard limit
         if seasons and len(seasons) > 0:
-            season_ints = sorted([int(s) for s in seasons if s.isdigit()])[:MAX_SEASONS]  # Hard limit
+            season_ints = sorted({int(s) for s in seasons if s.isdigit()})[:MAX_SEASONS]
             if not season_ints:
                 season_ints = [today.year]  # Default to current year only for 512MB
         elif season:
@@ -725,92 +738,34 @@ def api_matchups():
         else:
             season_ints = [today.year]  # Default to current year only (reduced for 512MB)
         
+        if season_ints and max(season_ints) < today.year:
+            MATCHUP_CACHE_TTL = 7 * 24 * 60 * 60
+
         # Convert opponent ID once
         opponent_id_int = int(opponent_id)
-        
-        # Find the filter column name first (we'll need this for each season)
-        filter_col = None
-        all_filtered_dfs = []
-        
-        # Process each season separately to reduce memory usage
-        for season_year in season_ints:
-            start_date = f"{season_year}-03-01"
-            end_date = f"{season_year}-11-30"
-            
-            # Fetch data for this season only
-            df_season = pd.DataFrame()
-            try:
-                if player_role == 'pitcher':
-                    df_season = fetch_pitcher_statcast(player_id, start_date, end_date)
-                    print(f"Fetched Statcast data for pitcher {player_id} ({season_year}): {len(df_season)} rows (BEFORE filtering)")
-                else:
-                    df_season = fetch_batter_statcast(player_id, start_date, end_date)
-                    print(f"Fetched Statcast data for batter {player_id} ({season_year}): {len(df_season)} rows (BEFORE filtering)")
-            except Exception as e:
-                print(f"Error fetching Statcast data for {season_year}: {e}")
-                import traceback
-                traceback.print_exc()
-                continue  # Skip this season, try next one
-            
-            # MEMORY FIX: Reject if single season is too large
-            if len(df_season) > MAX_ROWS_PER_SEASON:
-                row_count = len(df_season)
-                del df_season
-                gc.collect()
-                return jsonify({
-                    "error": f"Too much data for {season_year} ({row_count:,} rows, limit: {MAX_ROWS_PER_SEASON:,}). This player has too much data for a single season. Please try a different player or contact support.",
-                    "detail": "The selected player has more data than can be processed in the available memory."
-                }), 413
-            
-            if df_season.empty:
-                del df_season
-                gc.collect()
-                continue  # Skip empty seasons
-            
-            # Find filter column (same for all seasons, determine once)
-            if filter_col is None:
-                if player_role == 'pitcher':
-                    for col_name in ['batter', 'batter_id']:
-                        if col_name in df_season.columns:
-                            filter_col = col_name
-                            break
-                else:
-                    for col_name in ['pitcher', 'pitcher_id']:
-                        if col_name in df_season.columns:
-                            filter_col = col_name
-                            break
-                
-                if not filter_col:
-                    available_cols = df_season.columns.tolist()
-                    del df_season
-                    gc.collect()
-                    return jsonify({
-                        "error": f"Could not find filter column. Available columns: {available_cols}"
-                    }), 500
-            
-            # Filter to opponent immediately (before keeping in memory)
-            df_season[filter_col] = pd.to_numeric(df_season[filter_col], errors='coerce')
-            df_filtered = df_season[df_season[filter_col] == opponent_id_int].copy()
-            
-            # Free the full season data immediately
-            del df_season
+
+        pitcher_id = player_id if player_role == 'pitcher' else opponent_id
+        batter_id = opponent_id if player_role == 'pitcher' else player_id
+        history_start = "2015-03-01"
+        history_end = f"{today.year}-11-30"
+        try:
+            df_history = fetch_matchup_statcast(pitcher_id, batter_id, history_start, history_end)
+        except Exception as e:
+            print(f"Error fetching direct matchup data: {e}")
+            import traceback
+            traceback.print_exc()
+            df_history = pd.DataFrame()
+
+        if len(df_history) > MAX_MATCHUP_ROWS:
+            row_count = len(df_history)
+            del df_history
             gc.collect()
-            
-            # Only keep filtered results if there are any
-            if not df_filtered.empty:
-                # Filter to regular season games only
-                if 'game_type' in df_filtered.columns:
-                    df_filtered = df_filtered[df_filtered['game_type'] == 'R'].copy()
-                
-                if not df_filtered.empty:
-                    all_filtered_dfs.append(df_filtered)
-            
-            # Clean up
-            del df_filtered
-            gc.collect()
-        
-        # Combine all filtered results (should be much smaller now)
-        if not all_filtered_dfs:
+            return jsonify({
+                "error": f"Too much matchup data ({row_count:,} rows, limit: {MAX_MATCHUP_ROWS:,}).",
+                "detail": "Please select fewer seasons or contact support."
+            }), 413
+
+        if df_history.empty:
             return jsonify({
                 "player": player_name,
                 "opponent": opponent_name,
@@ -819,13 +774,43 @@ def api_matchups():
                 "summary": {},
                 "message": "No matchup data found for these players in selected seasons"
             })
-        
-        # Combine filtered results (much smaller than original)
-        df = pd.concat(all_filtered_dfs, ignore_index=True)
-        
-        # Clean up list of dataframes
-        del all_filtered_dfs
+
+        filter_col = 'batter' if player_role == 'pitcher' else 'pitcher'
+        if filter_col not in df_history.columns:
+            alternate = f"{filter_col}_id"
+            filter_col = alternate if alternate in df_history.columns else None
+        if not filter_col:
+            available_cols = df_history.columns.tolist()
+            del df_history
+            gc.collect()
+            return jsonify({
+                "error": f"Could not find matchup filter column. Available columns: {available_cols}"
+            }), 500
+
+        df_history[filter_col] = pd.to_numeric(df_history[filter_col], errors='coerce')
+        df = df_history[df_history[filter_col] == opponent_id_int].copy()
+        del df_history
+
+        if 'game_year' in df.columns:
+            years = pd.to_numeric(df['game_year'], errors='coerce')
+        elif 'game_date' in df.columns:
+            years = pd.to_datetime(df['game_date'], errors='coerce').dt.year
+        else:
+            years = pd.Series(index=df.index, dtype='float64')
+        df = df[years.isin(season_ints)].copy()
+        if 'game_type' in df.columns:
+            df = df[df['game_type'] == 'R'].copy()
         gc.collect()
+
+        if df.empty:
+            return jsonify({
+                "player": player_name,
+                "opponent": opponent_name,
+                "player_role": player_role,
+                "matchups": [],
+                "summary": {},
+                "message": "No matchup data found for these players in selected seasons"
+            })
         
         print(f"DEBUG: After filtering to {opponent_id_int} across all seasons: {len(df)} rows")
         

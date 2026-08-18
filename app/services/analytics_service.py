@@ -11,7 +11,10 @@ from datetime import datetime, timedelta
 from app.config import Config
 from app.constants import TEAM_ABBR_TO_ID, DIVISION_OPTIONS, LEAGUE_OPTIONS, LEADER_CATEGORY_ABBR
 from app.services.cache_service import cache_service, CACHE_LEAGUE_LEADERS, CACHE_STANDINGS, CACHE_TEAM_METADATA
-from app.services.persistent_cache import get_or_set_json as persistent_get_or_set_json
+from app.services.persistent_cache import (
+    get_json as persistent_cache_get_json,
+    get_or_set_json as persistent_get_or_set_json,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +55,32 @@ def get_team_metadata(team_abbr: Optional[str]) -> Dict[str, Any]:
     ) or {"team_id": team_id}
     cache_service.set(CACHE_TEAM_METADATA, cache_key, payload, ttl_seconds=3600)
     return payload
+
+
+def get_cached_team_metadata(team_abbr: Optional[str]) -> Dict[str, Any]:
+    """Return team metadata without making an upstream request.
+
+    Gameday uses this on its initial shell render. A later async request can
+    populate the normal metadata cache without holding up navigation.
+    """
+    cache_key = (team_abbr or "").upper()
+    team_id = TEAM_ABBR_TO_ID.get(cache_key)
+    if not team_id:
+        return {}
+
+    cached = cache_service.get(CACHE_TEAM_METADATA, cache_key)
+    if isinstance(cached, dict):
+        return cached
+
+    cached = persistent_cache_get_json(
+        "team_metadata",
+        {"team_abbr": cache_key, "team_id": team_id},
+    )
+    if isinstance(cached, dict):
+        cache_service.set(CACHE_TEAM_METADATA, cache_key, cached, ttl_seconds=3600)
+        return cached
+
+    return {"team_id": team_id}
 
 
 def parse_leader_lines(raw_text: str, max_entries: int = 5) -> List[Dict[str, Any]]:
@@ -334,7 +363,6 @@ def collect_standings_data(
     if payload is not None:
         cache_service.set(CACHE_STANDINGS, cache_key, payload, ttl_seconds=600)
     return payload
-
 
 
 

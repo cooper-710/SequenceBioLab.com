@@ -13,6 +13,7 @@ from app.middleware.auth import login_required, admin_required, invalidate_user_
 from app.services.page_service import (
     build_player_home_context,
     build_gameday_context,
+    get_cached_gameday_context,
     load_full_season_schedule,
     purge_concluded_series_documents,
     format_player_document,
@@ -21,6 +22,7 @@ from app.services.page_service import (
 from app.config import Config
 from app.services.analytics_service import (
     get_team_metadata,
+    get_cached_team_metadata,
     collect_league_leaders,
     collect_standings_data
 )
@@ -595,7 +597,8 @@ def gameday():
         requested_user_id = None
 
     team_abbr = determine_user_team(target_user)
-    team_metadata = get_team_metadata(team_abbr)
+    # Do not let an MLB metadata cache miss block the page shell.
+    team_metadata = get_cached_team_metadata(team_abbr)
 
     # Schedule/series are loaded asynchronously to keep initial page render fast.
     upcoming_games: List[Dict[str, Any]] = []
@@ -666,8 +669,9 @@ def gameday():
     show_date_redirect_note = False
     requested_tab = "current"
 
-    # Load lightweight gameday context data (next_series, calendar, deliverables)
-    gameday_ctx = build_gameday_context(target_user) if target_user else {}
+    # Use only already-cached schedule context during the initial render. The
+    # async schedule request below refreshes this data after the shell appears.
+    gameday_ctx = get_cached_gameday_context(target_user) if target_user else {}
 
     return render_template(
         'gameday.html',
@@ -729,28 +733,34 @@ def gameday_schedule():
     # Server-side cache key: user_id + today's date
     user_id = target_user.get("id") if target_user else None
     today_str = datetime.now().date().isoformat()
-    cache_key = {"type": "gameday_schedule", "user_id": user_id, "date": today_str}
+    cache_key = {"type": "gameday_schedule_payload_v2", "user_id": user_id, "date": today_str}
     SCHEDULE_CACHE_TTL = 300  # 5 minutes
 
-    # Check persistent cache first (unless force refresh)
-    if persistent_cache and not force_refresh:
-        cached_html = persistent_cache.get_json("gameday_schedule_html", cache_key)
-        if cached_html:
-            # Return cached HTML with browser caching headers
-            etag = 'W/"gameday-schedule-{}"'.format(hashlib.md5(cached_html.encode("utf-8")).hexdigest())
-            inm = request.headers.get("If-None-Match")
-            if inm and inm.strip() == etag:
-                resp = make_response("", 304)
-                resp.headers["ETag"] = etag
-                resp.headers["Cache-Control"] = "private, max-age=60"
-                resp.headers["Vary"] = "Cookie"
-                return resp
+    def _schedule_response(payload: Dict[str, Any], *, stale: bool = False):
+        body = dict(payload)
+        body["stale"] = bool(stale)
+        serialized = json.dumps(body, sort_keys=True, default=str)
+        etag = 'W/"gameday-schedule-{}"'.format(hashlib.md5(serialized.encode("utf-8")).hexdigest())
+        inm = request.headers.get("If-None-Match")
+        if inm and inm.strip() == etag:
+            resp = make_response("", 304)
+        else:
+            resp = jsonify(body)
+        resp.headers["ETag"] = etag
+        resp.headers["Cache-Control"] = "private, max-age=60"
+        resp.headers["Vary"] = "Cookie"
+        if stale:
+            resp.headers["Warning"] = '110 - "Response is stale"'
+        return resp
 
-            resp = jsonify({"schedule_html": cached_html})
-            resp.headers["ETag"] = etag
-            resp.headers["Cache-Control"] = "private, max-age=60"
-            resp.headers["Vary"] = "Cookie"
-            return resp
+    # Check persistent cache first (unless force refresh)
+    stale_payload = None
+    if persistent_cache:
+        stale_payload = persistent_cache.get_stale_json("gameday_schedule_payload", cache_key)
+        if not force_refresh:
+            cached_payload = persistent_cache.get_json("gameday_schedule_payload", cache_key)
+            if isinstance(cached_payload, dict) and isinstance(cached_payload.get("schedule_html"), str):
+                return _schedule_response(cached_payload)
 
     # This endpoint is on the critical path for "Series" rendering.
     # Removed purge_concluded_series_documents() - it was blocking and should run in background.
@@ -854,28 +864,31 @@ def gameday_schedule():
         default_schedule_tab="current",
     )
 
-    # Cache the rendered HTML for 5 minutes
+    gameday_ctx = build_gameday_context(target_user) if target_user else {}
+    payload = {
+        "schedule_html": html,
+        "next_series": gameday_ctx.get("next_series") or {},
+        "schedule_calendar": gameday_ctx.get("schedule_calendar") or [],
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    # If every upstream schedule source failed, prefer a last-known-good
+    # response over replacing the page with an empty or endless loading state.
+    if (
+        not upcoming_games
+        and not payload["schedule_calendar"]
+        and isinstance(stale_payload, dict)
+        and isinstance(stale_payload.get("schedule_html"), str)
+    ):
+        return _schedule_response(stale_payload, stale=True)
+
+    # Cache the rendered widget and its structured context together.
     if persistent_cache:
         try:
-            persistent_cache.set_json("gameday_schedule_html", cache_key, html, SCHEDULE_CACHE_TTL)
+            persistent_cache.set_json("gameday_schedule_payload", cache_key, payload, SCHEDULE_CACHE_TTL)
         except Exception:
             pass  # Best effort caching
-
-    # Browser-level caching + conditional requests for faster repeat loads.
-    etag = 'W/"gameday-schedule-{}"'.format(hashlib.md5(html.encode("utf-8")).hexdigest())
-    inm = request.headers.get("If-None-Match")
-    if inm and inm.strip() == etag:
-        resp = make_response("", 304)
-        resp.headers["ETag"] = etag
-        resp.headers["Cache-Control"] = "private, max-age=60"
-        resp.headers["Vary"] = "Cookie"
-        return resp
-
-    resp = jsonify({"schedule_html": html})
-    resp.headers["ETag"] = etag
-    resp.headers["Cache-Control"] = "private, max-age=60"
-    resp.headers["Vary"] = "Cookie"
-    return resp
+    return _schedule_response(payload)
 
 
 @bp.route('/api/gameday/widgets')

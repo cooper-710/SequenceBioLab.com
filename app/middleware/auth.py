@@ -282,30 +282,16 @@ def setup_auth_middleware(app):
         if endpoint.startswith("static"):
             return
         
-        # Allow access to favicon and auth endpoints (both old and new)
-        if endpoint in {"favicon", "login", "register", "auth.login", "auth.register", "auth.account_deactivated",
-                        "auth.verify_email", "auth.verify_email_pending", "auth.resend_verification",
-                        "auth.manage_devices_login", "auth.forgot_password", "auth.forgot_password_sent",
-                        "auth.reset_password"}:
+        if endpoint == "favicon":
             return
-        
-        # For routes still in app.py (not yet migrated), use old endpoint names
-        # This is a temporary bridge until all routes are migrated to blueprints
+
         next_path = request.path
-        try:
-            # Try new blueprint routes first
-            login_url = url_for("auth.login")
-            register_url = url_for("auth.register")
-            if next_path in {login_url, register_url}:
-                next_path = None
-            flash("Please log in to continue.", "warning")
-            return redirect(url_for("auth.login", next=next_path))
-        except Exception:
-            # Fallback to old routes in app.py
-            if next_path in {"/login", "/register"}:
-                next_path = None
-            flash("Please log in to continue.", "warning")
-            return redirect(f"/login?next={next_path}" if next_path else "/login")
+        login_url = url_for("auth.login")
+        register_url = url_for("auth.register")
+        if next_path in {login_url, register_url}:
+            next_path = None
+        flash("Please log in to continue.", "warning")
+        return redirect(url_for("auth.login", next=next_path))
 
 
 def login_required(fn):
@@ -395,4 +381,3 @@ def ensure_default_admin():
             # Admin can be created manually if needed
             logger.error(f"Unable to ensure default admin user after {max_retries} attempts: {exc}")
             logger.warning("App will continue without default admin. Check DATABASE_URL configuration.")
-

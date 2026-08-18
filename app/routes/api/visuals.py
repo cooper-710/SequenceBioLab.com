@@ -2190,7 +2190,6 @@ def api_visuals_pitch_arsenal_effectiveness():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-@bp.route('/visuals/count-performance', methods=['GET'])
 @bp.route('/visuals/velocity-trends', methods=['GET'])
 def api_visuals_velocity_trends():
     """Get velocity trends data for pitchers or batters"""
@@ -2440,7 +2439,6 @@ def api_visuals_velocity_trends():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-@bp.route('/visuals/swing-decision-matrix', methods=['GET'])
 @bp.route('/visuals/zone-contact-rates', methods=['GET'])
 def api_visuals_zone_contact_rates():
     """Get strike zone contact and swing rate data for a batter"""
@@ -2706,7 +2704,6 @@ def api_visuals_zone_contact_rates():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-@bp.route('/visuals/plate-discipline-matrix', methods=['GET'])
 @bp.route('/visuals/expected-stats-comparison', methods=['GET'])
 def api_visuals_expected_stats_comparison():
     """Get expected stats comparison data: xwOBA, xBA, xSLG, xISO vs actual with confidence intervals"""
@@ -2792,9 +2789,7 @@ def api_visuals_expected_stats_comparison():
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-@bp.route('/visuals/pitch-mix-analysis', methods=['GET'])
 @bp.route('/visuals/count-performance', methods=['GET'])
-
 def api_visuals_count_performance():
 
     """Get batter performance breakdown by count"""
@@ -4642,4 +4637,3 @@ def api_pitcher_seasons(pitcher_name):
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-

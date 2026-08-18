@@ -3,11 +3,19 @@ Request context processors
 """
 from flask import g, url_for
 from app.config import Config
+from app.constants import get_team_color
 from app.middleware.csrf import generate_csrf_token
+from app.services.schedule_service import team_abbr_from_id
 
 
 def setup_context_processors(app):
     """Setup context processors"""
+
+    # These were historically registered directly on the legacy Flask app.
+    # Register them with the factory as well so data-populated schedule,
+    # dashboard, and live-score templates behave identically.
+    app.add_template_filter(team_abbr_from_id, "team_abbr_from_id")
+    app.add_template_global(get_team_color, "get_team_color_global")
     
     @app.before_request
     def attach_settings_to_request():
@@ -64,4 +72,3 @@ def setup_context_processors(app):
             "current_user": user,
             "avatar_url": avatar_url,
         }
-

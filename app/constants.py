@@ -173,9 +173,9 @@ REPORT_LEAD_DAYS = 5
 
 # Authentication exempt endpoints
 AUTH_EXEMPT_ENDPOINTS = {
-    "login",
-    "register",
     "static",
+    "auth.login",
+    "auth.register",
     "auth.account_deactivated",
     "auth.verify_email",
     "auth.verify_email_pending",
@@ -186,4 +186,3 @@ AUTH_EXEMPT_ENDPOINTS = {
     "auth.reset_password",
     "upload.upload_report"
 }
-
