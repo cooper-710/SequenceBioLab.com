@@ -120,6 +120,7 @@ def get_or_set_json(
     builder,
     *,
     lock_wait_seconds: float = 3.0,
+    cache_empty: bool = True,
 ):
     """
     Get cached JSON, or build it once and store it.
@@ -127,6 +128,11 @@ def get_or_set_json(
     On Postgres, uses an advisory lock keyed by (cache_name, cache_key) so multiple
     workers don't all fetch the same upstream data concurrently.
     """
+    def _cacheable(value: Any) -> bool:
+        if cache_empty:
+            return True
+        return value not in (None, "", [], {})
+
     try:
         from database import PlayerDB  # type: ignore
     except Exception:
@@ -140,7 +146,9 @@ def get_or_set_json(
         raw = db.cache_get(cache_name, cache_key)
         if raw:
             try:
-                return json.loads(raw)
+                value = json.loads(raw)
+                if _cacheable(value):
+                    return value
             except Exception:
                 return builder()
 
@@ -165,7 +173,9 @@ def get_or_set_json(
                 raw = db.cache_get(cache_name, cache_key)
                 if raw:
                     try:
-                        return json.loads(raw)
+                        value = json.loads(raw)
+                        if _cacheable(value):
+                            return value
                     except Exception:
                         return builder()
 
@@ -174,15 +184,18 @@ def get_or_set_json(
                     raw = db.cache_get(cache_name, cache_key)
                     if raw:
                         try:
-                            return json.loads(raw)
+                            value = json.loads(raw)
+                            if _cacheable(value):
+                                return value
                         except Exception:
                             return builder()
 
                     value = builder()
-                    try:
-                        db.cache_set(cache_name, cache_key, json.dumps(value, default=str), ttl_seconds=ttl_seconds)
-                    except Exception:
-                        pass
+                    if _cacheable(value):
+                        try:
+                            db.cache_set(cache_name, cache_key, json.dumps(value, default=str), ttl_seconds=ttl_seconds)
+                        except Exception:
+                            pass
                     return value
                 finally:
                     try:
@@ -192,10 +205,11 @@ def get_or_set_json(
                         pass
 
         value = builder()
-        try:
-            db.cache_set(cache_name, cache_key, json.dumps(value, default=str), ttl_seconds=ttl_seconds)
-        except Exception:
-            pass
+        if _cacheable(value):
+            try:
+                db.cache_set(cache_name, cache_key, json.dumps(value, default=str), ttl_seconds=ttl_seconds)
+            except Exception:
+                pass
         return value
     finally:
         try:

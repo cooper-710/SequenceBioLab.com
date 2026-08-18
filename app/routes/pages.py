@@ -15,6 +15,9 @@ from app.services.page_service import (
     build_gameday_context,
     get_cached_gameday_context,
     load_full_season_schedule,
+    load_gameday_schedule_window,
+    load_schedule_calendar,
+    load_player_deliverables,
     purge_concluded_series_documents,
     format_player_document,
     collect_series_for_gameday,
@@ -672,6 +675,11 @@ def gameday():
     # Use only already-cached schedule context during the initial render. The
     # async schedule request below refreshes this data after the shell appears.
     gameday_ctx = get_cached_gameday_context(target_user) if target_user else {}
+    # Reports are a small database query and must not depend on whether the
+    # external schedule cache has been populated yet.
+    deliverables: List[Dict[str, Any]] = []
+    if target_user:
+        _, deliverables, _ = load_player_deliverables(target_user)
 
     return render_template(
         'gameday.html',
@@ -695,7 +703,7 @@ def gameday():
         # Gameday context data
         next_series=gameday_ctx.get("next_series"),
         schedule_calendar=gameday_ctx.get("schedule_calendar", []),
-        deliverables=gameday_ctx.get("deliverables", []),
+        deliverables=deliverables,
         # All-Star context
         is_allstar_week=gameday_ctx.get("is_allstar_week", False),
         is_allstar_season=gameday_ctx.get("is_allstar_season", False),
@@ -733,7 +741,7 @@ def gameday_schedule():
     # Server-side cache key: user_id + today's date
     user_id = target_user.get("id") if target_user else None
     today_str = datetime.now().date().isoformat()
-    cache_key = {"type": "gameday_schedule_payload_v2", "user_id": user_id, "date": today_str}
+    cache_key = {"type": "gameday_schedule_payload_v3", "user_id": user_id, "date": today_str}
     SCHEDULE_CACHE_TTL = 300  # 5 minutes
 
     def _schedule_response(payload: Dict[str, Any], *, stale: bool = False):
@@ -766,9 +774,18 @@ def gameday_schedule():
     # Removed purge_concluded_series_documents() - it was blocking and should run in background.
     # Keep this endpoint fast: just build and return the schedule HTML with HTTP caching.
 
-    upcoming_games: List[Dict[str, Any]] = []
-    # Use cached series list for gameday (built from full-season schedule).
-    upcoming_games = collect_series_for_gameday(target_user, force_refresh=force_refresh) or []
+    # Fetch the schedule once, then reuse it for the series card, calendar,
+    # countdown, and upcoming-games sidebar.
+    raw_games = (
+        load_gameday_schedule_window(target_user, force_refresh=force_refresh)
+        if target_user
+        else []
+    ) or []
+    upcoming_games: List[Dict[str, Any]] = collect_series_for_gameday(
+        target_user,
+        force_refresh=force_refresh,
+        raw_games=raw_games,
+    ) or []
 
     # Attach admin-uploaded series reports (stored as player documents) to the series cards.
     report_docs: List[Dict[str, Any]] = []
@@ -864,7 +881,16 @@ def gameday_schedule():
         default_schedule_tab="current",
     )
 
-    gameday_ctx = build_gameday_context(target_user) if target_user else {}
+    schedule_calendar = load_schedule_calendar(target_user, games=raw_games) if target_user else []
+    gameday_ctx = (
+        build_gameday_context(
+            target_user,
+            schedule_calendar=schedule_calendar,
+            deliverables=[],
+        )
+        if target_user
+        else {}
+    )
     payload = {
         "schedule_html": html,
         "next_series": gameday_ctx.get("next_series") or {},
@@ -883,7 +909,7 @@ def gameday_schedule():
         return _schedule_response(stale_payload, stale=True)
 
     # Cache the rendered widget and its structured context together.
-    if persistent_cache:
+    if persistent_cache and (upcoming_games or payload["schedule_calendar"]):
         try:
             persistent_cache.set_json("gameday_schedule_payload", cache_key, payload, SCHEDULE_CACHE_TTL)
         except Exception:

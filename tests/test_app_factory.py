@@ -188,6 +188,22 @@ def test_gameday_shell_does_not_build_schedule_context(factory_app, monkeypatch)
     monkeypatch.setattr(pages, "get_cached_gameday_context", lambda _user: {})
     monkeypatch.setattr(
         pages,
+        "load_player_deliverables",
+        lambda _user: (
+            None,
+            [{
+                "title": "Production Game Plan",
+                "link": "/reports",
+                "icon": "fas fa-file",
+                "summary": "Series report",
+                "owner": "Sequence Staff",
+                "time_ago": "Today",
+            }],
+            0,
+        ),
+    )
+    monkeypatch.setattr(
+        pages,
         "build_gameday_context",
         lambda _user: pytest.fail("initial Gameday render performed external schedule work"),
     )
@@ -198,6 +214,7 @@ def test_gameday_shell_does_not_build_schedule_context(factory_app, monkeypatch)
 
     assert response.status_code == 200
     assert b"Loading schedule" in response.data
+    assert b"Production Game Plan" in response.data
 
 
 def test_gameday_schedule_returns_structured_async_payload(factory_app, monkeypatch):
@@ -225,8 +242,10 @@ def test_gameday_schedule_returns_structured_async_payload(factory_app, monkeypa
     }
     monkeypatch.setattr(pages, "PlayerDB", None)
     monkeypatch.setattr(pages, "persistent_cache", None)
+    monkeypatch.setattr(pages, "load_gameday_schedule_window", lambda *_args, **_kwargs: [{}])
     monkeypatch.setattr(pages, "collect_series_for_gameday", lambda *_args, **_kwargs: [game])
-    monkeypatch.setattr(pages, "build_gameday_context", lambda _user: context)
+    monkeypatch.setattr(pages, "load_schedule_calendar", lambda *_args, **_kwargs: context["schedule_calendar"])
+    monkeypatch.setattr(pages, "build_gameday_context", lambda _user, **_kwargs: context)
 
     with factory_app.test_client() as client:
         _authenticate(client)

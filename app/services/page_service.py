@@ -36,7 +36,7 @@ except ImportError:
     next_games_aaa = None
 
 logger = logging.getLogger(__name__)
-GAMEDAY_CACHE_VERSION = 3
+GAMEDAY_CACHE_VERSION = 4
 
 # Cache for player news
 _PLAYER_NEWS_CACHE: Dict[str, Tuple[List[Dict[str, Any]], datetime]] = {}
@@ -208,16 +208,23 @@ def load_next_series_snapshot(user: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     }
 
 
-def load_schedule_calendar(user: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Load schedule data for calendar widget (full month)."""
+def load_schedule_calendar(
+    user: Dict[str, Any],
+    games: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    """Load and format schedule data for the calendar widget.
+
+    A caller that already fetched the schedule can pass ``games`` so Gameday
+    does not make the same upstream request twice.
+    """
     try:
         team_abbr = determine_user_team(user)
         use_mock = _get_use_mock_schedule()
         is_aaa = _get_user_team_level(user) == "AAA"
 
-        # Get games - use mock or real data
-        games = []
-        if use_mock and not is_aaa:
+        # Get games only when the caller did not already supply them.
+        if games is None and use_mock and not is_aaa:
+            games = []
             # Get mock games with raw date data (same pattern as schedule page)
             now = datetime.now().astimezone()
             base_first_pitch = now.replace(hour=19, minute=10, second=0, microsecond=0)
@@ -250,7 +257,7 @@ def load_schedule_calendar(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                         "status": entry.get("status", "Scheduled"),
                         "venue": "TBD",
                     })
-        else:
+        elif games is None:
             # Use a shorter schedule window for the Gameday calendar to keep first load fast.
             # Also used for AAA players (bypasses mock regardless of USE_MOCK_SCHEDULE).
             games = load_gameday_schedule_window(user)
@@ -373,32 +380,39 @@ def _next_series_from_calendar(calendar_data: List[Dict[str, Any]]) -> Optional[
     }
 
 
-def load_gameday_schedule_window(user: Dict[str, Any]) -> List[Dict[str, Any]]:
+def load_gameday_schedule_window(
+    user: Dict[str, Any],
+    *,
+    force_refresh: bool = False,
+) -> List[Dict[str, Any]]:
     """Load only the portion of the schedule needed for Gameday.
 
-    This uses a shorter window than the full-season loader so that
-    first-time loads are faster while still providing enough future games
-    for the calendar and upcoming-games sidebar. Set to 270 days to
-    cover the full MLB season through October.
-
-    Starts from February 1st of the current year so the calendar always
-    includes the full season history (spring training through October).
+    The window covers one baseball season. Avoid asking the MLB API for a
+    rolling year-plus response when the UI only needs the current season.
     """
     try:
         today = datetime.now().date()
-        start_date = date(today.year, 2, 1)
-        end_date = today + timedelta(days=270)
+        season_year = today.year if today.month < 11 else today.year + 1
+        start_date = date(season_year, 2, 1)
+        end_date = date(season_year, 11, 15)
         return load_full_season_schedule(
             user,
             start_date=start_date.isoformat(),
             end_date=end_date.isoformat(),
+            force_refresh=force_refresh,
         )
     except Exception as exc:
         logger.warning(f"Warning loading gameday schedule window: {exc}")
         return []
 
 
-def load_full_season_schedule(user: Dict[str, Any], start_date: Optional[str] = None, end_date: Optional[str] = None) -> List[Dict[str, Any]]:
+def load_full_season_schedule(
+    user: Dict[str, Any],
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    *,
+    force_refresh: bool = False,
+) -> List[Dict[str, Any]]:
     """Load full season schedule, optionally filtered by date range."""
     try:
         team_abbr = determine_user_team(user)
@@ -502,11 +516,27 @@ def load_full_season_schedule(user: Dict[str, Any], start_date: Optional[str] = 
                         continue
             return filtered
 
+        if force_refresh:
+            fresh = _build_schedule()
+            if fresh:
+                try:
+                    from app.services.persistent_cache import set_json as persistent_cache_set_json
+                    persistent_cache_set_json(
+                        "full_season_schedule",
+                        cache_key_payload,
+                        fresh,
+                        ttl_seconds=6 * 60 * 60,
+                    )
+                except Exception:
+                    pass
+            return fresh
+
         cached_or_built = persistent_get_or_set_json(
             "full_season_schedule",
             cache_key_payload,
             ttl_seconds=(6 * 60 * 60),
             builder=_build_schedule,
+            cache_empty=False,
         )
         if isinstance(cached_or_built, list):
             return cached_or_built
@@ -714,7 +744,12 @@ def build_series_from_games(raw_games: List[Dict[str, Any]], today: date) -> Lis
     return formatted
 
 
-def collect_series_for_gameday(user: Dict[str, Any], *, force_refresh: bool = False) -> List[Dict[str, Any]]:
+def collect_series_for_gameday(
+    user: Dict[str, Any],
+    *,
+    force_refresh: bool = False,
+    raw_games: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
     """Return a cached list of series for the Gameday schedule card.
 
     Uses the same schedule window as the calendar to ensure consistency.
@@ -741,17 +776,22 @@ def collect_series_for_gameday(user: Dict[str, Any], *, force_refresh: bool = Fa
 
     def _builder() -> List[Dict[str, Any]]:
         # Use the same loader as the calendar to ensure consistency
-        raw_games = load_gameday_schedule_window(user) or []
-        if not raw_games:
+        loaded_games = load_gameday_schedule_window(user, force_refresh=force_refresh) or []
+        if not loaded_games:
             # Fallback: try full season schedule if the shorter window returns nothing
-            raw_games = load_full_season_schedule(
+            loaded_games = load_full_season_schedule(
                 user,
                 start_date=today.isoformat(),
                 end_date=(today + timedelta(days=365)).isoformat(),
+                force_refresh=force_refresh,
             ) or []
-        return build_series_from_games(raw_games, today)
+        return build_series_from_games(loaded_games, today)
 
-    if force_refresh:
+    if raw_games is not None:
+        # The async Gameday endpoint already fetched these games for the
+        # calendar. Reuse them rather than issuing a duplicate MLB request.
+        series = build_series_from_games(raw_games, today)
+    elif force_refresh:
         series = _builder()
         # Overwrite the cache with fresh data
         try:
@@ -768,21 +808,22 @@ def collect_series_for_gameday(user: Dict[str, Any], *, force_refresh: bool = Fa
         )
 
     # If cached result is empty, try building fresh as fallback
-    if not series or not isinstance(series, list) or len(series) == 0:
+    if raw_games is None and (not series or not isinstance(series, list) or len(series) == 0):
         logger.warning(f"Gameday series cache returned empty, rebuilding fresh for {team_abbr}")
         try:
-            raw_games = load_gameday_schedule_window(user) or []
-            if raw_games:
-                series = build_series_from_games(raw_games, today)
+            loaded_games = load_gameday_schedule_window(user, force_refresh=force_refresh) or []
+            if loaded_games:
+                series = build_series_from_games(loaded_games, today)
             else:
                 # Last resort: try full season
-                raw_games = load_full_season_schedule(
+                loaded_games = load_full_season_schedule(
                     user,
                     start_date=today.isoformat(),
                     end_date=(today + timedelta(days=365)).isoformat(),
+                    force_refresh=force_refresh,
                 ) or []
-                if raw_games:
-                    series = build_series_from_games(raw_games, today)
+                if loaded_games:
+                    series = build_series_from_games(loaded_games, today)
         except Exception as exc:
             logger.warning(f"Warning rebuilding gameday series fallback: {exc}")
             series = []
@@ -862,77 +903,40 @@ def collect_series_for_gameday(user: Dict[str, Any], *, force_refresh: bool = Fa
 def _overlay_fresh_probables(series: List[Dict[str, Any]], team_abbr: Optional[str]) -> None:
     """Fetch fresh probable pitcher data and overlay it onto current/upcoming series.
 
-    Calls the MLB StatsAPI directly (without sportId restriction) so that
-    spring training probables are included.  Results are cached for 30 minutes.
+    Uses the same bounded, lightweight schedule client as the main Gameday
+    request. Results are cached for 30 minutes.
     """
-    if not team_abbr or not series:
-        return
-
-    try:
-        from next_opponent import _resolve_team_id
-    except ImportError:
-        logger.warning("Cannot import _resolve_team_id for fresh probables")
-        return
-
-    try:
-        team_id = _resolve_team_id(team_abbr)
-    except Exception as exc:
-        logger.warning(f"Cannot resolve team_id for {team_abbr}: {exc}")
+    if not team_abbr or not series or not next_games:
         return
 
     try:
         today = datetime.now().date()
-        end_dt = today + timedelta(days=14)
-
         cache_key = {
-            "type": "fresh_probables_v2",
+            "type": "fresh_probables_v3",
             "team_abbr": (team_abbr or "").upper(),
             "date": today.isoformat(),
         }
 
         def _fetch_probables():
-            # Call statsapi.schedule without sportId restriction (sportId=0 is falsy,
-            # so the library omits it from the request, returning all game types
-            # including spring training).
             try:
-                raw_schedule = statsapi.schedule(
+                raw_schedule = next_games(
+                    team_abbr,
+                    days_ahead=14,
+                    include_started=True,
                     start_date=today.isoformat(),
-                    end_date=end_dt.isoformat(),
-                    team=team_id,
-                    sportId=0,
                 )
             except Exception as e:
                 logger.warning(f"Fresh probables API call failed: {e}")
-                # Fallback: try with default sportId
-                try:
-                    raw_schedule = statsapi.schedule(
-                        start_date=today.isoformat(),
-                        end_date=end_dt.isoformat(),
-                        team=team_id,
-                    )
-                except Exception:
-                    return []
+                return []
 
             results = []
             for g in raw_schedule:
                 game_pk = g.get("game_id") or g.get("game_pk")
-                home_id = g.get("home_id")
-                away_id = g.get("away_id")
-
-                # Get opponent's probable pitcher
-                pitchers = []
-                if team_id == home_id:
-                    opp_name = g.get("away_probable_pitcher")
-                else:
-                    opp_name = g.get("home_probable_pitcher")
-
-                if opp_name:
-                    pitchers.append({"name": str(opp_name)})
 
                 results.append({
                     "game_pk": game_pk,
                     "game_date": g.get("game_date"),
-                    "probable_pitchers": pitchers,
+                    "probable_pitchers": g.get("probable_pitchers") or [],
                 })
 
             logger.info(f"Fresh probables: fetched {len(results)} games, "
@@ -944,6 +948,7 @@ def _overlay_fresh_probables(series: List[Dict[str, Any]], team_abbr: Optional[s
             cache_key,
             ttl_seconds=30 * 60,  # 30 minutes
             builder=_fetch_probables,
+            cache_empty=False,
         )
 
         if not fresh_games or not isinstance(fresh_games, list):
@@ -2363,7 +2368,12 @@ def load_player_news(user: Dict[str, Any]) -> List[Dict[str, Any]]:
     return result
 
 
-def build_gameday_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+def build_gameday_context(
+    user: Optional[Dict[str, Any]],
+    *,
+    schedule_calendar: Optional[List[Dict[str, Any]]] = None,
+    deliverables: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
     """Build a lightweight context for the Gameday page only.
 
     This intentionally avoids the heavier work in build_player_home_context
@@ -2384,18 +2394,21 @@ def build_gameday_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     cache_payload: Optional[Dict[str, Any]] = {"user_id": int(user_id), "v": GAMEDAY_CACHE_VERSION} if user_id else None
 
     # Short‑TTL persistent cache to avoid repeated DB / API work for this page.
-    if cache_payload:
+    supplied_schedule = schedule_calendar is not None
+    if cache_payload and not supplied_schedule:
         cached_ctx = persistent_cache_get_json("gameday_context", cache_payload)
         if isinstance(cached_ctx, dict) and cached_ctx:
             return cached_ctx
 
     # Load the schedule once and derive the countdown from it. The previous
     # implementation made a second full-season request for next_series.
-    schedule_calendar = load_schedule_calendar(user)
+    if schedule_calendar is None:
+        schedule_calendar = load_schedule_calendar(user)
     if not isinstance(schedule_calendar, list):
         schedule_calendar = []
     next_series = _next_series_from_calendar(schedule_calendar)
-    _, deliverables, _ = load_player_deliverables(user)
+    if deliverables is None:
+        _, deliverables, _ = load_player_deliverables(user)
 
     # All-Star detection
     # is_allstar_week: True during actual All-Star break (July 14-18) for special UI
@@ -2413,7 +2426,7 @@ def build_gameday_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         "user_is_allstar": user_is_allstar,
     }
 
-    if cache_payload:
+    if cache_payload and schedule_calendar:
         try:
             # Keep this fresher than the full dashboard; 15 minutes is enough.
             from app.services.persistent_cache import set_json as persistent_cache_set_json

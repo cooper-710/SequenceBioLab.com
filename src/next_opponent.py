@@ -4,7 +4,34 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any
 from functools import lru_cache
+import logging
 import statsapi  # pip install MLB-StatsAPI
+
+
+logger = logging.getLogger(__name__)
+
+# Resolve the common abbreviations locally. A cold Gameday request should not
+# need a separate MLB metadata request before it can ask for the schedule.
+_MLB_TEAM_IDS = {
+    "ARI": 109, "ATL": 144, "BAL": 110, "BOS": 111, "CHC": 112,
+    "CWS": 145, "CHW": 145, "CIN": 113, "CLE": 114, "COL": 115,
+    "DET": 116, "HOU": 117, "KC": 118, "KCR": 118, "LAA": 108,
+    "ANA": 108, "LAD": 119, "MIA": 146, "MIL": 158, "MIN": 142,
+    "NYM": 121, "NYY": 147, "OAK": 133, "PHI": 143, "PIT": 134,
+    "SD": 135, "SDP": 135, "SF": 137, "SFG": 137, "SEA": 136,
+    "STL": 138, "TB": 139, "TBR": 139, "TEX": 140, "TOR": 141,
+    "WSH": 120, "WSN": 120, "WAS": 120,
+}
+
+_AAA_TEAM_IDS = {
+    "ABQ": 342, "BUF": 422, "CLT": 494, "CLB": 445, "COL": 445,
+    "DUR": 234, "ELP": 4904, "GWN": 431, "IND": 484, "IOW": 451,
+    "JAX": 564, "LHV": 1410, "LOU": 416, "LV": 400, "MEM": 235,
+    "NAS": 556, "NOR": 568, "OKC": 238, "OMA": 541, "RNO": 2310,
+    "ROC": 534, "RR": 102, "SAC": 105, "SL": 561, "STP": 1960,
+    "SUG": 5434, "SWB": 531, "SYR": 552, "TAC": 529, "TOL": 512,
+    "WOR": 533,
+}
 
 # ---------- Team index helpers ----------
 
@@ -48,6 +75,8 @@ def _team_index() -> Dict[str, int]:
 
 def _resolve_team_id(team_key: str) -> int:
     k = team_key.strip().upper()
+    if k in _MLB_TEAM_IDS:
+        return _MLB_TEAM_IDS[k]
     idx = _team_index()
     if k not in idx:
         raise ValueError(f"Unrecognized team key: {team_key!r}")
@@ -88,12 +117,125 @@ def _aaa_team_index() -> Dict[str, int]:
 
 def _resolve_aaa_team_id(team_key: str) -> int:
     k = team_key.strip().upper()
+    if k in _AAA_TEAM_IDS:
+        return _AAA_TEAM_IDS[k]
     idx = _aaa_team_index()
     if k not in idx:
         raise ValueError(f"Unrecognized AAA team key: {team_key!r}")
     return idx[k]
 
 # ---------- Core logic ----------
+
+def _fetch_schedule(
+    team_id: int,
+    sport_id: int,
+    query_start,
+    query_end,
+) -> Dict[str, Any]:
+    """Fetch the minimal schedule shape needed by Gameday.
+
+    ``statsapi.schedule`` hydrates broadcasts, media, decisions, linescores,
+    and series status for every game. That response is unnecessarily large for
+    Gameday and was slow enough on a cold Render instance to exceed the browser
+    timeout. Keep the upstream request bounded and hydrate only probable
+    pitchers.
+    """
+    try:
+        return statsapi.get(
+            "schedule",
+            {
+                "sportId": sport_id,
+                "teamId": team_id,
+                "startDate": query_start.isoformat(),
+                "endDate": query_end.isoformat(),
+                "hydrate": "probablePitcher(note)",
+            },
+            request_kwargs={"timeout": (3.05, 15)},
+        ) or {}
+    except Exception as exc:
+        logger.warning("Schedule request failed for team %s: %s", team_id, exc)
+        return {}
+
+
+def _parse_schedule(
+    payload: Dict[str, Any],
+    team_id: int,
+    *,
+    include_started: bool,
+) -> List[Dict[str, Any]]:
+    """Normalize a raw MLB StatsAPI schedule response."""
+    results: List[Dict[str, Any]] = []
+    for date_entry in payload.get("dates") or []:
+        fallback_date = date_entry.get("date")
+        for game in date_entry.get("games") or []:
+            teams = game.get("teams") or {}
+            home = teams.get("home") or {}
+            away = teams.get("away") or {}
+            home_team = home.get("team") or {}
+            away_team = away.get("team") or {}
+            home_id = home_team.get("id")
+            away_id = away_team.get("id")
+            if home_id is None or away_id is None:
+                continue
+
+            status = ((game.get("status") or {}).get("detailedState") or "")
+            if not include_started and status in ("Final", "Game Over"):
+                continue
+
+            is_home = int(home_id) == int(team_id)
+            opponent = away if is_home else home
+            opponent_team = away_team if is_home else home_team
+            probable = opponent.get("probablePitcher") or {}
+            probable_pitchers = []
+            if probable.get("fullName"):
+                entry = {"name": str(probable["fullName"])}
+                if probable.get("id"):
+                    entry["id"] = int(probable["id"])
+                probable_pitchers.append(entry)
+
+            game_datetime = game.get("gameDate")
+            if game_datetime:
+                try:
+                    game_datetime = datetime.fromisoformat(
+                        str(game_datetime).replace("Z", "+00:00")
+                    ).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                except Exception:
+                    game_datetime = None
+
+            game_date = fallback_date
+            if not game_date and game_datetime:
+                game_date = game_datetime[:10]
+            if not game_date:
+                continue
+
+            results.append({
+                "game_date": game_date,
+                "game_datetime": game_datetime,
+                "game_pk": game.get("gamePk"),
+                "home_id": int(home_id),
+                "home_name": home_team.get("name"),
+                "away_id": int(away_id),
+                "away_name": away_team.get("name"),
+                "opponent_id": int(opponent_team.get("id")),
+                "opponent_name": opponent_team.get("name"),
+                "is_home": is_home,
+                "venue": (game.get("venue") or {}).get("name"),
+                "series_description": game.get("seriesDescription"),
+                "status": status,
+                "probable_pitchers": probable_pitchers,
+                "game_type": game.get("gameType", "R"),
+            })
+
+    def _sort_key(item: Dict[str, Any]):
+        raw = item.get("game_datetime") or item["game_date"]
+        try:
+            parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except Exception:
+            return datetime.max.replace(tzinfo=timezone.utc)
+
+    results.sort(key=_sort_key)
+    return results
 
 def _probables_from_game(game: Dict[str, Any], team_id: int) -> List[Dict[str, Any]]:
     """
@@ -154,70 +296,8 @@ def next_games(team_key: str, days_ahead: int = 7, include_started: bool = False
         query_start = today - timedelta(days=1)
 
     end_date = query_start + timedelta(days=days_ahead)
-    try:
-        schedule = statsapi.schedule(
-            start_date=query_start.isoformat(),
-            end_date=end_date.isoformat(),
-            team=team_id
-        )
-    except Exception:
-        schedule = []
-
-    results: List[Dict[str, Any]] = []
-
-    for g in schedule:
-        status = g.get('status', '')
-        if not include_started and status in ('Final', 'Game Over'):
-            continue  # skip completed
-
-        game_date = g.get('game_date') or g.get('gameDate')
-        if not game_date:
-            continue
-
-        home_id, away_id = g['home_id'], g['away_id']
-        is_home = home_id == team_id
-        opponent_id = away_id if is_home else home_id
-        opponent_name = g['away_name'] if is_home else g['home_name']
-
-        game_datetime = None
-        if g.get('game_datetime'):
-            try:
-                dt = datetime.fromisoformat(g['game_datetime'].replace('Z', '+00:00')).astimezone(timezone.utc)
-                game_datetime = dt.strftime('%Y-%m-%dT%H:%M:%SZ')
-            except Exception:
-                game_datetime = None
-
-        results.append({
-            "game_date": game_date,
-            "game_datetime": game_datetime,
-            "game_pk": g.get("game_id") or g.get("game_pk"),
-            "home_id": home_id,
-            "home_name": g.get('home_name'),
-            "away_id": away_id,
-            "away_name": g.get('away_name'),
-            "opponent_id": opponent_id,
-            "opponent_name": opponent_name,
-            "is_home": is_home,
-            "venue": g.get('venue_name'),
-            "series_description": g.get('series_description'),
-            "status": status,
-            "probable_pitchers": _probables_from_game(g, team_id),
-            "game_type": g.get('game_type', 'R'),
-        })
-
-    # Sort by datetime (or date as fallback), then by game number (if present)
-    def _sort_key(item: Dict[str, Any]):
-        dt = item.get("game_datetime")
-        if dt:
-            try:
-                return (datetime.fromisoformat(dt.replace('Z', '+00:00')), 0)
-            except Exception:
-                pass
-        # fallback to game_date only
-        return (datetime.fromisoformat(item["game_date"]), 0)
-
-    results.sort(key=_sort_key)
-    return results
+    payload = _fetch_schedule(team_id, 1, query_start, end_date)
+    return _parse_schedule(payload, team_id, include_started=include_started)
 
 def next_games_aaa(team_key: str, days_ahead: int = 7, include_started: bool = False, start_date: Optional[str] = None) -> List[Dict[str, Any]]:
     """
@@ -236,69 +316,8 @@ def next_games_aaa(team_key: str, days_ahead: int = 7, include_started: bool = F
         query_start = today - timedelta(days=1)
 
     end_date_val = query_start + timedelta(days=days_ahead)
-    try:
-        schedule = statsapi.schedule(
-            start_date=query_start.isoformat(),
-            end_date=end_date_val.isoformat(),
-            team=team_id,
-            sportId=11,
-        )
-    except Exception:
-        schedule = []
-
-    results: List[Dict[str, Any]] = []
-
-    for g in schedule:
-        status = g.get('status', '')
-        if not include_started and status in ('Final', 'Game Over'):
-            continue
-
-        game_date = g.get('game_date') or g.get('gameDate')
-        if not game_date:
-            continue
-
-        home_id, away_id = g['home_id'], g['away_id']
-        is_home = home_id == team_id
-        opponent_id = away_id if is_home else home_id
-        opponent_name = g['away_name'] if is_home else g['home_name']
-
-        game_datetime = None
-        if g.get('game_datetime'):
-            try:
-                dt = datetime.fromisoformat(g['game_datetime'].replace('Z', '+00:00')).astimezone(timezone.utc)
-                game_datetime = dt.strftime('%Y-%m-%dT%H:%M:%SZ')
-            except Exception:
-                game_datetime = None
-
-        results.append({
-            "game_date": game_date,
-            "game_datetime": game_datetime,
-            "game_pk": g.get("game_id") or g.get("game_pk"),
-            "home_id": home_id,
-            "home_name": g.get('home_name'),
-            "away_id": away_id,
-            "away_name": g.get('away_name'),
-            "opponent_id": opponent_id,
-            "opponent_name": opponent_name,
-            "is_home": is_home,
-            "venue": g.get('venue_name'),
-            "series_description": g.get('series_description'),
-            "status": status,
-            "probable_pitchers": _probables_from_game(g, team_id),
-            "game_type": g.get('game_type', 'R'),
-        })
-
-    def _sort_key(item: Dict[str, Any]):
-        dt = item.get("game_datetime")
-        if dt:
-            try:
-                return (datetime.fromisoformat(dt.replace('Z', '+00:00')), 0)
-            except Exception:
-                pass
-        return (datetime.fromisoformat(item["game_date"]), 0)
-
-    results.sort(key=_sort_key)
-    return results
+    payload = _fetch_schedule(team_id, 11, query_start, end_date_val)
+    return _parse_schedule(payload, team_id, include_started=include_started)
 
 
 def next_game_info(team_key: str, days_ahead: int = 7) -> Dict[str, Any]:

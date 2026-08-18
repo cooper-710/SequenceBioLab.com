@@ -8,6 +8,7 @@ import statsapi
 import sys
 from pathlib import Path
 from app.config import Config
+from app.constants import TEAM_ABBR_TO_ID
 from app.services.cache_service import cache_service, CACHE_UPCOMING_GAMES
 from app.utils.formatters import coerce_utc_datetime, extract_game_datetime
 from app.utils.venue_timezones import format_game_time_venue
@@ -18,6 +19,12 @@ try:
 except ImportError:
     next_games = None
     next_games_aaa = None
+
+
+_MLB_TEAM_ID_TO_ABBR: Dict[int, str] = {}
+for _abbr, _team_id in TEAM_ABBR_TO_ID.items():
+    # Canonical entries appear before aliases in constants.py.
+    _MLB_TEAM_ID_TO_ABBR.setdefault(int(_team_id), _abbr)
 
 
 @lru_cache(maxsize=1)
@@ -64,7 +71,9 @@ def team_abbr_from_id(team_id: Optional[int]) -> Optional[str]:
     """Get team abbreviation from team ID (checks MLB then AAA directories)."""
     if not team_id:
         return None
-    result = (_team_directory().get(int(team_id)) or {}).get("abbr")
+    result = _MLB_TEAM_ID_TO_ABBR.get(int(team_id))
+    if not result:
+        result = (_team_directory().get(int(team_id)) or {}).get("abbr")
     if not result:
         result = (_aaa_team_directory().get(int(team_id)) or {}).get("abbr") or None
     return result
@@ -361,4 +370,3 @@ def collect_series_for_team(team_abbr: Optional[str], days_ahead: int = 14, team
 
     out.sort(key=lambda item: item.get("start") or "")
     return out
-

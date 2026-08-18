@@ -99,6 +99,11 @@
                                 <div class="calendar-weekday">Fri</div>
                                 <div class="calendar-weekday">Sat</div>
                             </div>
+                            <div class="calendar-loading-note" id="calendar-loading-state"
+                                 {% if schedule_calendar %}hidden{% endif %}>
+                                <span class="schedule-loading-spinner" aria-hidden="true"></span>
+                                <span>Loading schedule…</span>
+                            </div>
                             <div class="calendar-days-grid" id="calendar-days-grid"></div>
                             <div class="calendar-legend">
                                 <div class="calendar-legend-item">
@@ -131,7 +136,7 @@
                             <h2>Upcoming Games</h2>
                         </header>
                         <div class="upcoming-games-list" id="upcoming-games-list">
-                            <!-- Games will be populated by JavaScript -->
+                            <div class="upcoming-game-empty">Loading schedule…</div>
                         </div>
                     </article>
                 </div>
@@ -559,6 +564,22 @@
     grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 4px;
     min-width: 0;
+}
+.calendar-loading-note {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 42px;
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+}
+.calendar-loading-note[hidden] {
+    display: none;
+}
+.calendar-loading-note .schedule-loading-spinner {
+    width: 18px;
+    height: 18px;
 }
 .calendar-day {
     aspect-ratio: 1;
@@ -2582,6 +2603,29 @@
 document.addEventListener('DOMContentLoaded', function () {
     var scheduleContainer = document.getElementById('gameday-schedule-content');
 
+    function setScheduleLoadState(state) {
+        window.gamedayScheduleState = state;
+        var note = document.getElementById('calendar-loading-state');
+        var upcoming = document.getElementById('upcoming-games-list');
+        if (note) {
+            note.hidden = state === 'loaded';
+            if (state === 'error') {
+                note.innerHTML = '<span>Schedule temporarily unavailable.</span>';
+            } else if (state === 'loading') {
+                note.innerHTML = '<span class="schedule-loading-spinner" aria-hidden="true"></span><span>Loading schedule…</span>';
+            }
+        }
+        if (upcoming && state !== 'loaded') {
+            upcoming.innerHTML = '<div class="upcoming-game-empty">' +
+                (state === 'error' ? 'Schedule temporarily unavailable' : 'Loading schedule…') +
+                '</div>';
+        }
+    }
+
+    if (!window.gamedayScheduleState) {
+        setScheduleLoadState('loading');
+    }
+
     function autoHideRedirectNote() {
         var redirectNote = document.querySelector('.schedule-redirect-note');
         if (!redirectNote) {
@@ -2783,6 +2827,8 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         var url = endpoint + (params.toString() ? ("?" + params.toString()) : "");
 
+        setScheduleLoadState('loading');
+
         if (scheduleRequestController) {
             scheduleRequestController.abort();
         }
@@ -2790,7 +2836,7 @@ document.addEventListener('DOMContentLoaded', function () {
         scheduleRequestController = requestController;
         var timeoutId = window.setTimeout(function() {
             requestController.abort();
-        }, 12000);
+        }, 25000);
 
         fetch(url, {
             headers: { "Accept": "application/json" },
@@ -2805,6 +2851,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (!payload || typeof payload.schedule_html !== "string") {
                     throw new Error('Invalid schedule response');
                 }
+                setScheduleLoadState('loaded');
                 scheduleContainer.innerHTML = payload.schedule_html;
                 autoHideRedirectNote();
                 initSchedule();
@@ -2823,6 +2870,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 } else {
                     console.error('Error loading gameday schedule:', error);
                 }
+                setScheduleLoadState('error');
                 renderScheduleError();
             })
             .finally(function () {
@@ -3075,6 +3123,9 @@ document.addEventListener('DOMContentLoaded', function () {
     
     // Use real schedule data from backend
     let scheduleCalendar = {{ (schedule_calendar or [])|tojson|safe }};
+    if (scheduleCalendar.length > 0) {
+        window.gamedayScheduleState = 'loaded';
+    }
     
     // Create a map of dates to games
     let gamesByDate = {};
@@ -3231,6 +3282,14 @@ document.addEventListener('DOMContentLoaded', function () {
     // Populate upcoming games sidebar
     function renderUpcomingGames() {
     const upcomingGamesList = document.getElementById('upcoming-games-list');
+    if (upcomingGamesList && window.gamedayScheduleState !== 'loaded') {
+        upcomingGamesList.innerHTML = '<div class="upcoming-game-empty">' +
+            (window.gamedayScheduleState === 'error'
+                ? 'Schedule temporarily unavailable'
+                : 'Loading schedule…') +
+            '</div>';
+        return;
+    }
     if (upcomingGamesList && scheduleCalendar && scheduleCalendar.length > 0) {
         // Get today's date
         const today = new Date();
@@ -3331,7 +3390,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
     renderUpcomingGames();
     window.updateGamedayCalendar = function(games) {
+        window.gamedayScheduleState = 'loaded';
         scheduleCalendar = Array.isArray(games) ? games : [];
+        const loadingNote = document.getElementById('calendar-loading-state');
+        if (loadingNote) loadingNote.hidden = true;
         rebuildGamesByDate();
         renderCalendar(currentMonth, currentYear);
         renderUpcomingGames();
