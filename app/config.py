@@ -30,6 +30,14 @@ def _get_secret_key_from_settings() -> str:
 
 class Config:
     """Application configuration"""
+
+    # Application startup
+    ENSURE_DEFAULT_ADMIN = os.environ.get("ENSURE_DEFAULT_ADMIN", "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
     
     # Base directories
     ROOT_DIR = Path(__file__).parent.parent.resolve()
@@ -132,4 +140,3 @@ class Config:
 
 # Set SECRET_KEY as class attribute after class definition to avoid circular import issues
 Config.SECRET_KEY = Config._get_secret_key()
-

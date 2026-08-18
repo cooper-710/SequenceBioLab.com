@@ -20,50 +20,38 @@ def create_app(config=None):
     Returns:
         Flask application instance
     """
-    app = Flask(__name__, template_folder=str(Config.ROOT_DIR / 'templates'), static_folder=str(Config.ROOT_DIR / 'static'))
-    
-    # Load configuration
-    if config is None:
-        config = Config
-    
+    config = config or Config
+    root_dir = getattr(config, "ROOT_DIR", Config.ROOT_DIR)
+    app = Flask(
+        __name__,
+        template_folder=str(root_dir / "templates"),
+        static_folder=str(root_dir / "static"),
+    )
+
     app.config.from_object(config)
-    app.config['SECRET_KEY'] = Config.SECRET_KEY
-    app.config['DEBUG'] = Config.DEBUG
-    app.config['USE_MOCK_SCHEDULE'] = Config.USE_MOCK_SCHEDULE
-    app.config['PERMANENT_SESSION_LIFETIME'] = Config.PERMANENT_SESSION_LIFETIME
-    
-    # Ensure directories exist
-    Config.ensure_directories()
+
+    # Ensure directories exist. Test/staging configurations can provide a
+    # no-op implementation without changing the production configuration.
+    config.ensure_directories()
     
     # Setup logging
     logging.basicConfig(
-        level=logging.INFO if not Config.DEBUG else logging.DEBUG,
+        level=logging.INFO if not app.config.get("DEBUG") else logging.DEBUG,
         format='%(asctime)s %(levelname)s %(name)s %(message)s'
     )
-    
+
     # Setup middleware
-    try:
-        setup_auth_middleware(app)
-        setup_context_processors(app)
-    except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.warning(f"Error setting up middleware: {e}")
-    
+    setup_auth_middleware(app)
+    setup_context_processors(app)
+
     # Ensure default admin exists
-    try:
+    if app.config.get("ENSURE_DEFAULT_ADMIN", True):
         ensure_default_admin()
-    except Exception as e:
-        logger = logging.getLogger(__name__)
-        logger.warning(f"Error ensuring default admin: {e}")
-    
-    # Register routes (may be empty if routes are still in app.py)
-    try:
-        register_routes(app)
-    except Exception as e:
-        # Routes may still be in app.py - that's OK for gradual migration
-        logger = logging.getLogger(__name__)
-        logger.debug(f"Routes not yet migrated to blueprints: {e}")
-    
+
+    # A partially registered application is unsafe: fail startup if any route
+    # group cannot be imported or registered.
+    register_routes(app)
+
     # Register error handlers
     @app.errorhandler(404)
     def not_found(error):

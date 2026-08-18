@@ -36,6 +36,7 @@ except ImportError:
     next_games_aaa = None
 
 logger = logging.getLogger(__name__)
+GAMEDAY_CACHE_VERSION = 3
 
 # Cache for player news
 _PLAYER_NEWS_CACHE: Dict[str, Tuple[List[Dict[str, Any]], datetime]] = {}
@@ -285,6 +286,7 @@ def load_schedule_calendar(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                         "venue": game.get("venue", ""),
                         "status": game.get("status", "Scheduled"),
                         "game_type": game.get("game_type", "R"),
+                        "game_datetime_iso": game.get("game_datetime") or game.get("game_datetime_iso"),
                     })
                 except Exception as e:
                     logger.warning(f"Warning formatting game date {game_date}: {e}")
@@ -312,6 +314,7 @@ def load_schedule_calendar(user: Dict[str, Any]) -> List[Dict[str, Any]]:
                             "venue": allstar_game.get("venue", ""),
                             "status": allstar_game.get("status", "Scheduled"),
                             "game_type": "A",
+                            "game_datetime_iso": allstar_game.get("game_datetime"),
                             "confirmed_allstar": confirmed,  # For styling: True = highlight, False = dimmed
                         })
                         # Sort by date after adding
@@ -325,6 +328,49 @@ def load_schedule_calendar(user: Dict[str, Any]) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.warning(f"Warning loading schedule calendar: {e}")
         return []
+
+
+def _next_series_from_calendar(calendar_data: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Derive the next-game snapshot from the already-loaded calendar.
+
+    Gameday previously fetched the same long schedule twice: once for the
+    calendar and again for the countdown. Reusing the calendar keeps the
+    request bounded to one upstream schedule load.
+    """
+    today = datetime.now().date()
+    candidates: List[tuple[date, Dict[str, Any]]] = []
+    for game in calendar_data or []:
+        raw_date = game.get("date")
+        if not raw_date:
+            continue
+        try:
+            game_date = datetime.fromisoformat(str(raw_date).split("T")[0]).date()
+        except (TypeError, ValueError):
+            continue
+        status = str(game.get("status") or "").lower()
+        if game_date >= today and status not in {"final", "game over", "completed"}:
+            candidates.append((game_date, game))
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda item: item[0])
+    game_date, game = candidates[0]
+    game_datetime = game.get("game_datetime_iso")
+    if not game_datetime:
+        game_datetime = datetime.combine(game_date, datetime.min.time().replace(hour=19, minute=10)).isoformat()
+
+    return {
+        "opponent_name": game.get("opponent"),
+        "opponent_id": game.get("opponent_id"),
+        "opponent_abbr": game.get("opponent_abbr"),
+        "start_date": game_date.strftime("%b %d"),
+        "end_date": game_date.strftime("%b %d"),
+        "status": "upcoming",
+        "days_until": max(0, (game_date - today).days),
+        "first_game_datetime_iso": game_datetime,
+        "is_allstar_game": game.get("game_type") == "A",
+    }
 
 
 def load_gameday_schedule_window(user: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -2335,8 +2381,6 @@ def build_gameday_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         }
 
     user_id = user.get("id")
-    # Cache version - increment to invalidate old cached data after code changes
-    GAMEDAY_CACHE_VERSION = 2
     cache_payload: Optional[Dict[str, Any]] = {"user_id": int(user_id), "v": GAMEDAY_CACHE_VERSION} if user_id else None
 
     # Short‑TTL persistent cache to avoid repeated DB / API work for this page.
@@ -2345,11 +2389,13 @@ def build_gameday_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         if isinstance(cached_ctx, dict) and cached_ctx:
             return cached_ctx
 
-    next_series = load_next_series_snapshot(user)
-    _, deliverables, _ = load_player_deliverables(user)
+    # Load the schedule once and derive the countdown from it. The previous
+    # implementation made a second full-season request for next_series.
     schedule_calendar = load_schedule_calendar(user)
     if not isinstance(schedule_calendar, list):
         schedule_calendar = []
+    next_series = _next_series_from_calendar(schedule_calendar)
+    _, deliverables, _ = load_player_deliverables(user)
 
     # All-Star detection
     # is_allstar_week: True during actual All-Star break (July 14-18) for special UI
@@ -2376,6 +2422,21 @@ def build_gameday_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             pass
 
     return ctx
+
+
+def get_cached_gameday_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Return cached Gameday context without doing external work.
+
+    The initial page render uses this helper so navigation never waits on MLB
+    schedule services. The async schedule endpoint populates the cache.
+    """
+    if not user or not user.get("id"):
+        return {}
+    cached = persistent_cache_get_json(
+        "gameday_context",
+        {"user_id": int(user["id"]), "v": GAMEDAY_CACHE_VERSION},
+    )
+    return cached if isinstance(cached, dict) else {}
 
 
 def build_player_home_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -2579,4 +2640,3 @@ def attach_reports_to_games(
         abbr = game.get("opponent_abbr")
         game["reports"] = report_map.get(abbr, [])
     return games
-

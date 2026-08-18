@@ -1,8 +1,11 @@
 from __future__ import annotations
 from pathlib import Path
 import hashlib
+import io
+import os
+import fcntl
 import pandas as pd
-from pybaseball import statcast_pitcher, statcast_batter, playerid_lookup
+import requests
 import statsapi
 
 CACHE_DIR = Path("build/cache/savant")
@@ -16,6 +19,9 @@ def fetch_pitcher_statcast(pitcher_id: int, start: str, end: str) -> pd.DataFram
     key = _hash_key("pitcher", pitcher_id, start, end)
     if key.exists():
         return pd.read_parquet(key)
+    # pybaseball pulls in plotting dependencies that are expensive to import.
+    # Keep that cost off direct matchup requests and cache hits.
+    from pybaseball import statcast_pitcher
     df = statcast_pitcher(start, end, pitcher_id)
     if df is None:
         df = pd.DataFrame()
@@ -40,6 +46,7 @@ def lookup_batter_id(name: str) -> int:
     # If statsapi didn't work, try pybaseball as fallback (more reliable)
     if not people:
         try:
+            from pybaseball import playerid_lookup
             parts = name.split()
             if len(parts) >= 2:
                 last_name = parts[-1]
@@ -125,6 +132,7 @@ def lookup_batter_id(name: str) -> int:
     # Final fallback: try pybaseball with variations if statsapi still didn't work
     if not people:
         try:
+            from pybaseball import playerid_lookup
             parts = name.split()
             if len(parts) >= 2:
                 last_name = parts[-1]
@@ -181,8 +189,67 @@ def fetch_batter_statcast(batter_id: int, start: str, end: str) -> pd.DataFrame:
     key = _hash_key("batter", batter_id, start, end)
     if key.exists():
         return pd.read_parquet(key)
+    from pybaseball import statcast_batter
     df = statcast_batter(start, end, batter_id)
     if df is None:
         df = pd.DataFrame()
     df.to_parquet(key, index=False)
     return df
+
+
+def fetch_matchup_statcast(
+    pitcher_id: int,
+    batter_id: int,
+    start: str,
+    end: str,
+) -> pd.DataFrame:
+    """Fetch only pitches from one pitcher-versus-batter matchup.
+
+    The player-wide pybaseball helpers can download thousands of unrelated
+    pitches before the caller filters them locally. Baseball Savant supports
+    both lookup filters in the same CSV request, so this returns a much smaller
+    canonical dataset that can be reused for season discovery and rendering.
+    A process-safe lock prevents two Gunicorn workers from downloading the same
+    cold dataset simultaneously.
+    """
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    key = _hash_key("matchup", int(pitcher_id), int(batter_id), start, end)
+    lock_path = key.with_suffix(".lock")
+
+    with lock_path.open("a+b") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            if key.exists():
+                try:
+                    return pd.read_parquet(key)
+                except Exception:
+                    # A prior interrupted write should not make the matchup
+                    # permanently unavailable; the atomic replace below heals it.
+                    pass
+
+            response = requests.get(
+                "https://baseballsavant.mlb.com/statcast_search/csv",
+                params={
+                    "all": "true",
+                    "player_type": "pitcher",
+                    "type": "details",
+                    "game_date_gt": start,
+                    "game_date_lt": end,
+                    "pitchers_lookup[]": int(pitcher_id),
+                    "batters_lookup[]": int(batter_id),
+                },
+                headers={"User-Agent": "SequenceBioLab/1.0"},
+                timeout=(5, 45),
+            )
+            response.raise_for_status()
+            if not response.content.strip():
+                df = pd.DataFrame()
+            else:
+                df = pd.read_csv(io.BytesIO(response.content))
+
+            temp_key = key.with_suffix(f".{os.getpid()}.tmp.parquet")
+            df.to_parquet(temp_key, index=False)
+            os.replace(temp_key, key)
+            return df
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)

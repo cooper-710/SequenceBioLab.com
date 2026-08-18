@@ -10,7 +10,7 @@
                 <h1>Heatmaps</h1>
                 <p class="page-subtitle">Visualize player performance metrics and statistical distributions</p>
             </div>
-            <a href="{{ url_for('visuals') }}" class="back-button">
+            <a href="{{ url_for('pages.visuals') }}" class="back-button">
                 <i class="fas fa-arrow-left"></i> Back to Visuals
             </a>
         </div>
@@ -2077,4 +2077,3 @@ function drawColorScale(ctx, x, y, width, height, minValue, maxValue, metric) {
 }
 </script>
 {% endblock %}
-

@@ -55,6 +55,41 @@ def get_json(cache_name: str, key_payload: Any) -> Optional[Any]:
             pass
 
 
+def get_stale_json(cache_name: str, key_payload: Any) -> Optional[Any]:
+    """Return the last cached JSON value, including an expired value.
+
+    Callers should use this only after a fresh build fails and should mark the
+    response as stale for the client.
+    """
+    try:
+        from database import PlayerDB  # type: ignore
+    except Exception:
+        return None
+
+    cache_key = _stable_hash_key(key_payload)
+    db = None
+    try:
+        db = PlayerDB()
+        getter = getattr(db, "cache_get_stale", None)
+        if not getter:
+            return None
+        raw = getter(cache_name, cache_key)
+        if not raw:
+            return None
+        try:
+            return json.loads(raw)
+        except Exception:
+            return None
+    except Exception:
+        return None
+    finally:
+        try:
+            if db:
+                db.close()
+        except Exception:
+            pass
+
+
 def set_json(cache_name: str, key_payload: Any, value: Any, ttl_seconds: int) -> None:
     """Upsert cached JSON with TTL. Best-effort."""
     try:
@@ -168,4 +203,3 @@ def get_or_set_json(
                 db.close()
         except Exception:
             pass
-

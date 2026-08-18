@@ -2,13 +2,15 @@
 """
 Test script to verify SMTP email configuration
 """
+import os
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 from app.services.email_service import EmailService
 
-def test_smtp_config():
+def check_smtp_config():
     """Test SMTP configuration"""
     print("=" * 60)
     print("Testing SMTP Configuration")
@@ -62,7 +64,15 @@ def test_smtp_config():
         print(f"❌ Error testing email: {e}")
         return False
 
-if __name__ == "__main__":
-    success = test_smtp_config()
-    sys.exit(0 if success else 1)
 
+def test_smtp_config():
+    """Run only when sending a live test email is explicitly requested."""
+    import pytest
+
+    if os.environ.get("RUN_LIVE_SMTP_TEST") != "1":
+        pytest.skip("live SMTP test; set RUN_LIVE_SMTP_TEST=1 to enable")
+    assert check_smtp_config()
+
+if __name__ == "__main__":
+    success = check_smtp_config()
+    sys.exit(0 if success else 1)

@@ -9,18 +9,16 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-# Set your database URL (for testing)
-# In production, this should be set as an environment variable
-DATABASE_URL = "postgresql://postgres:Comet%402009@db.hbrjrbuvslkmmzjptont.supabase.co:5432/postgres"
-
-def test_connection():
+def check_connection():
     """Test database connection"""
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        print("DATABASE_URL is not configured.")
+        return False
+
     print("Testing PostgreSQL connection...")
-    print(f"Database URL: {DATABASE_URL[:50]}...")
-    
-    # Set environment variable
-    os.environ['DATABASE_URL'] = DATABASE_URL
-    
+    print("Using DATABASE_URL from the environment.")
+
     try:
         from database import PlayerDB
         
@@ -53,7 +51,15 @@ def test_connection():
         traceback.print_exc()
         return False
 
-if __name__ == "__main__":
-    success = test_connection()
-    sys.exit(0 if success else 1)
 
+def test_connection():
+    """Run only when live database verification is explicitly requested."""
+    import pytest
+
+    if os.environ.get("RUN_LIVE_POSTGRES_TEST") != "1":
+        pytest.skip("live PostgreSQL test; set RUN_LIVE_POSTGRES_TEST=1 to enable")
+    assert check_connection()
+
+if __name__ == "__main__":
+    success = check_connection()
+    sys.exit(0 if success else 1)
