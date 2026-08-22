@@ -11,6 +11,7 @@ import {
   normalizedByteSize,
   PLAYER_DOCUMENT_BUCKET,
   resolveExecutionMode,
+  storageAbsenceVerificationError,
   toCandidateManifest,
   type CandidateRow,
   type CleanupRequestBody,
@@ -322,13 +323,16 @@ export default {
           .from(PLAYER_DOCUMENT_BUCKET)
           .exists(path);
 
-        if (error) {
-          return { candidate, error: `verify ${candidate.id}: ${error.message}` };
-        }
-        if (exists) {
-          return { candidate, error: `verify ${candidate.id}: object still exists` };
-        }
-        return { candidate, error: null };
+        const verificationError = storageAbsenceVerificationError(
+          exists,
+          error?.message ?? null,
+        );
+        return {
+          candidate,
+          error: verificationError === null
+            ? null
+            : `verify ${candidate.id}: ${verificationError}`,
+        };
       });
 
       const confirmed = verification

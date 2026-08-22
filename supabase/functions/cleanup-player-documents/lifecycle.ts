@@ -75,6 +75,18 @@ export function normalizedByteSize(value: number | string | null): number {
   return Math.floor(parsed);
 }
 
+export function storageAbsenceVerificationError(
+  exists: boolean,
+  errorMessage: string | null,
+): string | null {
+  // storage-js reports a missing object as `data: false` together with a
+  // 400/404 Storage error. The false result is the successful absence signal.
+  if (exists === false) {
+    return null;
+  }
+  return errorMessage ?? "object still exists";
+}
+
 export function isSafePlayerPdfPath(candidate: CandidateRow): boolean {
   return candidate.storage_path?.trim() === `${candidate.id}.pdf`;
 }

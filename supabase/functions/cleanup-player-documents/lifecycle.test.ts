@@ -6,6 +6,7 @@ import {
   mapWithConcurrency,
   normalizeBatchLimit,
   resolveExecutionMode,
+  storageAbsenceVerificationError,
   toCandidateManifest,
   type CandidateRow,
 } from "./lifecycle.ts";
@@ -42,6 +43,15 @@ test("batch limits are bounded to the hard safety cap", () => {
   assert.equal(normalizeBatchLimit(25.8), 25);
   assert.equal(normalizeBatchLimit(1_000), 100);
   assert.equal(normalizeBatchLimit(0), 100);
+});
+
+test("a storage-js missing-object response confirms absence despite its 400 error", () => {
+  assert.equal(storageAbsenceVerificationError(false, "Bad Request"), null);
+  assert.equal(
+    storageAbsenceVerificationError(true, "permission denied"),
+    "permission denied",
+  );
+  assert.equal(storageAbsenceVerificationError(true, null), "object still exists");
 });
 
 test("only expired, unpinned report rows with safe paths are eligible", () => {
