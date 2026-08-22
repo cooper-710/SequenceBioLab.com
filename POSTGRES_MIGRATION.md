@@ -26,12 +26,12 @@ pip install -r requirements-web.txt
 
 **For Production (hosting platform):**
 - Set `DATABASE_URL` environment variable in your hosting platform's settings
-- Value: `postgresql://postgres:Comet%402009@db.hbrjrbuvslkmmzjptont.supabase.co:5432/postgres`
-- Note: The `@` in your password is URL-encoded as `%40`
+- Value: `postgresql://postgres:<URL_ENCODED_PASSWORD>@db.<PROJECT_REF>.supabase.co:5432/postgres`
+- Note: URL-encode special characters in the password before placing it in the connection string.
 
 **For Local Testing:**
 ```bash
-export DATABASE_URL="postgresql://postgres:Comet%402009@db.hbrjrbuvslkmmzjptont.supabase.co:5432/postgres"
+export DATABASE_URL="postgresql://postgres:<URL_ENCODED_PASSWORD>@db.<PROJECT_REF>.supabase.co:5432/postgres"
 ```
 
 ### 3. Test Connection
@@ -83,4 +83,3 @@ This will:
 2. Deploy to your hosting platform
 3. Set `DATABASE_URL` in your hosting platform's environment variables
 4. Your app will automatically use PostgreSQL in production!
-

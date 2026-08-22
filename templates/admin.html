@@ -2151,16 +2151,19 @@
                     method: 'DELETE',
                     credentials: 'same-origin'
                 });
+                const result = await response.json().catch(() => ({}));
+                // A Storage-first bulk operation may legitimately be partial.
+                // Reload authoritative state instead of assuming every row was
+                // removed and hiding protected or failed documents locally.
+                await loadPlayerData(currentPlayer);
                 if (!response.ok) {
-                    const error = await response.json().catch(() => ({}));
-                    throw new Error(error.error || 'Delete all failed');
+                    const firstFailure = Array.isArray(result.failed) ? result.failed[0] : null;
+                    throw new Error(result.error || firstFailure?.error || 'Delete all failed');
                 }
-                currentDocs = [];
-                if (playerDocStatus) {
-                    playerDocStatus.textContent = '0 documents found';
+                if (result.status === 'partial') {
+                    const protectedCount = (result.protected_document_ids || []).length;
+                    alert(`Deleted ${result.count || 0} document(s). ${protectedCount} protected document(s) were retained.`);
                 }
-                if (totalDocsEl) totalDocsEl.textContent = formatCount(0, 'doc');
-                renderPlayerDocs();
             } catch (err) {
                 alert(`Failed to delete all documents: ${err.message}`);
             } finally {
@@ -2469,4 +2472,3 @@
 })();
 </script>
 {% endblock %}
-

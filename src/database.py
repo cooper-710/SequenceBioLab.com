@@ -422,10 +422,12 @@ class PlayerDB:
             auto_inc = "SERIAL PRIMARY KEY"
             real_type = "DOUBLE PRECISION"
             text_type = "TEXT"
+            big_int_type = "BIGINT"
         else:
             auto_inc = "INTEGER PRIMARY KEY AUTOINCREMENT"
             real_type = "REAL"
             text_type = "TEXT"
+            big_int_type = "INTEGER"
         
         # Teams table
         self._execute(cursor, f"""
@@ -644,6 +646,13 @@ class PlayerDB:
                 series_start {real_type},
                 series_end {real_type},
                 storage_path {text_type},
+                expires_at {real_type},
+                is_pinned INTEGER NOT NULL DEFAULT 0,
+                object_size_bytes {big_int_type},
+                lifecycle_status {text_type} NOT NULL DEFAULT 'active',
+                delete_attempts INTEGER NOT NULL DEFAULT 0,
+                last_delete_error {text_type},
+                storage_deleted_at {real_type},
                 FOREIGN KEY (player_id) REFERENCES users(id),
                 FOREIGN KEY (uploaded_by) REFERENCES users(id)
             )
@@ -658,7 +667,29 @@ class PlayerDB:
             'series_start': real_type,
             'series_end': real_type,
             'storage_path': text_type,
+            'expires_at': real_type,
+            'is_pinned': 'INTEGER',
+            'object_size_bytes': big_int_type,
+            'lifecycle_status': text_type,
+            'delete_attempts': 'INTEGER',
+            'last_delete_error': text_type,
+            'storage_deleted_at': real_type,
         })
+        try:
+            self._execute(cursor, """
+                UPDATE player_documents
+                SET lifecycle_status = 'active'
+                WHERE lifecycle_status IS NULL OR lifecycle_status = ''
+            """)
+            self._execute(cursor, """
+                CREATE INDEX IF NOT EXISTS idx_player_documents_cleanup
+                ON player_documents(expires_at, id)
+                WHERE is_pinned = 0
+                  AND lifecycle_status IN ('active', 'delete_failed')
+                  AND storage_path IS NOT NULL
+            """)
+        except Exception:
+            pass
         
         # Player document log
         self._execute(cursor, f"""
@@ -810,6 +841,10 @@ class PlayerDB:
                         default = "DEFAULT 1"  # New accounts should be active by default
                     elif col_name == "email_verified":
                         default = "DEFAULT 0"  # New accounts need email verification
+                    elif col_name in {"is_pinned", "delete_attempts"}:
+                        default = "DEFAULT 0"
+                    elif col_name == "lifecycle_status":
+                        default = "DEFAULT 'active'"
                     self._execute(self.conn.cursor(), 
                         f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type} {default}")
                     self.conn.commit()
@@ -1533,6 +1568,21 @@ class PlayerDB:
         # Prevent deleting admin accounts
         if user_dict.get("is_admin"):
             raise PermissionError("Cannot delete admin accounts.")
+
+        # The database layer cannot safely remove external Storage objects. A
+        # caller must first route every Storage-backed document through the
+        # lifecycle service; otherwise deleting the user would lose all paths
+        # required for retry and leave billed orphans behind.
+        self._execute(cursor, """
+            SELECT id
+            FROM player_documents
+            WHERE player_id = ? AND storage_path IS NOT NULL AND storage_path != ''
+            LIMIT 1
+        """, (int(user_id),))
+        if cursor.fetchone():
+            raise RuntimeError(
+                "Storage-backed player documents must be deleted before the user account"
+            )
         
         # Delete related data first (foreign key constraints)
         # Delete verification tokens
@@ -1936,29 +1986,52 @@ class PlayerDB:
                                series_opponent: Optional[str] = None,
                                series_label: Optional[str] = None,
                                series_start: Optional[float] = None,
-                               series_end: Optional[float] = None) -> int:
+                               series_end: Optional[float] = None,
+                               expires_at: Optional[float] = None,
+                               lifecycle_status: str = "active",
+                               object_size_bytes: Optional[int] = None) -> int:
         """Store metadata for an uploaded player document."""
         cursor = self.conn.cursor()
+        uploaded_at = datetime.now().timestamp()
+        normalized_category = (category or "").strip().lower() or None
+        normalized_status = (lifecycle_status or "active").strip().lower()
+        if normalized_status not in {
+            "pending_upload", "active", "pending_delete", "delete_failed", "upload_failed"
+        }:
+            raise ValueError(f"Unsupported player document lifecycle status: {normalized_status}")
+
+        # Automated retention is deliberately report-only. Workouts, scouting,
+        # and uncategorized documents keep their existing manual lifecycle.
+        if expires_at is None and normalized_category == "report":
+            if series_end is not None:
+                expires_at = float(series_end) + 86400.0
+            else:
+                expires_at = uploaded_at + (7 * 24 * 60 * 60)
+
         params = (
             int(player_id),
             filename,
             path,
             uploaded_by,
-            datetime.now().timestamp(),
-            (category or "").strip().lower() or None,
+            uploaded_at,
+            normalized_category,
             (series_opponent or "").strip().upper() or None,
             (series_label or "").strip() or None,
             float(series_start) if series_start is not None else None,
-            float(series_end) if series_end is not None else None
+            float(series_end) if series_end is not None else None,
+            float(expires_at) if expires_at is not None else None,
+            normalized_status,
+            int(object_size_bytes) if object_size_bytes is not None else None,
         )
         
         if self.is_postgres:
             self._execute(cursor, """
                 INSERT INTO player_documents (
                     player_id, filename, path, uploaded_by, uploaded_at, category,
-                    series_opponent, series_label, series_start, series_end
+                    series_opponent, series_label, series_start, series_end,
+                    expires_at, lifecycle_status, object_size_bytes
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
             """, params)
             doc_id = cursor.fetchone()['id']
@@ -1966,9 +2039,10 @@ class PlayerDB:
             self._execute(cursor, """
                 INSERT INTO player_documents (
                     player_id, filename, path, uploaded_by, uploaded_at, category,
-                    series_opponent, series_label, series_start, series_end
+                    series_opponent, series_label, series_start, series_end,
+                    expires_at, lifecycle_status, object_size_bytes
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, params)
             doc_id = cursor.lastrowid
 
@@ -1983,7 +2057,9 @@ class PlayerDB:
         self._execute(cursor, """
             SELECT id, player_id, filename, path, uploaded_by, uploaded_at,
                    category, series_opponent, series_label, series_start, series_end,
-                   storage_path
+                   storage_path, expires_at, is_pinned, object_size_bytes,
+                   lifecycle_status, delete_attempts, last_delete_error,
+                   storage_deleted_at
             FROM player_documents
             WHERE id = ?
         """, (doc_id,))
@@ -2008,17 +2084,26 @@ class PlayerDB:
         return dict(row)
 
     def delete_all_player_documents(self, player_id: int) -> int:
-        """Delete all documents for a player and return the count of deleted records."""
+        """Delete metadata-only documents for a player.
+
+        Storage-backed documents must go through the document lifecycle service
+        so their durable objects are removed before metadata. Refusing here keeps
+        future callers from silently recreating billed Storage orphans.
+        """
         cursor = self.conn.cursor()
         # Get all doc IDs first (for blob cleanup and file removal)
         self._execute(cursor, """
-            SELECT id, filename, path
+            SELECT id, filename, path, storage_path
             FROM player_documents
             WHERE player_id = ?
         """, (int(player_id),))
         rows = cursor.fetchall()
         if not rows:
             return 0
+        if any((dict(row).get("storage_path") or "").strip() for row in rows):
+            raise RuntimeError(
+                "Storage-backed player documents must be deleted through the lifecycle service"
+            )
         doc_ids = [dict(r)["id"] for r in rows]
         # Delete blobs
         for did in doc_ids:
@@ -2047,13 +2132,33 @@ class PlayerDB:
             params.append((category or "").strip().lower())
         query = f"""
             SELECT id, player_id, filename, path, uploaded_by, uploaded_at,
-                   category, series_opponent, series_label, series_start, series_end
+                   category, series_opponent, series_label, series_start, series_end,
+                   storage_path, expires_at, is_pinned, object_size_bytes,
+                   lifecycle_status, delete_attempts, last_delete_error,
+                   storage_deleted_at
             FROM player_documents
             WHERE player_id = ?
               AND {category_clause}
+              AND COALESCE(lifecycle_status, 'active') = 'active'
             ORDER BY uploaded_at DESC
         """
         self._execute(cursor, query, tuple(params))
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+
+    def list_all_player_documents(self, player_id: int) -> List[Dict[str, Any]]:
+        """List every document category for a player, including lifecycle metadata."""
+        cursor = self.conn.cursor()
+        self._execute(cursor, """
+            SELECT id, player_id, filename, path, uploaded_by, uploaded_at,
+                   category, series_opponent, series_label, series_start, series_end,
+                   storage_path, expires_at, is_pinned, object_size_bytes,
+                   lifecycle_status, delete_attempts, last_delete_error,
+                   storage_deleted_at
+            FROM player_documents
+            WHERE player_id = ?
+            ORDER BY uploaded_at DESC
+        """, (int(player_id),))
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
@@ -2063,9 +2168,13 @@ class PlayerDB:
         cursor = self.conn.cursor()
         self._execute(cursor, """
             SELECT id, player_id, filename, path, uploaded_by, uploaded_at,
-                   category, series_opponent, series_label, series_start, series_end
+                   category, series_opponent, series_label, series_start, series_end,
+                   storage_path, expires_at, is_pinned, object_size_bytes,
+                   lifecycle_status, delete_attempts, last_delete_error,
+                   storage_deleted_at
             FROM player_documents
             WHERE player_id = ? AND category = ?
+              AND COALESCE(lifecycle_status, 'active') = 'active'
             ORDER BY uploaded_at DESC
             LIMIT 1
         """, (int(player_id), (category or "").strip().lower()))
@@ -2078,9 +2187,13 @@ class PlayerDB:
         cursor = self.conn.cursor()
         self._execute(cursor, """
             SELECT id, player_id, filename, path, uploaded_by, uploaded_at,
-                   category, series_opponent, series_label, series_start, series_end
+                   category, series_opponent, series_label, series_start, series_end,
+                   storage_path, expires_at, is_pinned, object_size_bytes,
+                   lifecycle_status, delete_attempts, last_delete_error,
+                   storage_deleted_at
             FROM player_documents
             WHERE category = ?
+              AND COALESCE(lifecycle_status, 'active') = 'active'
             ORDER BY uploaded_at DESC
             LIMIT ?
         """, ((category or "").strip().lower(), int(limit)))
@@ -2098,19 +2211,58 @@ class PlayerDB:
         self._execute(cursor, """
             SELECT id, player_id, filename, path, uploaded_by, uploaded_at,
                    category, series_opponent, series_label, series_start, series_end,
-                   storage_path
+                   storage_path, expires_at, is_pinned, object_size_bytes,
+                   lifecycle_status, delete_attempts, last_delete_error,
+                   storage_deleted_at
             FROM player_documents
             WHERE id = ?
         """, (doc_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
 
-    def set_document_storage_path(self, doc_id: int, storage_path: str) -> None:
-        """Record the Supabase Storage path for a player document."""
+    def set_document_storage_path(
+        self,
+        doc_id: int,
+        storage_path: str,
+        *,
+        object_size_bytes: Optional[int] = None,
+        lifecycle_status: str = "active",
+    ) -> None:
+        """Record a verified Storage object and activate its metadata row."""
         cursor = self.conn.cursor()
         self._execute(cursor, """
-            UPDATE player_documents SET storage_path = ? WHERE id = ?
-        """, (storage_path, int(doc_id)))
+            UPDATE player_documents
+            SET storage_path = ?,
+                object_size_bytes = COALESCE(?, object_size_bytes),
+                lifecycle_status = ?,
+                last_delete_error = NULL
+            WHERE id = ?
+        """, (
+            storage_path,
+            int(object_size_bytes) if object_size_bytes is not None else None,
+            (lifecycle_status or "active").strip().lower(),
+            int(doc_id),
+        ))
+        self.conn.commit()
+
+    def mark_document_lifecycle_failure(
+        self,
+        doc_id: int,
+        status: str,
+        error: str,
+    ) -> None:
+        """Keep lifecycle metadata retryable after an upload/delete failure."""
+        normalized_status = (status or "").strip().lower()
+        if normalized_status not in {"upload_failed", "delete_failed"}:
+            raise ValueError(f"Unsupported lifecycle failure status: {normalized_status}")
+        cursor = self.conn.cursor()
+        self._execute(cursor, """
+            UPDATE player_documents
+            SET lifecycle_status = ?,
+                delete_attempts = delete_attempts + CASE WHEN ? = 'delete_failed' THEN 1 ELSE 0 END,
+                last_delete_error = ?
+            WHERE id = ?
+        """, (normalized_status, normalized_status, str(error)[:2000], int(doc_id)))
         self.conn.commit()
 
     # ---------------------------
@@ -2178,10 +2330,16 @@ class PlayerDB:
             reference_ts = datetime.now().timestamp()
         self._execute(cursor, """
             SELECT id, player_id, filename, path, uploaded_by, uploaded_at,
-                   category,
-                   series_opponent, series_label, series_start, series_end
+                   category, series_opponent, series_label, series_start, series_end,
+                   storage_path, expires_at, is_pinned, object_size_bytes,
+                   lifecycle_status, delete_attempts, last_delete_error,
+                   storage_deleted_at
             FROM player_documents
-            WHERE series_end IS NOT NULL AND series_end <= ?
+            WHERE category = 'report'
+              AND series_end IS NOT NULL
+              AND series_end <= ?
+              AND COALESCE(is_pinned, 0) = 0
+              AND COALESCE(lifecycle_status, 'active') IN ('active', 'delete_failed')
         """, (reference_ts,))
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
@@ -2204,11 +2362,16 @@ class PlayerDB:
 
         query = """
             SELECT id, player_id, filename, path, uploaded_by, uploaded_at,
-                   category,
-                   series_opponent, series_label, series_start, series_end
+                   category, series_opponent, series_label, series_start, series_end,
+                   storage_path, expires_at, is_pinned, object_size_bytes,
+                   lifecycle_status, delete_attempts, last_delete_error,
+                   storage_deleted_at
             FROM player_documents
             WHERE series_end IS NULL
               AND uploaded_at <= ?
+              AND category = 'report'
+              AND COALESCE(is_pinned, 0) = 0
+              AND COALESCE(lifecycle_status, 'active') IN ('active', 'delete_failed')
         """
         params: List[Any] = [float(reference_ts)]
         if exclude_category:

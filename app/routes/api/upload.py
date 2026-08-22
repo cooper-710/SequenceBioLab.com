@@ -2,7 +2,11 @@ from flask import Blueprint, request, jsonify
 from werkzeug.utils import secure_filename
 import os
 import hmac
+import logging
+import uuid
 from pathlib import Path
+
+from app.config import Config
 
 bp = Blueprint('upload', __name__)
 
@@ -10,8 +14,9 @@ bp = Blueprint('upload', __name__)
 UPLOAD_FOLDER = Path(__file__).resolve().parents[3] / "uploads" / "reports"
 ALLOWED_EXTENSIONS = {'pdf'}
 
-# API key for upload authentication
-UPLOAD_API_KEY = os.environ.get('UPLOAD_API_KEY') or 'oIGnSnzbA9nhIC7aJXp3jQzhV3NHwlfPDOUNbwUhTzCr'
+# API key for upload authentication. There is deliberately no committed
+# fallback: production must provide the secret through its environment.
+UPLOAD_API_KEY = os.environ.get('UPLOAD_API_KEY', '').strip()
 
 def require_api_key(f):
     """Decorator to require a valid API key for access"""
@@ -19,9 +24,11 @@ def require_api_key(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         api_key = request.headers.get('X-API-Key', '')
+        if not api_key:
+            return jsonify({"success": False, "error": "Invalid or missing API key"}), 401
         if not UPLOAD_API_KEY:
-            return jsonify({"success": False, "error": "API key not configured on server"}), 500
-        if not api_key or not hmac.compare_digest(api_key, UPLOAD_API_KEY):
+            return jsonify({"success": False, "error": "Upload service is not configured"}), 503
+        if not hmac.compare_digest(api_key, UPLOAD_API_KEY):
             return jsonify({"success": False, "error": "Invalid or missing API key"}), 401
         return f(*args, **kwargs)
     return decorated
@@ -45,6 +52,15 @@ def upload_report():
         if not allowed_file(file.filename):
             return jsonify({"success": False, "error": "Only PDF files allowed"}), 400
 
+        pdf_data = file.read(Config.PLAYER_PDF_MAX_BYTES + 1)
+        if not pdf_data:
+            return jsonify({"success": False, "error": "The PDF is empty"}), 400
+        if len(pdf_data) > Config.PLAYER_PDF_MAX_BYTES:
+            max_mb = Config.PLAYER_PDF_MAX_BYTES // (1024 * 1024)
+            return jsonify({"success": False, "error": f"PDF exceeds the {max_mb} MB limit"}), 413
+        if b"%PDF-" not in pdf_data[:1024]:
+            return jsonify({"success": False, "error": "File contents are not a valid PDF"}), 400
+
         # Get metadata
         player_name = request.form.get('player_name', 'Unknown')
         opponent = request.form.get('opponent', 'Unknown')
@@ -53,18 +69,17 @@ def upload_report():
         # Create upload directory if it doesn't exist
         UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 
-        # Save file
         filename = secure_filename(file.filename)
-        filepath = UPLOAD_FOLDER / filename
-        file.save(str(filepath))
+        filepath = None
 
         # Insert into player_documents database
         doc_id = None
         series_matched = False
         series_debug = {}
         db = None
+        storage_path = None
+        persistence_error = None
         try:
-            import logging
             log = logging.getLogger('upload')
 
             from database import PlayerDB
@@ -92,12 +107,24 @@ def upload_report():
                 log.warning(f"[upload] User not found: '{first_name}' '{last_name}'")
                 series_debug['error'] = f"User not found: {first_name} {last_name}"
             else:
-                player_id = row['id']
-                user_team_abbr = row['team_abbr'] if row['team_abbr'] else None
-                user_team_level = (row['team_level'] if row.get('team_level') else None) or "MLB"
+                row_data = dict(row)
+                player_id = row_data['id']
+                user_team_abbr = row_data.get('team_abbr') or None
+                user_team_level = row_data.get('team_level') or "MLB"
                 log.info(f"[upload] Found user id={player_id}, team_abbr={user_team_abbr}, team_level={user_team_level}")
                 series_debug['player_id'] = player_id
                 series_debug['user_team_abbr'] = user_team_abbr
+
+                # Keep a best-effort local cache, but never reuse a user-supplied
+                # filename as the cache key. Two reports named "report.pdf"
+                # must not overwrite one another and serve the wrong document.
+                cache_name = f"{uuid.uuid4().hex}_{filename}"
+                cache_path = UPLOAD_FOLDER / cache_name
+                try:
+                    cache_path.write_bytes(pdf_data)
+                    filepath = cache_path
+                except OSError:
+                    filepath = None
 
                 # --- Series matching ---
                 s_opponent = opponent if opponent != 'Unknown' else None
@@ -200,37 +227,79 @@ def upload_report():
                 doc_id = db.create_player_document(
                     player_id=player_id,
                     filename=filename,
-                    path=str(filepath),
+                    path=str(filepath) if filepath else "",
                     uploaded_by=None,
                     category='report',
                     series_opponent=s_opponent,
                     series_label=s_label,
                     series_start=s_start,
-                    series_end=s_end
+                    series_end=s_end,
+                    lifecycle_status="pending_upload",
+                    object_size_bytes=len(pdf_data),
                 )
                 log.info(f"[upload] Created doc id={doc_id}, series_opponent={s_opponent}, series_label={s_label}, s_start={s_start}, s_end={s_end}")
 
                 # Store file in Supabase Storage so it survives Render's ephemeral filesystem
                 if doc_id:
                     try:
-                        with open(str(filepath), 'rb') as f:
-                            pdf_data = f.read()
                         from supabase_storage import upload_file as storage_upload
+                        # Persist the deterministic path before the network call.
+                        # If the response is lost after Storage succeeds, the
+                        # reconciler still knows exactly which object to inspect.
+                        expected_path = f"{int(doc_id)}.pdf"
+                        db.set_document_storage_path(
+                            int(doc_id),
+                            expected_path,
+                            object_size_bytes=len(pdf_data),
+                            lifecycle_status="pending_upload",
+                        )
                         storage_path = storage_upload(int(doc_id), pdf_data, "application/pdf")
-                        db.set_document_storage_path(int(doc_id), storage_path)
+                        db.set_document_storage_path(
+                            int(doc_id),
+                            storage_path,
+                            object_size_bytes=len(pdf_data),
+                            lifecycle_status="active",
+                        )
                         log.info(f"[upload] Stored in Supabase Storage for doc_id={doc_id}, path={storage_path}")
                     except Exception as storage_err:
-                        log.warning(f"[upload] Failed to store in Supabase Storage for doc_id={doc_id}: {storage_err}")
+                        persistence_error = storage_err
+                        try:
+                            db.mark_document_lifecycle_failure(
+                                int(doc_id), "upload_failed", str(storage_err)
+                            )
+                        except Exception:
+                            pass
+                        log.error(f"[upload] Failed to store in Supabase Storage for doc_id={doc_id}: {storage_err}")
         except Exception as e:
-            import logging
             logging.getLogger(__name__).warning(f"Database insert failed: {e}")
             series_debug['db_error'] = str(e)
+            persistence_error = e
         finally:
             if db:
                 try:
                     db.close()
                 except Exception:
                     pass
+
+        if doc_id is None:
+            if filepath and filepath.exists():
+                try:
+                    filepath.unlink()
+                except OSError:
+                    pass
+            return jsonify({
+                "success": False,
+                "error": series_debug.get("error") or "Unable to match the report to a player",
+                "series_debug": series_debug,
+            }), 404 if series_debug.get("error") else 500
+
+        if persistence_error is not None or not storage_path:
+            return jsonify({
+                "success": False,
+                "error": "The report could not be saved durably. Its retry metadata was retained.",
+                "doc_id": doc_id,
+                "series_debug": series_debug,
+            }), 502
 
         return jsonify({
             "success": True,

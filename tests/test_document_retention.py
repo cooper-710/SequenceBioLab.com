@@ -27,6 +27,7 @@ def temp_db_and_files(tmp_path, monkeypatch):
         "PlayerDB",
         lambda: database.PlayerDB(db_path=str(db_path)),
     )
+    monkeypatch.setattr(page_service.Config, "DOCUMENT_REQUEST_CLEANUP_ENABLED", True)
 
     yield db, tmp_path, database, page_service
 
@@ -54,7 +55,7 @@ def test_non_series_docs_auto_delete_after_retention(temp_db_and_files):
     user_id = _create_user(db)
 
     # Create two docs:
-    # - a non-series doc that should be deleted after retention
+    # - a non-series report that should be deleted after retention
     # - a legacy workout doc that should be excluded from non-series purge
     old_ts = datetime.now().timestamp() - (8 * 24 * 60 * 60)  # 8 days ago
 
@@ -68,7 +69,7 @@ def test_non_series_docs_auto_delete_after_retention(temp_db_and_files):
         filename="notes.pdf",
         path=str(non_series_path),
         uploaded_by=None,
-        category=None,
+        category="report",
         series_opponent=None,
         series_label=None,
         series_start=None,
@@ -115,4 +116,3 @@ def test_non_series_docs_auto_delete_after_retention(temp_db_and_files):
         evt.get("action") == "auto_delete_non_series" and evt.get("filename") == "notes.pdf"
         for evt in events
     )
-

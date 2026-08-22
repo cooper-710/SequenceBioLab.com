@@ -182,6 +182,9 @@ def _format_player_document(doc: Dict[str, Any]) -> Dict[str, Any]:
         "series_end_display": series_end_display,
         "series_range_display": series_range_display,
         "series_status": series_status,
+        "lifecycle_status": doc.get("lifecycle_status") or "active",
+        "object_size_bytes": doc.get("object_size_bytes"),
+        "last_delete_error": doc.get("last_delete_error"),
     }
 
 
@@ -366,8 +369,40 @@ def api_admin_delete_user(user_id: int):
             db.close()
             return jsonify({"error": "You cannot delete your own account."}), 400
         
-        # Get all player documents before deletion to clean up files
-        player_docs = db.list_player_documents(user_id)
+        # Preflight every category. Automated retention ignores workouts, but an
+        # explicit account deletion still must not lose any Storage paths.
+        player_docs = db.list_all_player_documents(user_id)
+        unsupported_storage_docs = [
+            doc for doc in player_docs
+            if (doc.get("storage_path") or "").strip()
+            and (doc.get("category") or "").strip().lower() != Config.REPORT_DOC_CATEGORY
+        ]
+        if unsupported_storage_docs:
+            db.close()
+            return jsonify({
+                "error": "Account has non-report Storage documents that require manual review.",
+                "document_ids": [int(doc["id"]) for doc in unsupported_storage_docs],
+            }), 409
+
+        from app.services.document_lifecycle import delete_report_document
+        for document in player_docs:
+            if (document.get("category") or "").strip().lower() != Config.REPORT_DOC_CATEGORY:
+                continue
+            try:
+                delete_report_document(db, int(document["id"]))
+            except Exception as exc:
+                try:
+                    db.mark_document_lifecycle_failure(
+                        int(document["id"]), "delete_failed", str(exc)
+                    )
+                except Exception:
+                    pass
+                db.close()
+                return jsonify({
+                    "error": "Unable to remove all report files; the account was not deleted.",
+                    "document_id": int(document["id"]),
+                }), 502
+
         doc_paths = [Path(doc.get("path") or "") for doc in player_docs if doc.get("path")]
         
         deleted = db.delete_user(user_id)
@@ -1042,6 +1077,13 @@ def api_admin_workouts_delete(doc_id: int):
 
             return jsonify({"error": "Workout not found."}), 404
 
+        # Workouts are outside this cleanup project. Refuse to discard the only
+        # pointer to a durable object until a dedicated workout policy exists.
+        if (doc.get("storage_path") or "").strip():
+            return jsonify({
+                "error": "Storage-backed workouts require manual review before deletion."
+            }), 409
+
         deleted = db.delete_player_document(doc_id)
 
         if not deleted:
@@ -1558,13 +1600,9 @@ def api_admin_player_docs_by_player(player_id: int):
 
     try:
         db = PlayerDB()
-        docs: List[Dict[str, Any]] = []
-        # Generic docs (category NULL)
-        docs.extend(db.list_player_documents(int(player_id)) or [])
-        # Reports + workouts + scouting (notes)
-        docs.extend(db.list_player_documents(int(player_id), category=Config.REPORT_DOC_CATEGORY) or [])
-        docs.extend(db.list_player_documents(int(player_id), category=Config.WORKOUT_CATEGORY) or [])
-        docs.extend(db.list_player_documents(int(player_id), category='scouting') or [])
+        # Admins must also see retryable lifecycle failures; normal player
+        # listings intentionally remain active-only.
+        docs = db.list_all_player_documents(int(player_id)) or []
         db.close()
 
         # Sort newest first (uploaded_at is stored as a unix timestamp).
@@ -1608,6 +1646,16 @@ def download_player_document(doc_id: int):
         except Exception:
             pass
         abort(404)
+
+    viewer = getattr(g, "user", None) or {}
+    viewer_id = viewer.get("id")
+    if doc.get("player_id") != viewer_id and not session.get("is_admin"):
+        try:
+            if db:
+                db.close()
+        except Exception:
+            pass
+        abort(403)
 
     path = Path(doc.get("path") or "")
 
@@ -1774,56 +1822,71 @@ def api_admin_player_docs_delete(doc_id: int):
 
         return jsonify({"error": "Database unavailable"}), 500
 
+    db = None
     try:
-
-        db = PlayerDB()
-
-        doc = db.delete_player_document(doc_id)
-
-        if not doc:
-
-            db.close()
-
-            return jsonify({"error": "Document not found"}), 404
-
-        db.record_player_document_event(
-
-            player_id=doc["player_id"],
-
-            filename=doc["filename"],
-
-            action="delete",
-
-            performed_by=g.user.get("id") if g.user else None
-
+        from app.services.document_lifecycle import (
+            NonReportDocumentError,
+            delete_report_document,
+            is_report_document,
         )
 
-        db.close()
+        db = PlayerDB()
+        existing = db.get_player_document(doc_id)
+        if not existing:
+            db.close()
+            return jsonify({"error": "Document not found"}), 404
 
-    except Exception as exc:
+        if is_report_document(existing):
+            result = delete_report_document(db, doc_id)
+            doc = dict(result.document) if result else existing
+        else:
+            # Workouts remain outside automated Storage lifecycle work. Existing
+            # DB/local-only documents keep their explicit manual-delete behavior.
+            if (existing.get("storage_path") or "").strip():
+                raise NonReportDocumentError(doc_id, existing.get("category"))
+            doc = db.delete_player_document(doc_id)
+            if not doc:
+                db.close()
+                return jsonify({"error": "Document not found"}), 404
+            path = Path(doc.get("path") or "")
+            if path.exists() and path.is_file():
+                try:
+                    path.unlink()
+                except OSError as exc:
+                    logging.getLogger(__name__).warning(
+                        "Unable to remove local document cache %s: %s", path, exc
+                    )
 
-        return jsonify({"error": str(exc)}), 500
-
-
-
-    try:
-
-        path = Path(doc.get("path") or "")
-
-        if path.exists() and path.is_file():
-
-            path.unlink()
-
-    except OSError as exc:
-
-        print(f"Warning removing document file: {exc}")
-
-    if doc.get("storage_path"):
         try:
-            from supabase_storage import delete_file as storage_delete
-            storage_delete(doc["storage_path"])
-        except Exception as exc:
-            print(f"Warning removing Supabase Storage file for doc {doc_id}: {exc}")
+            db.record_player_document_event(
+                player_id=doc["player_id"],
+                filename=doc["filename"],
+                action="delete",
+                performed_by=g.user.get("id") if g.user else None,
+            )
+        except Exception as event_exc:
+            logging.getLogger(__name__).warning(
+                "Document %s was deleted but its audit event could not be recorded: %s",
+                doc_id,
+                event_exc,
+            )
+
+        db.close()
+    except Exception as exc:
+        try:
+            if db:
+                existing = db.get_player_document(doc_id)
+                if existing and (existing.get("category") or "").strip().lower() == Config.REPORT_DOC_CATEGORY:
+                    db.mark_document_lifecycle_failure(doc_id, "delete_failed", str(exc))
+        except Exception:
+            pass
+        finally:
+            try:
+                if db:
+                    db.close()
+            except Exception:
+                pass
+        return jsonify({"error": str(exc)}), 502
 
     return jsonify({"status": "deleted", "document": _format_player_document(doc)})
 
@@ -1831,15 +1894,54 @@ def api_admin_player_docs_delete(doc_id: int):
 @bp.route('/player-docs/by-player/<int:player_id>', methods=['DELETE'])
 @admin_required
 def api_admin_player_docs_delete_all(player_id: int):
-    """Delete all documents for a given player."""
+    """Delete reports Storage-first; leave out-of-scope Storage docs untouched."""
     if not PlayerDB:
         return jsonify({"error": "Database unavailable"}), 500
 
     db = None
     try:
+        from app.services.document_lifecycle import delete_report_document, is_report_document
+
         db = PlayerDB()
-        count = db.delete_all_player_documents(player_id)
-        return jsonify({"status": "deleted", "count": count})
+        documents = db.list_all_player_documents(player_id)
+        deleted_count = 0
+        failed = []
+        protected = []
+        for document in documents:
+            doc_id = int(document["id"])
+            try:
+                if is_report_document(document):
+                    result = delete_report_document(db, doc_id)
+                    if result is not None:
+                        deleted_count += 1
+                    continue
+                if (document.get("storage_path") or "").strip():
+                    protected.append(doc_id)
+                    continue
+                deleted = db.delete_player_document(doc_id)
+                if deleted:
+                    deleted_count += 1
+                    local_path = Path(deleted.get("path") or "")
+                    if local_path.exists() and local_path.is_file():
+                        try:
+                            local_path.unlink()
+                        except OSError:
+                            pass
+            except Exception as exc:
+                try:
+                    if is_report_document(document):
+                        db.mark_document_lifecycle_failure(doc_id, "delete_failed", str(exc))
+                except Exception:
+                    pass
+                failed.append({"id": doc_id, "error": str(exc)})
+
+        payload = {
+            "status": "deleted" if not failed and not protected else "partial",
+            "count": deleted_count,
+            "failed": failed,
+            "protected_document_ids": protected,
+        }
+        return jsonify(payload), (200 if not failed else 502)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
     finally:
@@ -2444,4 +2546,3 @@ def set_refresh_schedule():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-

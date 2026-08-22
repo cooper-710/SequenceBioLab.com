@@ -2511,40 +2511,54 @@ def build_player_home_context(user: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def purge_concluded_series_documents(reference_ts: Optional[float] = None) -> None:
-    """Remove player documents that have aged out (series + non-series)."""
-    if not PlayerDB:
+    """Legacy request-time report cleanup with Storage-first ordering.
+
+    The Supabase scheduled worker is the primary cleanup path. This hook stays
+    disabled by default and exists only as a controlled rollback option.
+    """
+    if not PlayerDB or not getattr(Config, "DOCUMENT_REQUEST_CLEANUP_ENABLED", False):
         return
+    db = None
     try:
+        from app.services.document_lifecycle import delete_report_document
+
         db = PlayerDB()
         now_ts = datetime.now().timestamp()
+
+        def _delete_expired(documents, action: str) -> None:
+            for document in documents:
+                doc_id = int(document["id"])
+                try:
+                    result = delete_report_document(db, doc_id)
+                except Exception as exc:
+                    try:
+                        db.mark_document_lifecycle_failure(doc_id, "delete_failed", str(exc))
+                    except Exception:
+                        pass
+                    logger.warning(
+                        "Unable to remove expired report document %s: %s",
+                        doc_id,
+                        exc,
+                    )
+                    continue
+                if result is None:
+                    continue
+                deleted = result.document
+                db.record_player_document_event(
+                    player_id=deleted["player_id"],
+                    filename=deleted["filename"],
+                    action=action,
+                    performed_by=None,
+                )
 
         # 1) Series-tied docs: expire once the series window has concluded (with optional grace).
         series_cutoff_ts = reference_ts
         if series_cutoff_ts is None:
             series_cutoff_ts = now_ts - Config.SERIES_AUTO_DELETE_GRACE_SECONDS
-        expired_docs = db.list_expired_player_documents(series_cutoff_ts)
-        for doc in expired_docs:
-            deleted = db.delete_player_document(doc["id"])
-            if not deleted:
-                continue
-            db.record_player_document_event(
-                player_id=deleted["player_id"],
-                filename=deleted["filename"],
-                action="auto_delete_series",
-                performed_by=None,
-            )
-            file_path = Path(deleted.get("path") or "")
-            if file_path.exists() and file_path.is_file():
-                try:
-                    file_path.unlink()
-                except OSError as exc:
-                    logger.warning(f"Warning removing expired document file {file_path}: {exc}")
-            if deleted.get("storage_path"):
-                try:
-                    from supabase_storage import delete_file as storage_delete
-                    storage_delete(deleted["storage_path"])
-                except Exception as exc:
-                    logger.warning(f"Warning removing Supabase Storage file for doc {doc['id']}: {exc}")
+        _delete_expired(
+            db.list_expired_player_documents(series_cutoff_ts),
+            "auto_delete_series",
+        )
 
         # 2) Non-series docs: expire after a fixed retention window from upload time.
         retention_seconds = getattr(Config, "NON_SERIES_AUTO_DELETE_SECONDS", 0)
@@ -2554,35 +2568,21 @@ def purge_concluded_series_documents(reference_ts: Optional[float] = None) -> No
             retention_seconds = 0
         if retention_seconds > 0:
             non_series_cutoff_ts = now_ts - float(retention_seconds)
-            expired_non_series = db.list_expired_non_series_player_documents(
-                non_series_cutoff_ts,
-                exclude_category=Config.WORKOUT_CATEGORY,
+            _delete_expired(
+                db.list_expired_non_series_player_documents(
+                    non_series_cutoff_ts,
+                    exclude_category=Config.WORKOUT_CATEGORY,
+                ),
+                "auto_delete_non_series",
             )
-            for doc in expired_non_series:
-                deleted = db.delete_player_document(doc["id"])
-                if not deleted:
-                    continue
-                db.record_player_document_event(
-                    player_id=deleted["player_id"],
-                    filename=deleted["filename"],
-                    action="auto_delete_non_series",
-                    performed_by=None,
-                )
-                file_path = Path(deleted.get("path") or "")
-                if file_path.exists() and file_path.is_file():
-                    try:
-                        file_path.unlink()
-                    except OSError as exc:
-                        logger.warning(f"Warning removing expired document file {file_path}: {exc}")
-                if deleted.get("storage_path"):
-                    try:
-                        from supabase_storage import delete_file as storage_delete
-                        storage_delete(deleted["storage_path"])
-                    except Exception as exc:
-                        logger.warning(f"Warning removing Supabase Storage file for doc {doc['id']}: {exc}")
-        db.close()
     except Exception as exc:
         logger.warning(f"Warning purging expired player documents: {exc}")
+    finally:
+        try:
+            if db:
+                db.close()
+        except Exception:
+            pass
 
 
 def schedule_auto_reports(games: List[Dict[str, Any]], team_abbr: Optional[str]) -> None:

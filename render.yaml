@@ -8,10 +8,19 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: UPLOAD_API_KEY
+        sync: false
       - key: SECRET_KEY
         generateValue: true
       - key: FLASK_ENV
         value: production
       - key: PORT
         value: 5000
-
+      - key: PLAYER_PDF_MAX_BYTES
+        value: 15728640
+      - key: DOCUMENT_REQUEST_CLEANUP_ENABLED
+        value: 0

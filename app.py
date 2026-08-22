@@ -140,63 +140,11 @@ _PENDING_REPORT_LOCK = threading.Lock()
 
 
 def _purge_concluded_series_documents(reference_ts: Optional[float] = None) -> None:
-    """Remove player documents that have aged out (series + non-series)."""
-    if not PlayerDB:
-        return
+    """Delegate legacy callers to the guarded Storage-aware cleanup service."""
     try:
-        db = PlayerDB()
-        now_ts = datetime.now().timestamp()
+        from app.services.page_service import purge_concluded_series_documents
 
-        # 1) Series-tied docs
-        series_cutoff_ts = reference_ts
-        if series_cutoff_ts is None:
-            series_cutoff_ts = now_ts - SERIES_AUTO_DELETE_GRACE_SECONDS
-        expired_docs = db.list_expired_player_documents(series_cutoff_ts)
-        for doc in expired_docs:
-            deleted = db.delete_player_document(doc["id"])
-            if not deleted:
-                continue
-            db.record_player_document_event(
-                player_id=deleted["player_id"],
-                filename=deleted["filename"],
-                action="auto_delete_series",
-                performed_by=None,
-            )
-            file_path = Path(deleted.get("path") or "")
-            if file_path.exists() and file_path.is_file():
-                try:
-                    file_path.unlink()
-                except OSError as exc:
-                    print(f"Warning removing expired document file {file_path}: {exc}")
-
-        # 2) Non-series docs (exclude legacy workout docs)
-        try:
-            retention_seconds = int(NON_SERIES_AUTO_DELETE_SECONDS or 0)
-        except Exception:
-            retention_seconds = 0
-        if retention_seconds > 0:
-            non_series_cutoff_ts = now_ts - float(retention_seconds)
-            expired_non_series = db.list_expired_non_series_player_documents(
-                non_series_cutoff_ts,
-                exclude_category=WORKOUT_CATEGORY,
-            )
-            for doc in expired_non_series:
-                deleted = db.delete_player_document(doc["id"])
-                if not deleted:
-                    continue
-                db.record_player_document_event(
-                    player_id=deleted["player_id"],
-                    filename=deleted["filename"],
-                    action="auto_delete_non_series",
-                    performed_by=None,
-                )
-                file_path = Path(deleted.get("path") or "")
-                if file_path.exists() and file_path.is_file():
-                    try:
-                        file_path.unlink()
-                    except OSError as exc:
-                        print(f"Warning removing expired document file {file_path}: {exc}")
-        db.close()
+        purge_concluded_series_documents(reference_ts)
     except Exception as exc:
         print(f"Warning purging expired player documents: {exc}")
 
@@ -8456,6 +8404,9 @@ def _format_player_document(doc: Dict[str, Any]) -> Dict[str, Any]:
         "series_end_display": series_end_display,
         "series_range_display": series_range_display,
         "series_status": series_status,
+        "lifecycle_status": doc.get("lifecycle_status") or "active",
+        "object_size_bytes": doc.get("object_size_bytes"),
+        "last_delete_error": doc.get("last_delete_error"),
     }
 
 
@@ -8655,6 +8606,10 @@ def api_admin_workouts_delete(doc_id: int):
         if not doc or (doc.get("category") or "").strip().lower() != WORKOUT_CATEGORY:
             db.close()
             return jsonify({"error": "Workout not found."}), 404
+        if (doc.get("storage_path") or "").strip():
+            return jsonify({
+                "error": "Storage-backed workouts require manual review before deletion."
+            }), 409
         deleted = db.delete_player_document(doc_id)
         if not deleted:
             db.close()
@@ -8917,13 +8872,9 @@ def api_admin_player_docs_by_player(player_id: int):
     _purge_concluded_series_documents()
     try:
         db = PlayerDB()
-        docs = []
-        # Generic docs (category NULL)
-        docs.extend(db.list_player_documents(int(player_id)) or [])
-        # Reports + workouts + scouting (notes)
-        docs.extend(db.list_player_documents(int(player_id), category=Config.REPORT_DOC_CATEGORY) or [])
-        docs.extend(db.list_player_documents(int(player_id), category=Config.WORKOUT_CATEGORY) or [])
-        docs.extend(db.list_player_documents(int(player_id), category='scouting') or [])
+        # Admins must also see retryable lifecycle failures; normal player
+        # listings intentionally remain active-only.
+        docs = db.list_all_player_documents(int(player_id)) or []
         db.close()
         docs.sort(key=lambda d: d.get("uploaded_at") or 0, reverse=True)
         return jsonify({"documents": [_format_player_document(doc) for doc in docs]})
@@ -8952,6 +8903,14 @@ def download_player_document(doc_id: int):
         except Exception:
             pass
         abort(404)
+    viewer = getattr(g, "user", None) or {}
+    viewer_id = viewer.get("id")
+    if doc.get("player_id") != viewer_id and not session.get("is_admin"):
+        try:
+            db.close()
+        except Exception:
+            pass
+        abort(403)
     path = Path(doc.get("path") or "")
     if path.exists() and path.is_file():
         try:
@@ -8960,7 +8919,24 @@ def download_player_document(doc_id: int):
             pass
         return send_file(path, as_attachment=True, download_name=doc.get("filename") or path.name)
 
-    # DB-backed fallback (fixes Render ephemeral filesystem 404s)
+    storage_path = (doc.get("storage_path") or "").strip()
+    if storage_path:
+        try:
+            from supabase_storage import download_file as storage_download
+
+            data = storage_download(storage_path)
+            filename = (doc.get("filename") or "").strip() or f"document-{doc_id}.pdf"
+            db.close()
+            return send_file(
+                BytesIO(data),
+                mimetype="application/pdf",
+                as_attachment=True,
+                download_name=filename,
+            )
+        except Exception as exc:
+            print(f"Warning downloading Supabase Storage file for doc {doc_id}: {exc}")
+
+    # Legacy DB-backed fallback.
     blob = None
     try:
         blob = db.get_player_document_blob(int(doc_id))
@@ -9056,28 +9032,60 @@ def view_workout_document(doc_id: int):
 def api_admin_player_docs_delete(doc_id: int):
     if not PlayerDB:
         return jsonify({"error": "Database unavailable"}), 500
+    db = None
     try:
+        from app.services.document_lifecycle import (
+            NonReportDocumentError,
+            delete_report_document,
+            is_report_document,
+        )
+
         db = PlayerDB()
-        doc = db.delete_player_document(doc_id)
-        if not doc:
+        existing = db.get_player_document(doc_id)
+        if not existing:
             db.close()
             return jsonify({"error": "Document not found"}), 404
-        db.record_player_document_event(
-            player_id=doc["player_id"],
-            filename=doc["filename"],
-            action="delete",
-            performed_by=g.user.get("id") if g.user else None
-        )
+        if is_report_document(existing):
+            result = delete_report_document(db, doc_id)
+            doc = dict(result.document) if result else existing
+        else:
+            if (existing.get("storage_path") or "").strip():
+                raise NonReportDocumentError(doc_id, existing.get("category"))
+            doc = db.delete_player_document(doc_id)
+            if not doc:
+                db.close()
+                return jsonify({"error": "Document not found"}), 404
+            path = Path(doc.get("path") or "")
+            if path.exists() and path.is_file():
+                try:
+                    path.unlink()
+                except OSError as exc:
+                    print(f"Warning removing document file: {exc}")
+        try:
+            db.record_player_document_event(
+                player_id=doc["player_id"],
+                filename=doc["filename"],
+                action="delete",
+                performed_by=g.user.get("id") if g.user else None,
+            )
+        except Exception as event_exc:
+            print(f"Warning recording delete event for document {doc_id}: {event_exc}")
         db.close()
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
-
-    try:
-        path = Path(doc.get("path") or "")
-        if path.exists() and path.is_file():
-            path.unlink()
-    except OSError as exc:
-        print(f"Warning removing document file: {exc}")
+        try:
+            if db:
+                existing = db.get_player_document(doc_id)
+                if existing and (existing.get("category") or "").strip().lower() == Config.REPORT_DOC_CATEGORY:
+                    db.mark_document_lifecycle_failure(doc_id, "delete_failed", str(exc))
+        except Exception:
+            pass
+        finally:
+            try:
+                if db:
+                    db.close()
+            except Exception:
+                pass
+        return jsonify({"error": str(exc)}), 502
 
     return jsonify({"status": "deleted", "document": _format_player_document(doc)})
 
@@ -9455,4 +9463,3 @@ if __name__ == '__main__':
     print(f"Reports will be saved to: {OUT_DIR}")
     print(f"Open http://127.0.0.1:{port} in your browser")
     app.run(debug=debug, host='127.0.0.1', port=port)
-

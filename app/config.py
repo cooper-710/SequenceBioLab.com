@@ -79,6 +79,7 @@ class Config:
     WORKOUT_ALLOWED_EXTENSIONS = {".pdf"}
     WORKOUT_CATEGORY = "workout"
     REPORT_DOC_CATEGORY = "report"
+    PLAYER_PDF_MAX_BYTES = int(os.environ.get("PLAYER_PDF_MAX_BYTES", str(15 * 1024 * 1024)))
     
     # Report generation
     REPORT_TIMEOUT = 600  # 10 minutes
@@ -105,6 +106,11 @@ class Config:
     # Retention for player documents not tied to a series (default: 7 days).
     # NOTE: This is enforced "lazily" via request-time purge hooks.
     NON_SERIES_AUTO_DELETE_SECONDS = 7 * 24 * 60 * 60
+    # Scheduled Supabase cleanup supersedes request-time deletion. Keep the
+    # legacy hook off unless explicitly enabled during a rollback.
+    DOCUMENT_REQUEST_CLEANUP_ENABLED = os.environ.get(
+        "DOCUMENT_REQUEST_CLEANUP_ENABLED", "0"
+    ).strip().lower() in {"1", "true", "yes", "on"}
     
     # Session configuration - sessions persist for 30 days
     PERMANENT_SESSION_LIFETIME = timedelta(days=30)
